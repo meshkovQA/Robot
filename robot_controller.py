@@ -57,12 +57,13 @@ class RobotController:
         try:
             print(f"🔧 Попытка отправить команду: {command}")
 
-            # Упаковка как отдельные байты (проще и надежнее)
+            # Упаковка как отдельные байты
             data = []
 
-            # speed (2 байта)
-            data.append(command.speed & 0xFF)
-            data.append((command.speed >> 8) & 0xFF)
+            # speed (2 байта, little-endian)
+            speed_value = command.speed
+            data.append(speed_value & 0xFF)  # Младший байт
+            data.append((speed_value >> 8) & 0xFF)  # Старший байт
 
             # direction (2 байта)
             data.append(command.direction & 0xFF)
@@ -80,8 +81,14 @@ class RobotController:
 
             print(f"🔧 Упакованные данные: {data} ({len(data)} байт)")
 
-            # Отправка по I2C
-            self.bus.write_i2c_block_data(ARDUINO_ADDRESS, 0, data)
+            # ИСПРАВЛЕНИЕ: Используем write_block_data правильно
+            # Первый байт данных становится регистром, остальные - данными
+            # Поэтому отправляем первый байт как регистр, остальные как данные
+            if len(data) > 1:
+                self.bus.write_i2c_block_data(
+                    ARDUINO_ADDRESS, data[0], data[1:])
+            else:
+                self.bus.write_byte(ARDUINO_ADDRESS, data[0])
 
             print(f"📤 Команда отправлена успешно")
             return True
