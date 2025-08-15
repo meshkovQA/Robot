@@ -20,7 +20,7 @@ class RobotCommand:
     """Структура команды для Arduino (соответствует C++ struct)"""
     speed: int = 0          # Скорость -255 до 255
     direction: int = 0      # 0=стоп, 1=вперед, 2=назад, 3=танк влево, 4=танк вправо
-    steering: int = 90      # Угол поворота сервы 0-180
+    steering: int = 60      # Угол поворота сервы 0-180
     front_wheels: bool = True   # Включить передние колеса
     rear_wheels: bool = True    # Включить задние колеса
 
@@ -131,22 +131,22 @@ class RobotController:
 
     def move_forward(self, speed: int = 200) -> bool:
         """Движение вперед"""
-        command = RobotCommand(speed=speed, direction=1, steering=90)
+        command = RobotCommand(speed=speed, direction=1, steering=60)
         return self.send_command(command)
 
     def move_backward(self, speed: int = 150) -> bool:
         """Движение назад"""
-        command = RobotCommand(speed=speed, direction=2, steering=90)
+        command = RobotCommand(speed=speed, direction=2, steering=60)
         return self.send_command(command)
 
     def tank_turn_left(self, speed: int = 150) -> bool:
         """Танковый поворот влево"""
-        command = RobotCommand(speed=speed, direction=3, steering=90)
+        command = RobotCommand(speed=speed, direction=3, steering=60)
         return self.send_command(command)
 
     def tank_turn_right(self, speed: int = 150) -> bool:
         """Танковый поворот вправо"""
-        command = RobotCommand(speed=speed, direction=4, steering=90)
+        command = RobotCommand(speed=speed, direction=4, steering=60)
         return self.send_command(command)
 
     def turn_left(self, speed: int = 120, steering_angle: int = 10) -> bool:
@@ -163,7 +163,7 @@ class RobotController:
 
     def stop(self) -> bool:
         """Остановка робота"""
-        command = RobotCommand(speed=0, direction=0, steering=90)
+        command = RobotCommand(speed=0, direction=0, steering=60)
         return self.send_command(command)
 
     def set_steering(self, angle: int) -> bool:
