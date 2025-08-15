@@ -131,22 +131,22 @@ class RobotController:
 
     def move_forward(self, speed: int = 200) -> bool:
         """Движение вперед"""
-        command = RobotCommand(speed=speed, direction=1, steering=60)
+        command = RobotCommand(speed=speed, direction=1, steering=95)
         return self.send_command(command)
 
-    def move_backward(self, speed: int = 150) -> bool:
+    def move_backward(self, speed: int = 50) -> bool:
         """Движение назад"""
-        command = RobotCommand(speed=speed, direction=2, steering=60)
+        command = RobotCommand(speed=speed, direction=2, steering=95)
         return self.send_command(command)
 
-    def tank_turn_left(self, speed: int = 150) -> bool:
+    def tank_turn_left(self, speed: int = 50) -> bool:
         """Танковый поворот влево"""
-        command = RobotCommand(speed=speed, direction=3, steering=60)
+        command = RobotCommand(speed=speed, direction=3, steering=95)
         return self.send_command(command)
 
-    def tank_turn_right(self, speed: int = 150) -> bool:
+    def tank_turn_right(self, speed: int = 120) -> bool:
         """Танковый поворот вправо"""
-        command = RobotCommand(speed=speed, direction=4, steering=60)
+        command = RobotCommand(speed=speed, direction=4, steering=95)
         return self.send_command(command)
 
     def turn_left(self, speed: int = 120, steering_angle: int = 10) -> bool:
