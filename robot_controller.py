@@ -8,7 +8,7 @@ import time
 import struct
 import smbus2
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Optional
 
 # I2C настройки
 I2C_BUS = 1  # Raspberry Pi 4 использует bus 1
@@ -76,7 +76,7 @@ class RobotController:
             print(f"❌ Ошибка отправки команды: {e}")
             return False
 
-    def read_sensors(self) -> Tuple[int, int]:
+    def read_sensors(self) -> int:
         """Чтение данных датчиков расстояния с Arduino"""
         try:
             # Небольшая задержка перед чтением
