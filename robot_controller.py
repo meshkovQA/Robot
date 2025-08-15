@@ -57,19 +57,31 @@ class RobotController:
         try:
             print(f"🔧 Попытка отправить команду: {command}")
 
-            # Упаковка структуры в байты
-            data = struct.pack('<iii??',
-                               command.speed,
-                               command.direction,
-                               command.steering,
-                               command.front_wheels,
-                               command.rear_wheels)
+            # Упаковка как отдельные байты (проще и надежнее)
+            data = []
 
-            print(f"🔧 Упакованные данные: {list(data)} ({len(data)} байт)")
+            # speed (2 байта)
+            data.append(command.speed & 0xFF)
+            data.append((command.speed >> 8) & 0xFF)
+
+            # direction (2 байта)
+            data.append(command.direction & 0xFF)
+            data.append((command.direction >> 8) & 0xFF)
+
+            # steering (2 байта)
+            data.append(command.steering & 0xFF)
+            data.append((command.steering >> 8) & 0xFF)
+
+            # front_wheels (1 байт)
+            data.append(1 if command.front_wheels else 0)
+
+            # rear_wheels (1 байт)
+            data.append(1 if command.rear_wheels else 0)
+
+            print(f"🔧 Упакованные данные: {data} ({len(data)} байт)")
 
             # Отправка по I2C
-            data_list = list(data)
-            self.bus.write_i2c_block_data(ARDUINO_ADDRESS, 0, data_list)
+            self.bus.write_i2c_block_data(ARDUINO_ADDRESS, 0, data)
 
             print(f"📤 Команда отправлена успешно")
             return True
@@ -192,7 +204,7 @@ def main():
                 if status['obstacles']['front'] and not status['sensor_error']:
                     print("🚫 Движение заблокировано - препятствие спереди!")
                 else:
-                    robot.move_forward(150)
+                    robot.move_forward(250)
 
             elif command == 's':
                 print("⬇️  Движение назад")
