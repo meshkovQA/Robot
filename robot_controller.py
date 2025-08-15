@@ -149,13 +149,13 @@ class RobotController:
         command = RobotCommand(speed=speed, direction=4, steering=90)
         return self.send_command(command)
 
-    def turn_left(self, speed: int = 120, steering_angle: int = 45) -> bool:
+    def turn_left(self, speed: int = 120, steering_angle: int = 10) -> bool:
         """Обычный поворот влево (рулем)"""
         command = RobotCommand(speed=speed, direction=1,
                                steering=steering_angle)
         return self.send_command(command)
 
-    def turn_right(self, speed: int = 120, steering_angle: int = 135) -> bool:
+    def turn_right(self, speed: int = 120, steering_angle: int = 170) -> bool:
         """Обычный поворот вправо (рулем)"""
         command = RobotCommand(speed=speed, direction=1,
                                steering=steering_angle)
