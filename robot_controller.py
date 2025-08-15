@@ -145,7 +145,7 @@ class RobotController:
 
     def get_status(self) -> dict:
         """Получение статуса робота"""
-        front_dist, rear_dist = self.read_sensors()
+        front_dist = self.read_sensors()
 
         return {
             "front_distance": front_dist,
