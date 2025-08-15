@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""
+Robot Controller для Raspberry Pi
+Управление Arduino через I2C
+"""
+
+import time
+import struct
+import smbus2
+from dataclasses import dataclass
+from typing import Tuple, Optional
+
+# I2C настройки
+I2C_BUS = 1  # Raspberry Pi 4 использует bus 1
+ARDUINO_ADDRESS = 0x08  # Адрес Arduino (8 в hex)
+
+@dataclass
+class RobotCommand:
+    """Структура команды для Arduino (соответствует C++ struct)"""
+    speed: int = 0          # Скорость -255 до 255
+    direction: int = 0      # 0=стоп, 1=вперед, 2=назад
+    steering: int = 90      # Угол поворота сервы 0-180
+    front_wheels: bool = True   # Включить передние колеса
+    rear_wheels: bool = True    # Включить задние колеса
+
+class RobotController:
+    def __init__(self):
+        """Инициализация контроллера робота"""
+        try:
+            self.bus = smbus2.SMBus(I2C_BUS)
+            print("✅ I2C подключение установлено")
+            time.sleep(0.5)  # Дать время Arduino проснуться
+            self.test_connection()
+        except Exception as e:
+            print(f"❌ Ошибка I2C подключения: {e}")
+            raise
+    
+    def test_connection(self) -> bool:
+        """Проверка связи с Arduino"""
+        try:
+            # Попытка чтения данных датчиков
+            front_dist, rear_dist = self.read_sensors()
+            if front_dist != 999 or rear_dist != 999:
+                print(f"✅ Arduino отвечает. Датчики: передний={front_dist}см, задний={rear_dist}см")
+                return True
+            else:
+                print("⚠️ Arduino подключен, но датчики не читаются")
+                return False
+        except Exception as e:
+            print(f"❌ Arduino не отвечает: {e}")
+            return False
+    
+    def send_command(self, command: RobotCommand) -> bool:
+        """Отправка команды на Arduino через I2C"""
+        try:
+            # Упаковка структуры в байты (соответствует C++ struct)
+            # int(4) + int(4) + int(4) + bool(1) + bool(1) = 14 байт
+            data = struct.pack('<iii??', 
+                             command.speed, 
+                             command.direction, 
+                             command.steering,
+                             command.front_wheels,
+                             command.rear_wheels)
+            
+            # Отправка по I2C блоками (некоторые Arduino лучше принимают маленькие пакеты)
+            data_list = list(data)
+            self.bus.write_i2c_block_data(ARDUINO_ADDRESS, 0, data_list)
+            
+            print(f"📤 Отправлено: speed={command.speed}, dir={command.direction}, steering={command.steering}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Ошибка отправки команды: {e}")
+            return False
+    
+    def read_sensors(self) -> Tuple[int, int]:
+        """Чтение данных датчиков расстояния с Arduino"""
+        try:
+            # Небольшая задержка перед чтением
+            time.sleep(0.05)
+            
+            # Запрос 4 байт данных (2 датчика по 2 байта каждый)
+            data = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0, 4)
+            print(f"🔍 I2C raw data: {data}")  # Отладка
+            
+            # Проверка валидности данных
+            if len(data) != 4:
+                print(f"⚠️ Неверная длина данных: {len(data)}")
+                return 999, 999
+            
+            # Распаковка данных (little-endian)
+            front_distance = (data[1] << 8) | data[0]  # Младший + старший байт
+            rear_distance = (data[3] << 8) | data[2]
+            
+            # Проверка разумности значений
+            if front_distance > 500 or rear_distance > 500:
+                print(f"⚠️ Подозрительные значения: front={front_distance}, rear={rear_distance}")
+                return 999, 999
+            
+            print(f"📊 Датчики: передний={front_distance}см, задний={rear_distance}см")
+            return front_distance, rear_distance
+            
+        except Exception as e:
+            print(f"❌ Ошибка чтения датчиков: {e}")
+            return 999, 999  # Значения ошибки
+    
+    def move_forward(self, speed: int = 150) -> bool:
+        """Движение вперед"""
+        command = RobotCommand(speed=speed, direction=1, steering=90)
+        return self.send_command(command)
+    
+    def move_backward(self, speed: int = 150) -> bool:
+        """Движение назад"""
+        command = RobotCommand(speed=speed, direction=2, steering=90)
+        return self.send_command(command)
+    
+    def turn_left(self, speed: int = 120, steering_angle: int = 45) -> bool:
+        """Поворот влево"""
+        command = RobotCommand(speed=speed, direction=1, steering=steering_angle)
+        return self.send_command(command)
+    
+    def turn_right(self, speed: int = 120, steering_angle: int = 135) -> bool:
+        """Поворот вправо"""
+        command = RobotCommand(speed=speed, direction=1, steering=steering_angle)
+        return self.send_command(command)
+    
+    def stop(self) -> bool:
+        """Остановка робота"""
+        command = RobotCommand(speed=0, direction=0, steering=90)
+        return self.send_command(command)
+    
+    def set_steering(self, angle: int) -> bool:
+        """Установка угла поворота без движения"""
+        command = RobotCommand(speed=0, direction=0, steering=angle)
+        return self.send_command(command)
+    
+    def emergency_stop(self) -> bool:
+        """Экстренная остановка"""
+        print("🚨 ЭКСТРЕННАЯ ОСТАНОВКА!")
+        return self.stop()
+    
+    def get_status(self) -> dict:
+        """Получение статуса робота"""
+        front_dist, rear_dist = self.read_sensors()
+        
+        return {
+            "front_distance": front_dist,
+            "rear_distance": rear_dist,  # Всегда 0 (один датчик)
+            "obstacles": {
+                "front": front_dist < 20 and front_dist != 999,
+                "rear": False  # Заднего датчика нет
+            },
+            "sensor_error": front_dist == 999,
+            "timestamp": time.time()
+        }
+
+def main():
+    """Демонстрация управления роботом"""
+    print("🤖 Запуск Robot Controller...")
+    
+    try:
+        # Создание контроллера
+        robot = RobotController()
+        
+        print("\n🎮 Демо-программа управления:")
+        print("Команды: w=вперед, s=назад, a=влево, d=вправо, x=стоп, q=выход")
+        
+        while True:
+            # Чтение статуса
+            status = robot.get_status()
+            
+            # Отображение статуса
+            if status['sensor_error']:
+                print("⚠️ ОШИБКА ДАТЧИКОВ!")
+            else:
+                print(f"📊 Датчики OK: Передний={status['front_distance']}см, Задний={status['rear_distance']}см")
+                
+                # Проверка препятствий
+                if status['obstacles']['front']:
+                    print("⚠️  ПРЕПЯТСТВИЕ СПЕРЕДИ!")
+                if status['obstacles']['rear']:
+                    print("⚠️  ПРЕПЯТСТВИЕ СЗАДИ!")
+            
+            # Ввод команды
+            command = input("\nКоманда (w/s/a/d/x/q): ").lower().strip()
+            
+            if command == 'w':
+                print("⬆️  Движение вперед")
+                if status['obstacles']['front'] and not status['sensor_error']:
+                    print("🚫 Движение заблокировано - препятствие спереди!")
+                else:
+                    robot.move_forward(150)
+                    
+            elif command == 's':
+                print("⬇️  Движение назад")
+                # Убираем проверку заднего датчика (его нет)
+                robot.move_backward(150)
+                    
+            elif command == 'a':
+                print("⬅️  Поворот влево")
+                robot.turn_left()
+                
+            elif command == 'd':
+                print("➡️  Поворот вправо")
+                robot.turn_right()
+                
+            elif command == 'x':
+                print("⏹️  Остановка")
+                robot.stop()
+                
+            elif command == 'q':
+                print("👋 Выход...")
+                robot.stop()
+                break
+                
+            elif command == 'test':
+                # Скрытая команда для тестирования
+                print("🔧 Тест I2C связи...")
+                robot.test_connection()
+                
+            else:
+                print("❓ Неизвестная команда. Используй: w/s/a/d/x/q")
+            
+            time.sleep(0.2)  # Задержка между командами
+            
+    except KeyboardInterrupt:
+        print("\n🛑 Прерывание программы")
+        robot.emergency_stop()
+    except Exception as e:
+        print(f"❌ Критическая ошибка: {e}")
+        try:
+            robot.emergency_stop()
+        except:
+            pass
+
+if __name__ == "__main__":
+    main()
