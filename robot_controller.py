@@ -55,8 +55,9 @@ class RobotController:
     def send_command(self, command: RobotCommand) -> bool:
         """Отправка команды на Arduino через I2C"""
         try:
-            # Упаковка структуры в байты (соответствует C++ struct)
-            # int(4) + int(4) + int(4) + bool(1) + bool(1) = 14 байт
+            print(f"🔧 Попытка отправить команду: {command}")
+
+            # Упаковка структуры в байты
             data = struct.pack('<iii??',
                                command.speed,
                                command.direction,
@@ -64,12 +65,13 @@ class RobotController:
                                command.front_wheels,
                                command.rear_wheels)
 
-            # Отправка по I2C блоками (некоторые Arduino лучше принимают маленькие пакеты)
+            print(f"🔧 Упакованные данные: {list(data)} ({len(data)} байт)")
+
+            # Отправка по I2C
             data_list = list(data)
             self.bus.write_i2c_block_data(ARDUINO_ADDRESS, 0, data_list)
 
-            print(
-                f"📤 Отправлено: speed={command.speed}, dir={command.direction}, steering={command.steering}")
+            print(f"📤 Команда отправлена успешно")
             return True
 
         except Exception as e:
@@ -106,7 +108,7 @@ class RobotController:
             print(f"❌ Ошибка чтения датчиков: {e}")
             return 999
 
-    def move_forward(self, speed: int = 150) -> bool:
+    def move_forward(self, speed: int = 250) -> bool:
         """Движение вперед"""
         command = RobotCommand(speed=speed, direction=1, steering=90)
         return self.send_command(command)
