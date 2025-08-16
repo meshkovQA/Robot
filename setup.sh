@@ -217,33 +217,144 @@ sudo journalctl -u robot-web.service --no-pager -n 10
 EOF
 chmod +x $PROJECT_DIR/status.sh
 
-# Создание файла README
-cat > $PROJECT_DIR/README.md << 'EOF'
-# Веб-интерфейс управления роботом
+# Создание скрипта обновления
+print_info "Создание скрипта обновления..."
 
-## Репозиторий
-https://github.com/meshkovQA/Robot.git
+cat > $PROJECT_DIR/update.sh << 'EOF'
+#!/bin/bash
 
-## Управление сервисом
-- `./start.sh` - запуск
-- `./stop.sh` - остановка
-- `./restart.sh` - перезапуск
-- `./status.sh` - проверка статуса
-- `./logs.sh` - просмотр логов
+# Скрипт обновления файлов с GitHub репозитория
+# Для репозитория https://github.com/meshkovQA/Robot.git
 
-## Доступ к интерфейсу
-http://[IP-адрес]:5000
+set -e
 
-## Управление с клавиатуры
-- W/↑ - вперед
-- S/↓ - назад  
-- A - танк влево
-- D - танк вправо
-- ←/→ - поворот руля
-- Пробел - стоп
-- C - центр руля
-- Escape - экстренная остановка
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${BLUE}🔄 Обновление файлов с GitHub${NC}"
+echo "Репозиторий: https://github.com/meshkovQA/Robot.git"
+echo "=============================================="
+
+PROJECT_DIR="/home/pi/robot_web"
+GITHUB_REPO="https://raw.githubusercontent.com/meshkovQA/Robot/main"
+
+# Проверка что папка существует
+if [[ ! -d "$PROJECT_DIR" ]]; then
+    echo -e "${YELLOW}⚠️ Папка $PROJECT_DIR не найдена!${NC}"
+    echo "Запустите сначала setup скрипт"
+    exit 1
+fi
+
+cd $PROJECT_DIR
+
+# Функция скачивания с бэкапом
+download_with_backup() {
+    local file_url="$1"
+    local file_path="$2"
+    local file_name="$3"
+    
+    echo -e "${BLUE}📥 Обновление $file_name...${NC}"
+    
+    # Создаем бэкап если файл существует
+    if [[ -f "$file_path" ]]; then
+        backup_name="$file_path.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$file_path" "$backup_name"
+        echo "   💾 Создан бэкап: $backup_name"
+    fi
+    
+    # Скачиваем новую версию
+    if curl -fsSL "$file_url" -o "$file_path"; then
+        echo -e "   ✅ $file_name обновлен"
+        return 0
+    else
+        echo -e "   ${RED}❌ Ошибка скачивания $file_name${NC}"
+        # Восстанавливаем из бэкапа если есть
+        if [[ -f "$backup_name" ]]; then
+            mv "$backup_name" "$file_path"
+            echo "   🔄 Восстановлен из бэкапа"
+        fi
+        return 1
+    fi
+}
+
+# Остановка сервера
+echo -e "${BLUE}⏹️ Остановка сервера...${NC}"
+sudo systemctl stop robot-web.service 2>/dev/null || echo "Сервис уже остановлен"
+
+# Скачивание файлов
+download_with_backup "$GITHUB_REPO/robot_server.py" "robot_server.py" "robot_server.py"
+download_with_backup "$GITHUB_REPO/templates/index.html" "templates/index.html" "index.html"
+download_with_backup "$GITHUB_REPO/static/style.css" "static/style.css" "style.css"
+download_with_backup "$GITHUB_REPO/static/script.js" "static/script.js" "script.js"
+
+# Права доступа
+chmod +x robot_server.py
+
+# Проверка синтаксиса Python
+echo -e "${BLUE}🔍 Проверка синтаксиса Python...${NC}"
+if python3 -m py_compile robot_server.py 2>/dev/null; then
+    echo -e "   ✅ Синтаксис корректен"
+else
+    echo -e "   ${RED}❌ Ошибка синтаксиса в robot_server.py${NC}"
+    echo "Восстанавливаем предыдущую версию..."
+    latest_backup=$(ls -t robot_server.py.backup.* 2>/dev/null | head -1)
+    if [[ -n "$latest_backup" ]]; then
+        mv "$latest_backup" robot_server.py
+        echo "Восстановлен из: $latest_backup"
+    fi
+    exit 1
+fi
+
+# Запуск сервера
+echo -e "${BLUE}🚀 Запуск сервера...${NC}"
+sudo systemctl start robot-web.service
+
+# Ожидание запуска
+sleep 3
+
+# Проверка статуса
+echo -e "${BLUE}📊 Проверка статуса...${NC}"
+if sudo systemctl is-active --quiet robot-web.service; then
+    echo -e "✅ Сервер успешно запущен"
+    
+    # Показать IP для доступа
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    echo -e "\n🌐 Сервер доступен по адресу:"
+    echo -e "   http://localhost:5000"
+    echo -e "   http://$LOCAL_IP:5000"
+    
+    # Проверка доступности
+    sleep 2
+    if curl -s -o /dev/null -w "%{http_code}" "http://localhost:5000" | grep -q "200"; then
+        echo -e "✅ Веб-интерфейс отвечает"
+    else
+        echo -e "⚠️ Веб-интерфейс не отвечает, проверьте логи"
+    fi
+else
+    echo -e "❌ Ошибка запуска сервера"
+    echo -e "\n📝 Последние логи:"
+    sudo journalctl -u robot-web.service --no-pager -n 10
+    exit 1
+fi
+
+# Показать статус
+echo -e "\n📊 Финальный статус:"
+sudo systemctl status robot-web.service --no-pager -l | head -15
+
+echo -e "\n${GREEN}🎉 Обновление завершено!${NC}"
+echo -e "\n💡 Полезные команды:"
+echo -e "   ./logs.sh    - просмотр логов в реальном времени"
+echo -e "   ./status.sh  - полная диагностика"
+echo -e "   ./restart.sh - перезапуск при проблемах"
+
+# Очистка старых бэкапов (оставляем только последние 5)
+echo -e "\n🧹 Очистка старых бэкапов..."
+find . -name "*.backup.*" -type f | sort | head -n -5 | xargs rm -f 2>/dev/null || true
 EOF
+chmod +x $PROJECT_DIR/update.sh
 
 # Проверка скачанных файлов
 print_info "Проверка скачанных файлов..."
@@ -277,6 +388,7 @@ else
 fi
 echo "✅ Настроен автозапуск systemd service"
 echo "✅ Созданы скрипты управления"
+echo "✅ Создан скрипт обновления (./update.sh)"
 echo
 print_info "Следующие шаги:"
 echo "1. Убедитесь, что все файлы на месте:"
@@ -303,6 +415,9 @@ echo "   cd $PROJECT_DIR && ./status.sh"
 echo
 echo "5. Откройте в браузере:"
 echo "   http://$(hostname -I | awk '{print $1}'):5000"
+echo
+echo "💡 Для обновления файлов из GitHub в будущем:"
+echo "   cd $PROJECT_DIR && ./update.sh"
 echo
 print_warning "ВАЖНО: Перезагрузите систему для применения настроек I2C!"
 print_info "Сервис будет автоматически запускаться при загрузке."
