@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Скрипт установки веб-интерфейса для робота
-# Для автозапуска при загрузке Raspberry Pi
+# Настроен для репозитория https://github.com/meshkovQA/Robot.git
 
 set -e
 
@@ -34,6 +34,7 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 print_info "🤖 Установка веб-интерфейса управления роботом"
+print_info "📁 Репозиторий: https://github.com/meshkovQA/Robot.git"
 echo "=============================================="
 
 # Обновление системы
@@ -46,12 +47,14 @@ sudo apt install -y \
     python3-pip \
     python3-flask \
     python3-smbus \
+    python3-smbus2 \
     i2c-tools \
-    git
+    git \
+    curl
 
-# Python пакеты
-print_info "Установка Python пакетов..."
-pip3 install --user smbus2 flask
+# Python пакеты через apt (рекомендуемый способ)
+print_info "Установка Python пакетов через apt..."
+sudo apt install -y python3-flask python3-smbus2 || print_warning "Некоторые пакеты недоступны через apt"
 
 # Настройка I2C
 print_info "Настройка I2C..."
@@ -73,6 +76,63 @@ print_info "Создание структуры проекта..."
 PROJECT_DIR="/home/$USER/robot_web"
 mkdir -p $PROJECT_DIR/{templates,static,logs}
 
+# Проверка доступности пакетов и создание виртуального окружения при необходимости
+print_info "Проверка Python пакетов..."
+if ! python3 -c "import smbus2" 2>/dev/null; then
+    print_warning "smbus2 недоступен через apt, создаем виртуальное окружение"
+    
+    cd $PROJECT_DIR
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install smbus2 flask
+    
+    # Создание wrapper скрипта
+    cat > $PROJECT_DIR/run_server.sh << 'EOF'
+#!/bin/bash
+cd /home/pi/robot_web
+source venv/bin/activate
+exec python3 robot_server.py
+EOF
+    chmod +x $PROJECT_DIR/run_server.sh
+    EXEC_START="$PROJECT_DIR/run_server.sh"
+    print_success "Виртуальное окружение создано"
+else
+    print_success "Пакеты доступны через системный Python"
+    EXEC_START="/usr/bin/python3 $PROJECT_DIR/robot_server.py"
+fi
+
+# Скачивание файлов проекта с GitHub
+print_info "Скачивание файлов проекта с GitHub..."
+
+# URL вашего репозитория
+GITHUB_REPO="https://raw.githubusercontent.com/meshkovQA/Robot/main"
+
+# Функция скачивания
+download_file() {
+    local file_url="$1"
+    local dest_path="$2"
+    local file_name="$3"
+    
+    print_info "Скачивание $file_name..."
+    if curl -fsSL "$file_url" -o "$dest_path"; then
+        print_success "$file_name скачан"
+        return 0
+    else
+        print_error "Не удалось скачать $file_name"
+        print_warning "URL: $file_url"
+        return 1
+    fi
+}
+
+# Скачивание файлов
+download_file "$GITHUB_REPO/robot_server.py" "$PROJECT_DIR/robot_server.py" "robot_server.py"
+download_file "$GITHUB_REPO/templates/index.html" "$PROJECT_DIR/templates/index.html" "index.html"
+download_file "$GITHUB_REPO/static/style.css" "$PROJECT_DIR/static/style.css" "style.css"
+download_file "$GITHUB_REPO/static/script.js" "$PROJECT_DIR/static/script.js" "script.js"
+
+# Делаем robot_server.py исполняемым
+chmod +x $PROJECT_DIR/robot_server.py
+
 # Создание systemd service
 print_info "Создание systemd service..."
 sudo tee /etc/systemd/system/robot-web.service > /dev/null << EOF
@@ -86,7 +146,7 @@ Type=simple
 User=$USER
 Group=$USER
 WorkingDirectory=$PROJECT_DIR
-ExecStart=/usr/bin/python3 $PROJECT_DIR/robot_server.py
+ExecStart=$EXEC_START
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -157,45 +217,12 @@ sudo journalctl -u robot-web.service --no-pager -n 10
 EOF
 chmod +x $PROJECT_DIR/status.sh
 
-# Скачивание файлов проекта с GitHub
-print_info "Скачивание файлов проекта с GitHub..."
-
-# URL репозитория (замените на ваш)
-GITHUB_REPO="https://github.com/meshkovQA/Robot.git"
-
-# Скачивание основных файлов
-download_file() {
-    local file_url="$1"
-    local dest_path="$2"
-    local file_name="$3"
-    
-    print_info "Скачивание $file_name..."
-    if curl -fsSL "$file_url" -o "$dest_path"; then
-        print_success "$file_name скачан"
-    else
-        print_error "Не удалось скачать $file_name"
-        print_warning "Вам придется скопировать этот файл вручную"
-    fi
-}
-
-# Скачивание файлов (замените URL на ваши)
-download_file "$GITHUB_REPO/robot_server.py" "$PROJECT_DIR/robot_server.py" "robot_server.py"
-download_file "$GITHUB_REPO/templates/index.html" "$PROJECT_DIR/templates/index.html" "index.html"
-download_file "$GITHUB_REPO/static/style.css" "$PROJECT_DIR/static/style.css" "style.css"
-download_file "$GITHUB_REPO/static/script.js" "$PROJECT_DIR/static/script.js" "script.js"
-
-# Делаем robot_server.py исполняемым
-chmod +x $PROJECT_DIR/robot_server.py
-
 # Создание файла README
 cat > $PROJECT_DIR/README.md << 'EOF'
 # Веб-интерфейс управления роботом
 
-## Файлы проекта
-- `robot_server.py` - основной веб-сервер (Flask)
-- `templates/index.html` - HTML шаблон
-- `static/style.css` - CSS стили  
-- `static/script.js` - JavaScript код
+## Репозиторий
+https://github.com/meshkovQA/Robot.git
 
 ## Управление сервисом
 - `./start.sh` - запуск
@@ -218,15 +245,36 @@ http://[IP-адрес]:5000
 - Escape - экстренная остановка
 EOF
 
+# Проверка скачанных файлов
+print_info "Проверка скачанных файлов..."
+files_ok=true
+
+for file in "robot_server.py" "templates/index.html" "static/style.css" "static/script.js"; do
+    if [[ -f "$PROJECT_DIR/$file" ]] && [[ -s "$PROJECT_DIR/$file" ]]; then
+        print_success "✓ $file"
+    else
+        print_error "✗ $file (отсутствует или пустой)"
+        files_ok=false
+    fi
+done
+
 echo
 echo "=============================================="
-print_success "Установка завершена!"
+if [[ "$files_ok" == "true" ]]; then
+    print_success "🎉 Установка завершена успешно!"
+else
+    print_warning "⚠️ Установка завершена с предупреждениями"
+fi
 echo
 print_info "Что было сделано:"
 echo "✅ Установлены зависимости"
 echo "✅ Настроен I2C"
 echo "✅ Создана структура проекта в $PROJECT_DIR"
-echo "✅ Файлы скачаны с GitHub"
+if [[ "$files_ok" == "true" ]]; then
+    echo "✅ Файлы скачаны с GitHub"
+else
+    echo "⚠️ Некоторые файлы не скачались (проверьте репозиторий)"
+fi
 echo "✅ Настроен автозапуск systemd service"
 echo "✅ Созданы скрипты управления"
 echo
@@ -236,20 +284,25 @@ echo "   ls -la $PROJECT_DIR"
 echo "   ls -la $PROJECT_DIR/templates/"
 echo "   ls -la $PROJECT_DIR/static/"
 echo
-echo "2. Перезагрузите систему:"
+if [[ "$files_ok" != "true" ]]; then
+    echo "2. Загрузите недостающие файлы в репозиторий:"
+    echo "   https://github.com/meshkovQA/Robot.git"
+    echo "   Структура должна быть:"
+    echo "   Robot/"
+    echo "   ├── robot_server.py"
+    echo "   ├── templates/index.html"
+    echo "   ├── static/style.css"
+    echo "   └── static/script.js"
+    echo
+fi
+echo "3. Перезагрузите систему:"
 echo "   sudo reboot"
 echo  
-echo "3. После перезагрузки проверьте статус:"
+echo "4. После перезагрузки проверьте статус:"
 echo "   cd $PROJECT_DIR && ./status.sh"
 echo
-echo "4. Откройте в браузере:"
+echo "5. Откройте в браузере:"
 echo "   http://$(hostname -I | awk '{print $1}'):5000"
-echo
-if [[ ! -f "$PROJECT_DIR/robot_server.py" ]]; then
-    print_warning "ВНИМАНИЕ: Некоторые файлы не скачались!"
-    echo "Проверьте URL GitHub репозитория в скрипте setup.sh"
-    echo "И скачайте файлы вручную если нужно."
-fi
 echo
 print_warning "ВАЖНО: Перезагрузите систему для применения настроек I2C!"
 print_info "Сервис будет автоматически запускаться при загрузке."
