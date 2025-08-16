@@ -150,7 +150,7 @@ class RobotController:
         command = RobotCommand(speed=speed, direction=4, steering=90)
         return self.send_command(command)
 
-    def gentle_turn_left(self, turn_intensity: int = 100) -> bool:
+    def turn_left(self, turn_intensity: int = 100) -> bool:
         """Плавный поворот влево без остановки"""
         command = RobotCommand(speed=self.current_speed,
                                direction=5, steering=turn_intensity)
