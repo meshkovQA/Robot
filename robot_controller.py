@@ -6,6 +6,7 @@ Robot Controller для Raspberry Pi
 
 import time
 import struct
+from click import command
 import smbus2
 from dataclasses import dataclass
 from typing import Optional
@@ -131,39 +132,39 @@ class RobotController:
 
     def move_forward(self, speed: int = 200) -> bool:
         """Движение вперед"""
-        command = RobotCommand(speed=speed, direction=1, steering=100)
+        command = RobotCommand(speed=speed, direction=1, steering=90)
         return self.send_command(command)
 
     def move_backward(self, speed: int = 50) -> bool:
         """Движение назад"""
-        command = RobotCommand(speed=speed, direction=2, steering=100)
+        command = RobotCommand(speed=speed, direction=2, steering=90)
         return self.send_command(command)
 
     def tank_turn_left(self, speed: int = 50) -> bool:
         """Танковый поворот влево"""
-        command = RobotCommand(speed=speed, direction=3, steering=100)
+        command = RobotCommand(speed=speed, direction=3, steering=90)
         return self.send_command(command)
 
     def tank_turn_right(self, speed: int = 120) -> bool:
         """Танковый поворот вправо"""
-        command = RobotCommand(speed=speed, direction=4, steering=100)
+        command = RobotCommand(speed=speed, direction=4, steering=90)
         return self.send_command(command)
 
-    def turn_left(self, speed: int = 120, steering_angle: int = 10) -> bool:
-        """Обычный поворот влево (рулем)"""
-        command = RobotCommand(speed=speed, direction=1,
-                               steering=steering_angle)
+    def gentle_turn_left(self, turn_intensity: int = 100) -> bool:
+        """Плавный поворот влево без остановки"""
+        command = RobotCommand(speed=self.current_speed,
+                               direction=5, steering=turn_intensity)
         return self.send_command(command)
 
-    def turn_right(self, speed: int = 120, steering_angle: int = 170) -> bool:
-        """Обычный поворот вправо (рулем)"""
-        command = RobotCommand(speed=speed, direction=1,
-                               steering=steering_angle)
+    def turn_right(self, turn_intensity: int = 100) -> bool:
+        """Плавный поворот вправо без остановки"""
+        command = RobotCommand(speed=self.current_speed,
+                               direction=6, steering=turn_intensity)
         return self.send_command(command)
 
     def stop(self) -> bool:
         """Остановка робота"""
-        command = RobotCommand(speed=0, direction=0, steering=100)
+        command = RobotCommand(speed=0, direction=0, steering=90)
         return self.send_command(command)
 
     def set_steering(self, angle: int) -> bool:
