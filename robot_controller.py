@@ -31,6 +31,7 @@ class RobotController:
         """Инициализация контроллера робота"""
         try:
             self.bus = smbus2.SMBus(I2C_BUS)
+            self.current_speed = 0  # Запоминаем текущую скорость
             print("✅ I2C подключение установлено")
             time.sleep(0.5)  # Дать время Arduino проснуться
             self.test_connection()
