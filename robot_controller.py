@@ -32,6 +32,7 @@ class RobotController:
         try:
             self.bus = smbus2.SMBus(I2C_BUS)
             self.current_speed = 0  # Запоминаем текущую скорость
+            self.current_steering = 90  # Запоминаем текущий угол руля
             print("✅ I2C подключение установлено")
             time.sleep(0.5)  # Дать время Arduino проснуться
             self.test_connection()
@@ -132,13 +133,17 @@ class RobotController:
             return 999, 999
 
     def move_forward(self, speed: int = 200) -> bool:
-        """Движение вперед"""
-        command = RobotCommand(speed=speed, direction=1, steering=90)
+        """Движение вперед с текущим углом руля"""
+        self.current_speed = speed
+        command = RobotCommand(speed=speed, direction=1,
+                               steering=self.current_steering)
         return self.send_command(command)
 
-    def move_backward(self, speed: int = 50) -> bool:
-        """Движение назад"""
-        command = RobotCommand(speed=speed, direction=2, steering=90)
+    def move_backward(self, speed: int = 150) -> bool:
+        """Движение назад с текущим углом руля"""
+        self.current_speed = speed
+        command = RobotCommand(speed=speed, direction=2,
+                               steering=self.current_steering)
         return self.send_command(command)
 
     def tank_turn_left(self, speed: int = 50) -> bool:
@@ -151,16 +156,16 @@ class RobotController:
         command = RobotCommand(speed=speed, direction=4, steering=90)
         return self.send_command(command)
 
-    def turn_left(self, turn_intensity: int = 100) -> bool:
-        """Плавный поворот влево без остановки"""
-        command = RobotCommand(speed=self.current_speed,
-                               direction=5, steering=turn_intensity)
+    def turn_left(self, angle: int = 45) -> bool:
+        """Поворот руля влево"""
+        self.current_steering = angle
+        command = RobotCommand(speed=0, direction=5, steering=angle)
         return self.send_command(command)
 
-    def turn_right(self, turn_intensity: int = 100) -> bool:
-        """Плавный поворот вправо без остановки"""
-        command = RobotCommand(speed=self.current_speed,
-                               direction=6, steering=turn_intensity)
+    def turn_right(self, angle: int = 135) -> bool:
+        """Поворот руля вправо"""
+        self.current_steering = angle
+        command = RobotCommand(speed=0, direction=6, steering=angle)
         return self.send_command(command)
 
     def stop(self) -> bool:
@@ -168,9 +173,10 @@ class RobotController:
         command = RobotCommand(speed=0, direction=0, steering=90)
         return self.send_command(command)
 
-    def set_steering(self, angle: int) -> bool:
-        """Установка угла поворота без движения"""
-        command = RobotCommand(speed=0, direction=0, steering=angle)
+    def center_steering(self) -> bool:
+        """Центрирование руля"""
+        self.current_steering = 90
+        command = RobotCommand(speed=0, direction=7, steering=90)
         return self.send_command(command)
 
     def emergency_stop(self) -> bool:
@@ -259,6 +265,10 @@ def main():
             elif command == 'x':
                 print("⏹️  Остановка")
                 robot.stop()
+
+            elif command == 'c':
+                print("Центрирование руля")
+                robot.center_steering()
 
             elif command == 'z':
                 print("👋 Выход...")
