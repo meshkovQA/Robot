@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Веб-сервер для управления роботом
-Использует существующий RobotController
+Танковое управление без рулевого сервомотора
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -25,28 +25,28 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# I2C настройки (из вашего кода)
+# I2C настройки
 I2C_BUS = 1
 ARDUINO_ADDRESS = 0x08
 
 
 @dataclass
 class RobotCommand:
-    """Структура команды для Arduino (из вашего кода)"""
+    """Структура команды для Arduino (упрощенная без рулевого управления)"""
     speed: int = 0
-    direction: int = 0
-    steering: int = 90
+    direction: int = 0  # 0=стоп, 1=вперед, 2=назад, 3=поворот_влево, 4=поворот_вправо
     front_wheels: bool = True
     rear_wheels: bool = True
 
 
 class RobotController:
-    """Контроллер робота на основе вашего кода"""
+    """Контроллер робота с танковым управлением"""
 
     def __init__(self):
         self.bus = None
         self.current_speed = 0
-        self.current_steering = 90
+        self.is_moving = False  # Флаг движения
+        self.movement_direction = 0  # Текущее направление движения
         self.last_command_time = time.time()
 
         if I2C_AVAILABLE:
@@ -59,21 +59,22 @@ class RobotController:
                 self.bus = None
 
     def send_command(self, command: RobotCommand) -> bool:
-        """Отправка команды на Arduino через I2C (ваш метод)"""
+        """Отправка команды на Arduino через I2C"""
         if not self.bus:
             logger.warning(f"I2C недоступен. Эмуляция команды: {command}")
             return True
 
         try:
-            # Упаковка как отдельные байты (ваш алгоритм)
+            # Упаковка команды в байты (без рулевого управления)
             data = []
             speed_value = command.speed
             data.append(speed_value & 0xFF)
             data.append((speed_value >> 8) & 0xFF)
             data.append(command.direction & 0xFF)
             data.append((command.direction >> 8) & 0xFF)
-            data.append(command.steering & 0xFF)
-            data.append((command.steering >> 8) & 0xFF)
+            # Убираем steering - больше не используется
+            data.append(90)  # Фиксированное значение для совместимости
+            data.append(0)   # Фиксированное значение для совместимости
             data.append(1 if command.front_wheels else 0)
             data.append(1 if command.rear_wheels else 0)
 
@@ -91,7 +92,7 @@ class RobotController:
             return False
 
     def read_sensors(self) -> tuple:
-        """Чтение данных обоих датчиков с Arduino (ваш метод)"""
+        """Чтение данных датчиков с Arduino"""
         if not self.bus:
             return 25, 30  # Эмуляция
 
@@ -114,63 +115,71 @@ class RobotController:
             logger.error(f"Ошибка чтения датчиков: {e}")
             return 999, 999
 
-    # Методы управления из вашего кода
-    def move_forward(self, speed: int = 200) -> bool:
+    def move_forward(self, speed: int = 50) -> bool:
+        """Движение вперед с заданной скоростью"""
         self.current_speed = speed
-        command = RobotCommand(speed=speed, direction=1,
-                               steering=self.current_steering)
+        self.is_moving = True
+        self.movement_direction = 1
+        command = RobotCommand(speed=speed, direction=1)
         return self.send_command(command)
 
-    def move_backward(self, speed: int = 150) -> bool:
+    def move_backward(self, speed: int = 50) -> bool:
+        """Движение назад с заданной скоростью"""
         self.current_speed = speed
-        command = RobotCommand(speed=speed, direction=2,
-                               steering=self.current_steering)
+        self.is_moving = True
+        self.movement_direction = 2
+        command = RobotCommand(speed=speed, direction=2)
         return self.send_command(command)
 
-    def tank_turn_left(self, speed: int = 150) -> bool:
-        command = RobotCommand(speed=speed, direction=3, steering=90)
+    def tank_turn_left(self, speed: int = 50) -> bool:
+        """Танковый поворот влево"""
+        command = RobotCommand(speed=speed, direction=3)
         return self.send_command(command)
 
-    def tank_turn_right(self, speed: int = 150) -> bool:
-        command = RobotCommand(speed=speed, direction=4, steering=90)
-        return self.send_command(command)
-
-    def turn_left(self, angle: int = 45) -> bool:
-        self.current_steering = angle
-        command = RobotCommand(speed=0, direction=5, steering=angle)
-        return self.send_command(command)
-
-    def turn_right(self, angle: int = 135) -> bool:
-        self.current_steering = angle
-        command = RobotCommand(speed=0, direction=6, steering=angle)
+    def tank_turn_right(self, speed: int = 50) -> bool:
+        """Танковый поворот вправо"""
+        command = RobotCommand(speed=speed, direction=4)
         return self.send_command(command)
 
     def stop(self) -> bool:
+        """Полная остановка"""
         self.current_speed = 0
-        command = RobotCommand(speed=0, direction=0, steering=90)
+        self.is_moving = False
+        self.movement_direction = 0
+        command = RobotCommand(speed=0, direction=0)
         return self.send_command(command)
 
-    def center_steering(self) -> bool:
-        self.current_steering = 90
-        command = RobotCommand(speed=0, direction=7, steering=90)
-        return self.send_command(command)
+    def update_speed(self, new_speed: int) -> bool:
+        """
+        Обновление скорости для движущегося робота
+        Работает только если робот уже в движении
+        """
+        if not self.is_moving or self.movement_direction == 0:
+            # Робот не движется - только обновляем переменную
+            self.current_speed = new_speed
+            logger.info(
+                f"Скорость установлена на {new_speed}, но робот не движется")
+            return True
 
-    def set_movement(self, speed: int, steering: int) -> bool:
-        """Универсальный метод установки движения"""
-        self.current_speed = speed
-        self.current_steering = steering
-
-        if speed == 0:
-            direction = 0  # Стоп
-        elif speed > 0:
-            direction = 1  # Вперед
-        else:
-            direction = 2  # Назад
-            speed = abs(speed)
-
+        # Робот движется - обновляем скорость с сохранением направления
+        self.current_speed = new_speed
         command = RobotCommand(
-            speed=speed, direction=direction, steering=steering)
+            speed=new_speed, direction=self.movement_direction)
+        logger.info(
+            f"Обновлена скорость до {new_speed} при движении в направлении {self.movement_direction}")
         return self.send_command(command)
+
+    def start_movement_forward(self) -> bool:
+        """Начать движение вперед с текущей скоростью"""
+        if self.current_speed == 0:
+            self.current_speed = 50  # Минимальная скорость по умолчанию
+        return self.move_forward(self.current_speed)
+
+    def start_movement_backward(self) -> bool:
+        """Начать движение назад с текущей скоростью"""
+        if self.current_speed == 0:
+            self.current_speed = 50  # Минимальная скорость по умолчанию
+        return self.move_backward(self.current_speed)
 
     def get_status(self) -> dict:
         """Получение статуса робота"""
@@ -185,7 +194,8 @@ class RobotController:
             },
             "sensor_error": front_dist == 999 or rear_dist == 999,
             "current_speed": self.current_speed,
-            "current_steering": self.current_steering,
+            "is_moving": self.is_moving,
+            "movement_direction": self.movement_direction,
             "timestamp": time.time()
         }
 
@@ -202,64 +212,109 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/move', methods=['POST'])
-def api_move():
-    """API для универсального управления движением"""
+@app.route('/api/move/forward', methods=['POST'])
+def api_move_forward():
+    """API для движения вперед"""
     try:
-        data = request.get_json()
-        speed = int(data.get('speed', 0))
-        steering = int(data.get('steering', 90))
-
-        success = robot.set_movement(speed, steering)
-
+        success = robot.start_movement_forward()
         return jsonify({
             'success': success,
-            'speed': speed,
-            'steering': steering,
+            'direction': 'forward',
+            'speed': robot.current_speed,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        logger.error(f"Ошибка в api_move: {e}")
+        logger.error(f"Ошибка в api_move_forward: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/command', methods=['POST'])
-def api_command():
-    """API для специфических команд"""
+@app.route('/api/move/backward', methods=['POST'])
+def api_move_backward():
+    """API для движения назад"""
     try:
-        data = request.get_json()
-        command = data.get('command')
-        value = data.get('value', None)
-
-        success = False
-
-        if command == 'move_forward':
-            success = robot.move_forward(value or 50)
-        elif command == 'move_backward':
-            success = robot.move_backward(value or 50)
-        elif command == 'tank_turn_left':
-            success = robot.tank_turn_left(value or 50)
-        elif command == 'tank_turn_right':
-            success = robot.tank_turn_right(value or 50)
-        elif command == 'turn_left':
-            success = robot.turn_left(value or 10)
-        elif command == 'turn_right':
-            success = robot.turn_right(value or 140)
-        elif command == 'stop':
-            success = robot.stop()
-        elif command == 'center_steering':
-            success = robot.center_steering()
-        else:
-            return jsonify({'success': False, 'error': 'Unknown command'}), 400
-
+        success = robot.start_movement_backward()
         return jsonify({
             'success': success,
-            'command': command,
-            'value': value,
+            'direction': 'backward',
+            'speed': robot.current_speed,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        logger.error(f"Ошибка в api_command: {e}")
+        logger.error(f"Ошибка в api_move_backward: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/turn/left', methods=['POST'])
+def api_turn_left():
+    """API для танкового поворота влево"""
+    try:
+        data = request.get_json() or {}
+        speed = int(data.get('speed', 150))
+        success = robot.tank_turn_left(speed)
+        return jsonify({
+            'success': success,
+            'turn': 'left',
+            'speed': speed,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Ошибка в api_turn_left: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/turn/right', methods=['POST'])
+def api_turn_right():
+    """API для танкового поворота вправо"""
+    try:
+        data = request.get_json() or {}
+        speed = int(data.get('speed', 150))
+        success = robot.tank_turn_right(speed)
+        return jsonify({
+            'success': success,
+            'turn': 'right',
+            'speed': speed,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Ошибка в api_turn_right: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/speed', methods=['POST'])
+def api_update_speed():
+    """API для обновления скорости"""
+    try:
+        data = request.get_json()
+        new_speed = int(data.get('speed', 0))
+
+        # Ограничение скорости
+        new_speed = max(0, min(255, new_speed))
+
+        success = robot.update_speed(new_speed)
+
+        return jsonify({
+            'success': success,
+            'speed': robot.current_speed,
+            'is_moving': robot.is_moving,
+            'movement_direction': robot.movement_direction,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Ошибка в api_update_speed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/stop', methods=['POST'])
+def api_stop():
+    """API для остановки"""
+    try:
+        success = robot.stop()
+        return jsonify({
+            'success': success,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Ошибка в api_stop: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -268,6 +323,7 @@ def api_emergency_stop():
     """API для экстренной остановки"""
     try:
         success = robot.stop()
+        logger.warning("Выполнена экстренная остановка!")
         return jsonify({
             'success': success,
             'timestamp': datetime.now().isoformat()
@@ -294,7 +350,7 @@ def api_status():
 
 def main():
     """Основная функция запуска сервера"""
-    logger.info("Запуск веб-сервера управления роботом...")
+    logger.info("Запуск веб-сервера управления роботом (танковое управление)...")
     logger.info(f"I2C доступен: {I2C_AVAILABLE}")
     logger.info(f"I2C соединение: {'Активно' if robot.bus else 'Недоступно'}")
 
