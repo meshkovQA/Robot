@@ -48,15 +48,63 @@ class RobotController:
         self.is_moving = False  # Флаг движения
         self.movement_direction = 0  # Текущее направление движения
         self.last_command_time = time.time()
+        self.monitoring_active = False  # Флаг мониторинга препятствий
+        self.monitor_thread = None
 
         if I2C_AVAILABLE:
             try:
                 self.bus = smbus2.SMBus(I2C_BUS)
                 logger.info("I2C подключение установлено")
                 time.sleep(0.5)
+                self.start_obstacle_monitoring()
             except Exception as e:
                 logger.error(f"Ошибка I2C подключения: {e}")
                 self.bus = None
+
+    def start_obstacle_monitoring(self):
+        """Запуск потока мониторинга препятствий"""
+        self.monitoring_active = True
+        self.monitor_thread = threading.Thread(
+            target=self._obstacle_monitor_loop, daemon=True)
+        self.monitor_thread.start()
+        logger.info("Запущен мониторинг препятствий")
+
+    def _obstacle_monitor_loop(self):
+        """Основной цикл мониторинга препятствий"""
+        while self.monitoring_active:
+            try:
+                # Только для прямого движения
+                if self.is_moving and self.movement_direction in [1, 2]:
+                    front_dist, rear_dist = self.read_sensors()
+
+                    # Проверка препятствий во время движения
+                    should_stop = False
+                    stop_reason = ""
+
+                    if self.movement_direction == 1 and front_dist < 15 and front_dist != 999:
+                        should_stop = True
+                        stop_reason = f"Препятствие спереди: {front_dist}см"
+                    elif self.movement_direction == 2 and rear_dist < 10 and rear_dist != 999:
+                        should_stop = True
+                        stop_reason = f"Препятствие сзади: {rear_dist}см"
+
+                    if should_stop:
+                        logger.warning(
+                            f"Автоматическая остановка: {stop_reason}")
+                        self._emergency_stop_internal()
+
+                time.sleep(0.1)  # Проверка каждые 100мс
+            except Exception as e:
+                logger.error(f"Ошибка в мониторе препятствий: {e}")
+                time.sleep(0.5)
+
+    def _emergency_stop_internal(self):
+        """Внутренняя экстренная остановка без изменения флага мониторинга"""
+        self.current_speed = 0
+        self.is_moving = False
+        self.movement_direction = 0
+        command = RobotCommand(speed=0, direction=0)
+        self.send_command(command)
 
     def send_command(self, command: RobotCommand) -> bool:
         """Отправка команды на Arduino через I2C"""
@@ -115,7 +163,7 @@ class RobotController:
             logger.error(f"Ошибка чтения датчиков: {e}")
             return 999, 999
 
-    def move_forward(self, speed: int = 50) -> bool:
+    def move_forward(self, speed) -> bool:
         """Движение вперед с заданной скоростью"""
         self.current_speed = speed
         self.is_moving = True
@@ -123,7 +171,7 @@ class RobotController:
         command = RobotCommand(speed=speed, direction=1)
         return self.send_command(command)
 
-    def move_backward(self, speed: int = 50) -> bool:
+    def move_backward(self, speed) -> bool:
         """Движение назад с заданной скоростью"""
         self.current_speed = speed
         self.is_moving = True
@@ -131,12 +179,12 @@ class RobotController:
         command = RobotCommand(speed=speed, direction=2)
         return self.send_command(command)
 
-    def tank_turn_left(self, speed: int = 50) -> bool:
+    def tank_turn_left(self, speed) -> bool:
         """Танковый поворот влево"""
         command = RobotCommand(speed=speed, direction=3)
         return self.send_command(command)
 
-    def tank_turn_right(self, speed: int = 50) -> bool:
+    def tank_turn_right(self, speed) -> bool:
         """Танковый поворот вправо"""
         command = RobotCommand(speed=speed, direction=4)
         return self.send_command(command)
@@ -148,6 +196,13 @@ class RobotController:
         self.movement_direction = 0
         command = RobotCommand(speed=0, direction=0)
         return self.send_command(command)
+
+    def shutdown(self):
+        """Корректное завершение работы контроллера"""
+        self.monitoring_active = False
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=1.0)
+        logger.info("Контроллер робота завершил работу")
 
     def update_speed(self, new_speed: int) -> bool:
         """
@@ -216,11 +271,14 @@ def index():
 def api_move_forward():
     """API для движения вперед"""
     try:
-        success = robot.start_movement_forward()
+        data = request.get_json() or {}
+        speed = int(
+            data.get('speed', robot.current_speed if robot.current_speed > 0 else 100))
+        success = robot.move_forward(speed)
         return jsonify({
             'success': success,
             'direction': 'forward',
-            'speed': robot.current_speed,
+            'speed': speed,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -232,11 +290,14 @@ def api_move_forward():
 def api_move_backward():
     """API для движения назад"""
     try:
-        success = robot.start_movement_backward()
+        data = request.get_json() or {}
+        speed = int(
+            data.get('speed', robot.current_speed if robot.current_speed > 0 else 100))
+        success = robot.move_backward(speed)
         return jsonify({
             'success': success,
             'direction': 'backward',
-            'speed': robot.current_speed,
+            'speed': speed,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -361,8 +422,14 @@ def main():
             debug=False,
             threaded=True
         )
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал остановки")
     except Exception as e:
         logger.error(f"Ошибка запуска сервера: {e}")
+    finally:
+        # Корректное завершение работы
+        robot.shutdown()
+        logger.info("Сервер остановлен")
 
 
 if __name__ == '__main__':

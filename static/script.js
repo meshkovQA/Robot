@@ -21,21 +21,23 @@ speedSlider.addEventListener('input', function () {
 
 // Функции управления движением
 function moveForward() {
-    sendCommand('/api/move/forward', 'POST')
+    const speed = parseInt(speedSlider.value);
+    sendCommand('/api/move/forward', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
-                showAlert('Движение вперед', 'success');
+                showAlert(`Движение вперед (${speed})`, 'success');
                 updateMovementState(true, 'Движение вперед');
             }
         });
 }
 
-function moveBackward() {
-    sendCommand('/api/move/backward', 'POST')
+function moveForward() {
+    const speed = parseInt(speedSlider.value);
+    sendCommand('/api/move/forward', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
-                showAlert('Движение назад', 'success');
-                updateMovementState(true, 'Движение назад');
+                showAlert(`Движение вперед (${speed})`, 'success');
+                updateMovementState(true, 'Движение вперед');
             }
         });
 }
