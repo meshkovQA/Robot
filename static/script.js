@@ -2,136 +2,142 @@
 let lastUpdateTime = 0;
 let obstacleDetected = false;
 let connectionActive = false;
+let robotMoving = false;
+let currentDirection = 0;
 
 // Элементы интерфейса
 const speedSlider = document.getElementById('speed-slider');
-const steeringSlider = document.getElementById('steering-slider');
 const speedValue = document.getElementById('speed-value');
-const steeringValue = document.getElementById('steering-value');
 
-// Обработчики ползунков
+// Обработчик ползунка скорости
 speedSlider.addEventListener('input', function () {
     const speed = parseInt(this.value);
     speedValue.textContent = speed;
-    sendMovementCommand(speed, parseInt(steeringSlider.value));
+    document.getElementById('current-speed').textContent = speed;
+
+    // Отправляем новую скорость только если робот движется
+    updateSpeed(speed);
 });
 
-steeringSlider.addEventListener('input', function () {
-    const steering = parseInt(this.value);
-    steeringValue.textContent = steering + '°';
-    sendMovementCommand(parseInt(speedSlider.value), steering);
-});
-
-// Быстрые команды движения
-function quickMove(action) {
-    switch (action) {
-        case 'forward':
-            speedSlider.value = 200;
-            speedValue.textContent = '200';
-            sendSpecificCommand('move_forward', 200);
-            break;
-        case 'backward':
-            speedSlider.value = -150;
-            speedValue.textContent = '-150';
-            sendSpecificCommand('move_backward', 150);
-            break;
-        case 'tank_left':
-            speedSlider.value = 0;
-            speedValue.textContent = '0';
-            sendSpecificCommand('tank_turn_left', 150);
-            break;
-        case 'tank_right':
-            speedSlider.value = 0;
-            speedValue.textContent = '0';
-            sendSpecificCommand('tank_turn_right', 150);
-            break;
-        case 'stop':
-            speedSlider.value = 0;
-            speedValue.textContent = '0';
-            steeringSlider.value = 90;
-            steeringValue.textContent = '90°';
-            sendSpecificCommand('stop');
-            break;
-        case 'center':
-            steeringSlider.value = 90;
-            steeringValue.textContent = '90°';
-            sendSpecificCommand('center_steering');
-            break;
-    }
-}
-
-// Отправка универсальной команды движения
-function sendMovementCommand(speed, steering) {
-    fetch('/api/move', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            speed: speed,
-            steering: steering
-        })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                console.error('Ошибка команды движения:', data.error);
-                showAlert('Ошибка команды движения', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка сети:', error);
-            showAlert('Ошибка соединения', 'danger');
-        });
-}
-
-// Отправка специфических команд
-function sendSpecificCommand(command, value = null) {
-    const payload = { command: command };
-    if (value !== null) {
-        payload.value = value;
-    }
-
-    fetch('/api/command', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                console.error('Ошибка команды:', data.error);
-                showAlert(`Ошибка команды: ${command}`, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка сети:', error);
-            showAlert('Ошибка соединения', 'danger');
-        });
-}
-
-// Экстренная остановка
-function emergencyStop() {
-    speedSlider.value = 0;
-    speedValue.textContent = '0';
-    steeringSlider.value = 90;
-    steeringValue.textContent = '90°';
-
-    fetch('/api/emergency_stop', {
-        method: 'POST'
-    })
-        .then(response => response.json())
+// Функции управления движением
+function moveForward() {
+    sendCommand('/api/move/forward', 'POST')
         .then(data => {
             if (data.success) {
-                showAlert('🚨 ЭКСТРЕННАЯ ОСТАНОВКА АКТИВИРОВАНА', 'danger');
+                showAlert('Движение вперед', 'success');
+                updateMovementState(true, 'Движение вперед');
             }
-        })
-        .catch(error => {
-            console.error('Ошибка экстренной остановки:', error);
-            showAlert('Ошибка экстренной остановки', 'danger');
         });
+}
+
+function moveBackward() {
+    sendCommand('/api/move/backward', 'POST')
+        .then(data => {
+            if (data.success) {
+                showAlert('Движение назад', 'success');
+                updateMovementState(true, 'Движение назад');
+            }
+        });
+}
+
+function tankTurnLeft() {
+    const speed = parseInt(speedSlider.value);
+    sendCommand('/api/turn/left', 'POST', { speed: speed })
+        .then(data => {
+            if (data.success) {
+                showAlert('Поворот влево', 'success');
+                updateMovementState(false, 'Поворот влево');
+            }
+        });
+}
+
+function tankTurnRight() {
+    const speed = parseInt(speedSlider.value);
+    sendCommand('/api/turn/right', 'POST', { speed: speed })
+        .then(data => {
+            if (data.success) {
+                showAlert('Поворот вправо', 'success');
+                updateMovementState(false, 'Поворот вправо');
+            }
+        });
+}
+
+function stopRobot() {
+    sendCommand('/api/stop', 'POST')
+        .then(data => {
+            if (data.success) {
+                showAlert('Остановка', 'warning');
+                updateMovementState(false, 'Остановлен');
+            }
+        });
+}
+
+function emergencyStop() {
+    sendCommand('/api/emergency_stop', 'POST')
+        .then(data => {
+            if (data.success) {
+                showAlert('🚨 ЭКСТРЕННАЯ ОСТАНОВКА', 'danger');
+                updateMovementState(false, 'Экстренная остановка');
+            }
+        });
+}
+
+function updateSpeed(newSpeed) {
+    sendCommand('/api/speed', 'POST', { speed: newSpeed })
+        .then(data => {
+            if (data.success && data.is_moving) {
+                showAlert(`Скорость изменена: ${newSpeed}`, 'success');
+            }
+        });
+}
+
+// Обновление состояния движения в UI
+function updateMovementState(moving, state) {
+    robotMoving = moving;
+    const statusDisplay = document.getElementById('movement-status-display');
+    const robotState = document.getElementById('robot-state');
+    const speedInfo = document.getElementById('speed-info');
+    const movementDirection = document.getElementById('movement-direction');
+
+    robotState.textContent = state;
+    movementDirection.textContent = state;
+
+    if (moving) {
+        statusDisplay.className = 'movement-status moving';
+        speedInfo.textContent = 'Используйте ползунок для изменения скорости';
+    } else {
+        statusDisplay.className = 'movement-status stopped';
+        speedInfo.textContent = 'Установите скорость и нажмите направление';
+    }
+}
+
+// Универсальная функция отправки команд
+async function sendCommand(url, method, data = null) {
+    try {
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
+
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(url, options);
+        const result = await response.json();
+
+        if (!result.success) {
+            showAlert(`Ошибка команды: ${result.error}`, 'danger');
+        }
+
+        return result;
+    } catch (error) {
+        console.error('Ошибка сети:', error);
+        showAlert('Ошибка соединения', 'danger');
+        return { success: false };
+    }
 }
 
 // Обновление данных датчиков
@@ -144,12 +150,15 @@ function updateSensorData() {
 
                 // Обновление индикаторов состояния
                 updateConnectionStatus(true);
-                updateMovementStatus(status.current_speed !== 0);
+                updateMovementStatusIndicator(status.is_moving);
                 updateObstacleStatus(status.obstacles.front || status.obstacles.rear);
 
                 // Обновление текущих значений
                 document.getElementById('current-speed').textContent = status.current_speed;
-                document.getElementById('current-steering').textContent = status.current_steering + '°';
+
+                // Обновление состояния движения
+                const directionText = getDirectionText(status.movement_direction, status.is_moving);
+                updateMovementState(status.is_moving, directionText);
 
                 // Обновление датчиков расстояния
                 updateSensorDisplay('front', status.front_distance);
@@ -176,6 +185,18 @@ function updateSensorData() {
             updateConnectionStatus(false);
             connectionActive = false;
         });
+}
+
+function getDirectionText(direction, isMoving) {
+    if (!isMoving) return 'Остановлен';
+
+    switch (direction) {
+        case 1: return 'Движение вперед';
+        case 2: return 'Движение назад';
+        case 3: return 'Поворот влево';
+        case 4: return 'Поворот вправо';
+        default: return 'Остановлен';
+    }
 }
 
 // Обновление отображения датчика
@@ -209,7 +230,7 @@ function updateConnectionStatus(connected) {
     indicator.className = 'status-indicator' + (connected ? ' active' : '');
 }
 
-function updateMovementStatus(moving) {
+function updateMovementStatusIndicator(moving) {
     const indicator = document.getElementById('movement-status');
     indicator.className = 'status-indicator' + (moving ? ' active' : '');
 }
@@ -279,50 +300,24 @@ document.addEventListener('keydown', function (event) {
         case 'w':
         case 'arrowup':
             event.preventDefault();
-            if (!obstacleDetected) {
-                quickMove('forward');
-                showAlert('Движение вперед', 'success');
-            } else {
-                showAlert('Движение заблокировано - препятствие!', 'warning');
-            }
+            moveForward();
             break;
         case 's':
         case 'arrowdown':
             event.preventDefault();
-            quickMove('backward');
-            showAlert('Движение назад', 'success');
+            moveBackward();
             break;
         case 'a':
             event.preventDefault();
-            quickMove('tank_left');
-            showAlert('Танковый поворот влево', 'success');
+            tankTurnLeft();
             break;
         case 'd':
             event.preventDefault();
-            quickMove('tank_right');
-            showAlert('Танковый поворот вправо', 'success');
-            break;
-        case 'arrowleft':
-            event.preventDefault();
-            steeringSlider.value = Math.max(10, parseInt(steeringSlider.value) - 5);
-            steeringValue.textContent = steeringSlider.value + '°';
-            sendMovementCommand(parseInt(speedSlider.value), parseInt(steeringSlider.value));
-            break;
-        case 'arrowright':
-            event.preventDefault();
-            steeringSlider.value = Math.min(140, parseInt(steeringSlider.value) + 5);
-            steeringValue.textContent = steeringSlider.value + '°';
-            sendMovementCommand(parseInt(speedSlider.value), parseInt(steeringSlider.value));
+            tankTurnRight();
             break;
         case ' ':
             event.preventDefault();
-            quickMove('stop');
-            showAlert('Остановка', 'warning');
-            break;
-        case 'c':
-            event.preventDefault();
-            quickMove('center');
-            showAlert('Руль по центру', 'success');
+            stopRobot();
             break;
         case 'escape':
             event.preventDefault();
@@ -333,19 +328,18 @@ document.addEventListener('keydown', function (event) {
 
 // Предотвращение случайного закрытия страницы при движении
 window.addEventListener('beforeunload', function (event) {
-    if (parseInt(speedSlider.value) !== 0) {
+    if (robotMoving) {
         event.preventDefault();
         event.returnValue = 'Робот все еще движется. Вы уверены, что хотите закрыть страницу?';
         return event.returnValue;
     }
 });
 
-// Обработка потери фокуса окна (автоматическая остановка при переключении вкладки)
+// Обработка потери фокуса окна
 document.addEventListener('visibilitychange', function () {
-    if (document.hidden && parseInt(speedSlider.value) !== 0) {
+    if (document.hidden && robotMoving) {
         console.log('Окно потеряло фокус - автоматическая остановка');
-        quickMove('stop');
-        showAlert('Автоматическая остановка - окно неактивно', 'warning');
+        stopRobot();
     }
 });
 
@@ -359,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Первоначальное обновление
     updateSensorData();
 
-    // Проверка соединения каждую секунду
+    // Проверка соединения
     setInterval(() => {
         if (Date.now() - lastUpdateTime > 3000 && connectionActive) {
             updateConnectionStatus(false);
@@ -368,8 +362,5 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }, 1000);
 
-    // Показ справки по управлению
-    showAlert('Управление: W/S - движение, A/D - танк повороты, ←/→ - руль, Пробел - стоп', 'success');
-
-    console.log('Управление с клавиатуры активно');
+    showAlert('Управление: W/S - движение, A/D - повороты, Пробел - стоп', 'success');
 });
