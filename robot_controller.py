@@ -162,7 +162,7 @@ class RobotController:
         command = RobotCommand(speed=0, direction=5, steering=angle)
         return self.send_command(command)
 
-    def turn_right(self, angle: int = 170) -> bool:
+    def turn_right(self, angle: int = 140) -> bool:
         """Поворот руля вправо"""
         self.current_steering = angle
         command = RobotCommand(speed=0, direction=6, steering=angle)
@@ -175,7 +175,7 @@ class RobotController:
 
     def center_steering(self) -> bool:
         """Центрирование руля"""
-        self.current_steering = 135
+        self.current_steering = 90
         command = RobotCommand(speed=0, direction=7, steering=90)
         return self.send_command(command)
 
