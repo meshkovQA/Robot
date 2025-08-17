@@ -295,10 +295,9 @@ function displayFileList(files, containerId, fileType) {
                     <div class="file-details">${file.created_str} • ${sizeStr}</div>
                 </div>
                 <div class="file-actions">
-                    ${fileType === 'photo' ?
-                `<button class="file-action-btn" onclick="viewPhoto('${file.path}', '${file.filename}', '${file.created_str}', '${sizeStr}')">👁️</button>`
-                :
-                `<button class="file-action-btn" onclick="downloadFile('${file.path}', '${file.filename}')">⬇️</button>`
+                    ${fileType === 'photo'
+                ? `<button class="file-action-btn" onclick="viewPhoto('${file.url}', '${file.filename}', '${file.created_str}', '${sizeStr}')">👁️</button>`
+                : `<button class="file-action-btn" onclick="downloadFile('${file.url}', '${file.filename}')">⬇️</button>`
             }
                     <button class="file-action-btn btn-danger" onclick="deleteFile('${file.path}', '${file.filename}')">🗑️</button>
                 </div>
@@ -318,9 +317,8 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function viewPhoto(filepath, filename, created, size) {
-    const photoUrl = `/static/photos/${filename}?_t=${Date.now()}`;
-
+function viewPhoto(url, filename, created, size) {
+    const photoUrl = `${url}?_t=${Date.now()}`;
     document.getElementById('modal-photo').src = photoUrl;
     document.getElementById('modal-photo-name').textContent = filename;
     document.getElementById('modal-photo-details').textContent = `Создано: ${created} • Размер: ${size}`;
@@ -331,14 +329,13 @@ function closePhotoModal() {
     document.getElementById('photo-modal').style.display = 'none';
 }
 
-function downloadFile(filepath, filename) {
+function downloadFile(url, filename) {
     const link = document.createElement('a');
-    link.href = `/static/videos/${filename}`;
+    link.href = url;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     showAlert(`⬇️ Скачивание: ${filename}`, 'success');
 }
 
