@@ -1,4 +1,4 @@
-// camera.js - Управление камерой робота
+// camera.js - Упрощенная версия для стабильной работы камеры
 
 // Глобальные переменные камеры
 let cameraConnected = false;
@@ -14,14 +14,10 @@ const recordingIndicator = document.getElementById('recording-indicator');
 const recordingTime = document.getElementById('recording-time');
 const recordBtn = document.getElementById('record-btn');
 
-// Переменные для автопереподключения
-let streamReconnectAttempts = 0;
-const maxReconnectAttempts = 5;
-let streamInitialized = false;
-
-let reconnectTimeoutId = null;
-let reconnectDisabled = false;
-let lastStreamUrl = '';
+// Переменные для стрима
+let streamRetryCount = 0;
+const maxStreamRetries = 3;
+let streamRetryTimeout = null;
 
 // ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
@@ -136,14 +132,13 @@ function refreshCamera() {
             if (data.success) {
                 showAlert('✅ Камера перезапущена', 'success');
 
-                // Сбрасываем флаги переподключения
-                reconnectDisabled = false;
-                streamReconnectAttempts = 0;
+                // Сбрасываем счетчики
+                streamRetryCount = 0;
 
-                // Перезагружаем стрим через небольшую задержку
+                // Перезагружаем стрим
                 setTimeout(() => {
                     initializeVideoStream();
-                }, 3000);
+                }, 2000);
             } else {
                 showAlert(`Ошибка перезапуска: ${data.error}`, 'danger');
             }
@@ -154,65 +149,62 @@ function refreshCamera() {
         });
 }
 
-// ==================== УПРАВЛЕНИЕ ВИДЕОПОТОКОМ ====================
+// ==================== УПРОЩЕННОЕ УПРАВЛЕНИЕ ВИДЕОПОТОКОМ ====================
 
 function initializeVideoStream() {
     if (!cameraStream) {
         console.error('Элемент camera-stream не найден');
         return;
     }
-    if (reconnectDisabled) {
-        console.warn('Переподключение отключено — достигнут лимит попыток');
-        return;
-    }
 
-    const streamUrl = `/camera/stream?t=${Date.now()}`;
-    console.log('Инициализация видеопотока:', streamUrl);
+    console.log('Инициализация видеопотока...');
 
+    // Простая установка источника стрима с кешбастингом
+    const streamUrl = `/camera/stream?_t=${Date.now()}`;
     cameraStream.src = streamUrl;
-    streamInitialized = true;
+
+    console.log('Стрим URL установлен:', streamUrl);
 }
 
 function handleStreamError() {
-    if (reconnectDisabled) return;
+    console.warn(`Ошибка видеопотока (попытка ${streamRetryCount + 1}/${maxStreamRetries})`);
 
-    console.warn(`Ошибка видеопотока (попытка ${streamReconnectAttempts + 1}/${maxReconnectAttempts})`);
     cameraConnected = false;
     updateCameraStatusIndicator(false);
 
-    if (reconnectTimeoutId) {
-        clearTimeout(reconnectTimeoutId);
-        reconnectTimeoutId = null;
+    // Очищаем предыдущий таймер
+    if (streamRetryTimeout) {
+        clearTimeout(streamRetryTimeout);
+        streamRetryTimeout = null;
     }
 
-    if (streamReconnectAttempts < maxReconnectAttempts) {
-        streamReconnectAttempts++;
-        const delay = 3000 * streamReconnectAttempts; // Увеличиваем задержку
+    if (streamRetryCount < maxStreamRetries) {
+        streamRetryCount++;
+        const delay = 5000; // Фиксированная задержка 5 секунд
+
         console.log(`Попытка переподключения через ${delay}ms`);
-        reconnectTimeoutId = setTimeout(() => {
-            reconnectTimeoutId = null;
-            if (!reconnectDisabled && streamReconnectAttempts <= maxReconnectAttempts) {
-                initializeVideoStream();
-            }
+        streamRetryTimeout = setTimeout(() => {
+            streamRetryTimeout = null;
+            initializeVideoStream();
         }, delay);
     } else {
-        reconnectDisabled = true;
         console.error('Максимальное количество попыток переподключения исчерпано');
-        showAlert('Камера недоступна. Попробуйте перезапустить.', 'danger');
-        // Показываем placeholder
+        showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
+
+        // Показываем заглушку
         cameraStream.src = '/static/no-camera.svg';
     }
 }
 
 function handleStreamLoad() {
-    console.log('Видеопоток успешно загружен');
+    console.log('✅ Видеопоток успешно загружен');
 
-    if (reconnectTimeoutId) {
-        clearTimeout(reconnectTimeoutId);
-        reconnectTimeoutId = null;
+    // Сбрасываем счетчики при успешной загрузке
+    streamRetryCount = 0;
+    if (streamRetryTimeout) {
+        clearTimeout(streamRetryTimeout);
+        streamRetryTimeout = null;
     }
-    streamReconnectAttempts = 0;
-    reconnectDisabled = false;
 
     cameraConnected = true;
     updateCameraStatusIndicator(true);
@@ -227,6 +219,9 @@ function showFileTab(tabName, event) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     if (event && event.target) {
         event.target.classList.add('active');
+    } else {
+        // Fallback если event не передан
+        document.querySelector(`.tab-btn[onclick*="${tabName}"]`)?.classList.add('active');
     }
 
     // Показываем нужный список
@@ -326,7 +321,6 @@ function formatFileSize(bytes) {
 }
 
 function viewPhoto(filepath, filename, created, size) {
-    // Создаем URL для просмотра фото через статический сервер
     const photoUrl = `/static/photos/${filename}`;
 
     document.getElementById('modal-photo').src = photoUrl;
@@ -340,7 +334,6 @@ function closePhotoModal() {
 }
 
 function downloadFile(filepath, filename) {
-    // Создаем временную ссылку для скачивания
     const link = document.createElement('a');
     link.href = `/static/videos/${filename}`;
     link.download = filename;
@@ -485,7 +478,6 @@ function updateCameraStatusIndicator(connected) {
 
 // ==================== КЛАВИАТУРНЫЕ ГОРЯЧИЕ КЛАВИШИ ====================
 
-// Расширяем существующий обработчик клавиатуры
 document.addEventListener('keydown', function (event) {
     // Игнорируем если фокус на input элементах
     if (event.target.tagName === 'INPUT') return;
@@ -517,18 +509,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
-    // Обработчики событий видеопотока
-    cameraStream.addEventListener('error', handleStreamError, { once: false });
+    // Простые обработчики событий
+    cameraStream.addEventListener('error', handleStreamError);
     cameraStream.addEventListener('load', handleStreamLoad);
 
-    // Проверка доступности камеры и инициализация стрима
+    // Проверка камеры и запуск стрима
     setTimeout(() => {
         checkCameraAvailability().then(available => {
+            console.log('Доступность камеры:', available);
             if (available) {
-                console.log('Камера доступна, инициализация стрима...');
+                console.log('Запуск видеопотока...');
                 initializeVideoStream();
             } else {
-                console.warn('Камера недоступна при инициализации');
+                console.warn('Камера недоступна');
                 updateCameraStatusIndicator(false);
                 cameraStream.src = '/static/no-camera.svg';
             }
@@ -536,7 +529,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 2000);
 
     // Загрузка списка файлов
-    setTimeout(() => { refreshFiles(); }, 3000);
+    setTimeout(() => {
+        showFileTab('photos'); // Устанавливаем активную вкладку
+    }, 3000);
 
     // Показываем подсказки
     setTimeout(() => {
@@ -552,17 +547,21 @@ if (originalUpdateSensorData) {
     window.updateSensorData = function () {
         originalUpdateSensorData();
 
-        // Получаем статус камеры
+        // Получаем статус камеры (тихо, без логирования ошибок)
         fetch('/api/camera/status')
-            .then(response => response.json())
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error(`HTTP ${response.status}`);
+            })
             .then(data => {
                 if (data.success) {
                     updateCameraStatus(data.data);
                 }
             })
-            .catch(error => {
-                // Тихо игнорируем ошибки статуса камеры
-                // чтобы не засорять консоль если камера недоступна
+            .catch(() => {
+                // Тихо игнорируем ошибки камеры
             });
     };
 }
@@ -576,42 +575,24 @@ document.addEventListener('keydown', function (event) {
     }
 });
 
-// Предотвращаем закрытие модального окна при клике на изображение
-document.addEventListener('DOMContentLoaded', function () {
-    const modalPhoto = document.getElementById('modal-photo');
-    if (modalPhoto) {
-        modalPhoto.addEventListener('click', function (event) {
-            event.stopPropagation();
-        });
-    }
-});
-
 // ==================== УТИЛИТЫ ====================
 
 // Функция для проверки доступности камеры
 function checkCameraAvailability() {
     return fetch('/api/camera/status')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             return data.success && data.data.available && data.data.connected;
         })
-        .catch(() => {
-            console.warn('Ошибка проверки доступности камеры');
+        .catch(error => {
+            console.warn('Ошибка проверки камеры:', error.message);
             return false;
         });
-}
-
-// Функция для получения списка доступных камер
-function getAvailableCameras() {
-    return fetch('/api/camera/devices')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                return data.data.available_cameras;
-            }
-            return [];
-        })
-        .catch(() => []);
 }
 
 console.log('🎥 Модуль управления камерой инициализирован');

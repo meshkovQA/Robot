@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup.sh — установка веб-интерфейса робота с USB камерой v2.1
+# setup.sh — установка веб-интерфейса робота с USB камерой v2.1 (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 
 set -euo pipefail
 
@@ -49,7 +49,7 @@ declare -A PROJECT_FILES=(
 echo "=============================================="
 info "🤖📹 Установка веб-интерфейса робота с USB камерой v2.1"
 info "📁 Репозиторий: https://github.com/meshkovQA/Robot"
-info "🎥 Новая поддержка USB камеры + видеозапись"
+info "🎥 Исправленная версия с рабочей камерой"
 echo "=============================================="
 
 # --- включение SSH ---
@@ -179,12 +179,12 @@ SPEED_MAX=255
 CAMERA_DEVICE_ID=0
 CAMERA_WIDTH=640
 CAMERA_HEIGHT=480
-CAMERA_FPS=30
+CAMERA_FPS=15
 
 # Качество изображения (1-100)
-CAMERA_QUALITY=80
-CAMERA_STREAM_QUALITY=60
-CAMERA_STREAM_FPS=15
+CAMERA_QUALITY=70
+CAMERA_STREAM_QUALITY=50
+CAMERA_STREAM_FPS=10
 
 # Настройки изображения (0-100)
 CAMERA_BRIGHTNESS=50
@@ -199,7 +199,7 @@ CAMERA_VIDEO_PATH=$HOME_DIR/robot_web/videos
 CAMERA_AUTO_START=true
 
 # Предустановка качества (low/medium/high/ultra)
-CAMERA_PRESET=medium
+CAMERA_PRESET=low
 
 # Ограничения файлов
 MAX_PHOTOS=100
@@ -226,8 +226,8 @@ PHOTO_ON_OBSTACLE=false
 SAVE_FRAME_ON_EMERGENCY=true
 
 # Наложения на видео
-ENABLE_VIDEO_OVERLAY=true
-OVERLAY_TIMESTAMP=true
+ENABLE_VIDEO_OVERLAY=false
+OVERLAY_TIMESTAMP=false
 OVERLAY_ROBOT_STATUS=false
 
 # === СИСТЕМА ===
@@ -239,7 +239,7 @@ ENABLE_CAMERA_DEBUG=false
 
 # Производительность
 VIDEO_BUFFER_SIZE=1
-CAMERA_THREADS=2
+CAMERA_THREADS=1
 CAMERA_INIT_TIMEOUT=10
 CAMERA_CAPTURE_TIMEOUT=5
 
@@ -299,17 +299,125 @@ if [[ ${#missing_critical[@]} -gt 0 ]]; then
     exit 1
 fi
 
-# --- создание заглушки для отсутствующей камеры ---
-info "Создание изображения-заглушки для камеры..."
-cat > "$PROJECT_DIR/static/no-camera.png" <<'EOF'
-# Создаем простое SVG изображение как заглушку
+# --- создание SVG заглушки для камеры ---
+info "Создание SVG заглушки для камеры..."
+cat > "$PROJECT_DIR/static/no-camera.svg" <<'EOF'
 <svg width="640" height="480" xmlns="http://www.w3.org/2000/svg">
   <rect width="100%" height="100%" fill="#f8f9fa"/>
-  <text x="50%" y="40%" text-anchor="middle" font-family="Arial" font-size="24" fill="#6c757d">📹</text>
-  <text x="50%" y="55%" text-anchor="middle" font-family="Arial" font-size="16" fill="#6c757d">Камера недоступна</text>
-  <text x="50%" y="70%" text-anchor="middle" font-family="Arial" font-size="12" fill="#adb5bd">Проверьте подключение USB камеры</text>
+  <circle cx="320" cy="200" r="40" fill="#6c757d"/>
+  <rect x="280" y="160" width="80" height="80" rx="15" fill="none" stroke="#6c757d" stroke-width="3"/>
+  <text x="50%" y="60%" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#6c757d">Камера недоступна</text>
+  <text x="50%" y="70%" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#adb5bd">Проверьте подключение USB камеры</text>
+  <text x="50%" y="80%" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#adb5bd">или нажмите "🔄 Обновить"</text>
 </svg>
 EOF
+
+# --- создание тестового скрипта камеры ---
+info "Создание тестового скрипта..."
+cat > "$PROJECT_DIR/test_frame.py" <<'EOF'
+#!/usr/bin/env python3
+"""Тест получения одного кадра с камеры"""
+
+import requests
+import base64
+import time
+from pathlib import Path
+
+def test_camera_frame():
+    """Тестируем получение кадра через API"""
+    
+    base_url = "http://localhost:5000"
+    
+    print("🎥 Тест получения кадра с камеры")
+    print("=" * 40)
+    
+    # 1. Проверяем статус камеры
+    print("1. Проверка статуса камеры...")
+    try:
+        response = requests.get(f"{base_url}/api/camera/status", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            print(f"   Статус API: ✅ {response.status_code}")
+            
+            if data.get('success'):
+                camera_data = data.get('data', {})
+                print(f"   Камера доступна: {'✅' if camera_data.get('available') else '❌'}")
+                print(f"   Камера подключена: {'✅' if camera_data.get('connected') else '❌'}")
+                print(f"   FPS: {camera_data.get('fps', 0)}")
+                print(f"   Разрешение: {camera_data.get('config', {}).get('resolution', 'неизвестно')}")
+                
+                if camera_data.get('error'):
+                    print(f"   Ошибка: {camera_data['error']}")
+            else:
+                print(f"   ❌ API ошибка: {data.get('error', 'неизвестно')}")
+        else:
+            print(f"   ❌ HTTP ошибка: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"   ❌ Ошибка соединения: {e}")
+        return False
+    
+    # 2. Получаем кадр
+    print("\n2. Получение кадра...")
+    try:
+        response = requests.get(f"{base_url}/api/camera/frame", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            print(f"   Статус API: ✅ {response.status_code}")
+            
+            if data.get('success'):
+                frame_data = data.get('data', {})
+                frame_b64 = frame_data.get('frame')
+                
+                if frame_b64:
+                    print(f"   ✅ Получен кадр (base64), размер: {len(frame_b64)} символов")
+                    
+                    # Сохраняем кадр как JPEG
+                    try:
+                        jpeg_data = base64.b64decode(frame_b64)
+                        output_path = Path("test_frame.jpg")
+                        output_path.write_bytes(jpeg_data)
+                        print(f"   ✅ Кадр сохранен: {output_path} ({len(jpeg_data)} байт)")
+                        return True
+                    except Exception as e:
+                        print(f"   ❌ Ошибка сохранения: {e}")
+                        return False
+                else:
+                    print("   ❌ Нет данных кадра в ответе")
+                    return False
+            else:
+                print(f"   ❌ API ошибка: {data.get('error', 'неизвестно')}")
+                return False
+        else:
+            print(f"   ❌ HTTP ошибка: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"   ❌ Ошибка соединения: {e}")
+        return False
+
+if __name__ == "__main__":
+    print("🤖 Тестирование камеры робота")
+    print("Убедитесь что веб-сервер запущен: ./start.sh")
+    print()
+    
+    time.sleep(1)
+    success = test_camera_frame()
+    
+    print("\n" + "=" * 40)
+    if success:
+        print("🎉 Тест прошел успешно!")
+        print("Откройте: http://localhost:5000")
+    else:
+        print("❌ Тест провалился")
+        print("Проверьте:")
+        print("1. Запущен ли сервер: ./start.sh")
+        print("2. Логи: ./logs.sh")
+        print("3. Камеру: ./test_camera.sh")
+EOF
+
+chmod +x "$PROJECT_DIR/test_frame.py"
 
 # --- установка прав доступа ---
 info "Настройка прав доступа..."
@@ -361,7 +469,7 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$VENV_DIR/bin/gunicorn \
     --workers 1 \
     --worker-class gthread \
-    --threads 8 \
+    --threads 4 \
     --timeout 120 \
     --keep-alive 5 \
     --max-requests 500 \
@@ -402,10 +510,10 @@ ok "Systemd сервис создан и включен для автозапу�
 # --- создание вспомогательных скриптов ---
 info "Создание управляющих скриптов..."
 
-# Скрипт тестирования камеры
+# Скрипт тестирования камеры (обновленный)
 cat > "$PROJECT_DIR/test_camera.sh" <<'EOF'
 #!/bin/bash
-echo "🎥 Тестирование USB камеры..."
+echo "🎥 Расширенное тестирование USB камеры..."
 
 echo "📋 Доступные видеоустройства:"
 ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
@@ -416,56 +524,115 @@ for device in /dev/video*; do
     if [[ -c "$device" ]]; then
         echo "Устройство: $device"
         v4l2-ctl --device="$device" --info 2>/dev/null | head -5 || echo "Ошибка чтения $device"
+        echo "Поддерживаемые форматы:"
+        v4l2-ctl --device="$device" --list-formats-ext 2>/dev/null | head -10 || echo "Ошибка чтения форматов"
         echo "---"
     fi
 done
 
 echo ""
+echo "👥 Права доступа:"
+echo "Пользователь: $USER"
+echo "Группы: $(groups $USER)"
+echo "Права на /dev/video0:"
+ls -la /dev/video0 2>/dev/null || echo "/dev/video0 не найден"
+
+echo ""
 echo "🐍 Тест Python OpenCV:"
 python3 -c "
 import cv2
-import sys, time
+import sys
+import time
 
 print(f'OpenCV версия: {cv2.__version__}')
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-if cap.isOpened():
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    try:
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        time.sleep(0.05)
-    except Exception as e:
-        print('FOURCC set failed:', e)
 
-    ok, frame = cap.read()
-    if ok and frame is not None:
-        print('✅ Камера работает, получен кадр:', frame.shape)
+# Проверяем доступные камеры
+available_cameras = []
+for i in range(5):
+    cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
+    if cap.isOpened():
+        ret, _ = cap.read()
+        if ret:
+            available_cameras.append(i)
+        cap.release()
+
+print(f'Доступные камеры: {available_cameras}')
+
+if available_cameras:
+    device_id = available_cameras[0]
+    print(f'Тестируем камеру /dev/video{device_id}...')
+    
+    cap = cv2.VideoCapture(device_id, cv2.CAP_V4L2)
+    if cap.isOpened():
+        print(f'✅ Камера /dev/video{device_id} открыта успешно')
+        
+        # Настраиваем камеру
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 15)
+        
+        # Читаем несколько кадров
+        success_count = 0
+        for i in range(5):
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                success_count += 1
+            time.sleep(0.2)
+        
+        if success_count > 2:
+            print(f'✅ Получено {success_count}/5 кадров - камера работает!')
+            print(f'Размер кадра: {frame.shape if \"frame\" in locals() else \"неизвестно\"}')
+        else:
+            print(f'⚠️ Получено только {success_count}/5 кадров - возможны проблемы')
+        
+        cap.release()
     else:
-        print('❌ Камера открыта, но кадр не получен (проверьте формат/FPS)')
-    cap.release()
+        print(f'❌ Не удалось открыть камеру /dev/video{device_id}')
 else:
-    print('❌ Не удалось открыть камеру')
+    print('❌ Камеры не найдены или недоступны')
 "
 
 echo ""
 echo "🤖 Тест модуля робота:"
-cd "$PROJECT_DIR" 
-python3 -c "
-from robot.camera import list_available_cameras, create_camera
+cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || cd "$HOME/robot_web"
+
+if [[ -f "robot/camera.py" ]]; then
+    python3 -c "
+import sys
+sys.path.insert(0, '.')
+
 try:
-    cameras = list_available_cameras()
-    print(f'Доступные камеры: {cameras}')
-    if cameras:
-        print('✅ Модуль камеры робота работает')
+    from robot.camera import list_available_cameras, USBCamera, OPENCV_AVAILABLE
+    print(f'OpenCV доступен: {OPENCV_AVAILABLE}')
+    
+    if OPENCV_AVAILABLE:
+        cameras = list_available_cameras()
+        print(f'Доступные камеры через модуль: {cameras}')
+        
+        if cameras:
+            print('✅ Модуль камеры находит устройства')
+        else:
+            print('⚠️ Модуль не нашел камер')
     else:
-        print('⚠️ Камеры найдены, но модуль не может их использовать')
+        print('❌ OpenCV недоступен в модуле')
+        
 except Exception as e:
     print(f'❌ Ошибка модуля камеры: {e}')
 "
+else
+    echo "❌ Файл robot/camera.py не найден"
+fi
+
+echo ""
+echo "📝 Рекомендации:"
+echo "1. Убедитесь что USB камера подключена"
+echo "2. Проверьте права: groups \$USER (должно содержать video)"
+echo "3. Если нет прав: sudo usermod -a -G video \$USER && sudo reboot"
+echo "4. Попробуйте тест API: python3 test_frame.py"
+echo "5. Проверьте логи: ./logs.sh | grep camera"
 EOF
 
-# Остальные скрипты (start.sh, stop.sh, restart.sh) такие же как раньше...
+# Остальные скрипты...
 cat > "$PROJECT_DIR/start.sh" <<EOF
 #!/bin/bash
 echo "🚀 Запуск Robot Web Interface v2.1..."
@@ -491,6 +658,7 @@ echo ""
 IP=\$(hostname -I | awk '{print \$1}')
 echo "🌐 Интерфейс доступен: http://\$IP:5000"
 echo "🎥 Видеопоток: http://\$IP:5000/camera/stream"
+echo "🧪 Тест камеры: python3 test_frame.py"
 EOF
 
 cat > "$PROJECT_DIR/logs.sh" <<EOF
@@ -500,7 +668,7 @@ echo "================================================"
 sudo journalctl -u $SERVICE_NAME -f --no-pager
 EOF
 
-# Расширенный скрипт диагностики с камерой
+# Расширенный скрипт диагностики
 cat > "$PROJECT_DIR/status.sh" <<'EOF'
 #!/bin/bash
 SERVICE=robot-web.service
@@ -522,14 +690,11 @@ fi
 
 echo -e "\n🎥 USB камеры:"
 ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
+lsusb | grep -i -E "(camera|webcam|uvc)" || echo "USB камеры не найдены"
 
-echo -e "\n📹 Информация о камерах:"
-for device in /dev/video*; do
-    if [[ -c "$device" ]]; then
-        echo "├─ $device:"
-        v4l2-ctl --device="$device" --info 2>/dev/null | head -3 | sed 's/^/│  /' || echo "│  Ошибка чтения"
-    fi
-done
+echo -e "\n👥 Права доступа:"
+echo "Пользователь: $USER"
+echo "Группы: $(groups $USER)"
 
 echo -e "\n💾 Использование ресурсов:"
 if pgrep -f "robot.*gunicorn" >/dev/null; then
@@ -539,11 +704,11 @@ else
 fi
 
 echo -e "\n📁 Файлы проекта:"
-ls -la /home/*/robot_web/ 2>/dev/null | head -10
+ls -la $HOME/robot_web/ 2>/dev/null | head -10
 
 echo -e "\n📸 Медиафайлы:"
-PHOTOS_COUNT=$(find $HOME_DIR/robot_web/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
-VIDEOS_COUNT=$(find $HOME_DIR/robot_web/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
+PHOTOS_COUNT=$(find $HOME/robot_web/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
+VIDEOS_COUNT=$(find $HOME/robot_web/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
 echo "Фотографий: $PHOTOS_COUNT"
 echo "Видеофайлов: $VIDEOS_COUNT"
 
@@ -583,6 +748,10 @@ echo "Веб-интерфейс: http://$IP:5000"
 echo "Видеопоток: http://$IP:5000/camera/stream"
 echo "API статус: http://$IP:5000/api/status"
 echo "API камера: http://$IP:5000/api/camera/status"
+
+echo -e "\n🧪 Тестирование:"
+echo "Тест камеры API: python3 test_frame.py"
+echo "Тест прямой камеры: ./test_camera.sh"
 EOF
 
 # Скрипт обновления (расширенный)
@@ -679,6 +848,7 @@ if systemctl is-active --quiet robot-web.service; then
     IP=$(hostname -I | awk '{print $1}')
     echo -e "${GREEN}🌐 Интерфейс: http://$IP:5000${NC}"
     echo -e "${GREEN}🎥 Видеопоток: http://$IP:5000/camera/stream${NC}"
+    echo -e "${GREEN}🧪 Тест: python3 test_frame.py${NC}"
 else
     echo -e "${RED}❌ Сервис не запустился после обновления${NC}"
     echo "Проверьте логи: ./logs.sh"
@@ -691,7 +861,7 @@ chmod +x "$PROJECT_DIR"/{start.sh,stop.sh,restart.sh,logs.sh,status.sh,update.sh
 ok "Управляющие скрипты созданы"
 
 # --- тестирование камеры ---
-info "Тестирование камеры..."
+info "Первичное тестирование камеры..."
 cd "$PROJECT_DIR"
 bash test_camera.sh
 
@@ -751,6 +921,9 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo "   ./update.sh      - обновление"
     echo "   ./test_camera.sh - тест камеры"
     echo ""
+    echo "🧪 Тестирование:"
+    echo "   python3 test_frame.py - тест API камеры"
+    echo ""
     echo "📂 Файлы проекта: $PROJECT_DIR"
     echo "⚙️ Конфигурация: $ENV_FILE"
     echo "📸 Фотографии: $PROJECT_DIR/photos"
@@ -763,10 +936,12 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
         echo "   Найдено устройств: $V4L_DEVICES"
         echo "   Основное устройство: /dev/video0"
         echo "   Управление: P - фото, R - запись"
+        echo "   Тест API: python3 test_frame.py"
     else
         echo "⚠️ Камера:"
         echo "   USB камеры не обнаружены"
         echo "   Подключите USB камеру и перезапустите сервис"
+        echo "   Или проверьте права: groups \$USER"
     fi
     
     echo ""
@@ -788,6 +963,7 @@ else
     echo "🔍 Диагностика:"
     echo "   ./status.sh      - полная диагностика"
     echo "   ./test_camera.sh - тест камеры"
+    echo "   python3 test_frame.py - тест API камеры"
     echo "   ./logs.sh        - просмотр ошибок"
     echo ""
     echo "📄 Логи ошибок:"
