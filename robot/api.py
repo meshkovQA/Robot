@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 import signal
+import os
 import time
 from datetime import datetime
 from flask import Flask, Blueprint, jsonify, request, render_template,  Response, stream_template
@@ -22,19 +23,17 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 static_folder='../static')
     robot = controller or RobotController()
 
-    # Инициализация камеры
+    # Если включён «лёгкий» режим – не поднимаем камеру
+    LIGHT_INIT = os.getenv("APP_LIGHT_INIT", "0") == "1"
+
     camera = camera_instance
-    if camera is None:
+    if camera is None and not LIGHT_INIT:
         try:
             available_cameras = list_available_cameras()
             if available_cameras:
                 camera_config = CameraConfig(
-                    # Используем первую найденную камеру
                     device_id=available_cameras[0],
-                    width=640,
-                    height=480,
-                    fps=30,
-                    auto_start=True
+                    width=640, height=480, fps=30, auto_start=True
                 )
                 camera = USBCamera(camera_config)
                 logger.info(
