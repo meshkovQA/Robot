@@ -53,9 +53,9 @@ CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "50"))  # 0-100
 
 # Пути сохранения
 CAMERA_SAVE_PATH = os.getenv(
-    "CAMERA_SAVE_PATH", f"{HOME_DIR}/robot_web/photos")
+    "CAMERA_SAVE_PATH", f"{HOME_DIR}/robot_web/static/photos")
 CAMERA_VIDEO_PATH = os.getenv(
-    "CAMERA_VIDEO_PATH", f"{HOME_DIR}/robot_web/videos")
+    "CAMERA_VIDEO_PATH", f"{HOME_DIR}/robot_web/static/videos")
 
 # Автозапуск камеры
 CAMERA_AUTO_START = os.getenv("CAMERA_AUTO_START", "true").lower() == "true"
