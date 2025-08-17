@@ -107,42 +107,6 @@ def create_app(controller: RobotController | None = None) -> Flask:
             **robot.get_status()
         })
 
-    # --------- API маршруты рулевого управления ----------
-    @bp.route("/steering/left", methods=["POST"])
-    def steering_left():
-        data = request.get_json() or {}
-        angle = int(data.get("angle", 45))
-
-        success = robot.turn_steering_left(angle)
-        return ok({
-            "command": "steering_left",
-            "angle": angle,
-            "success": success,
-            **robot.get_status()
-        })
-
-    @bp.route("/steering/right", methods=["POST"])
-    def steering_right():
-        data = request.get_json() or {}
-        angle = int(data.get("angle", 45))
-
-        success = robot.turn_steering_right(angle)
-        return ok({
-            "command": "steering_right",
-            "angle": angle,
-            "success": success,
-            **robot.get_status()
-        })
-
-    @bp.route("/steering/center", methods=["POST"])
-    def center_steering():
-        success = robot.center_steering()
-        return ok({
-            "command": "center_steering",
-            "success": success,
-            **robot.get_status()
-        })
-
     # --------- универсальное управление ----------
     @bp.route("/move", methods=["POST"])
     def universal_move():
