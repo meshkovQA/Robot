@@ -297,26 +297,53 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # --------- Веб-стрим камеры ----------
     @app.route("/camera/stream")
     def camera_stream():
-        """MJPEG стрим камеры"""
-        if not camera or not camera.status.is_connected:
-            return Response("Camera not available", status=503, mimetype="text/plain")
+        """MJPEG стрим камеры. Никогда не шлём 503 и не вставляем text/plain части."""
+        boundary = b'--frame'
+
+        # 1x1 чёрный JPEG (base64) как заглушка, когда нет кадров
+        import base64
+        BLACK_JPEG_B64 = (
+            b'/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxISEhAQEBAVFhUVFRUVFRUVFRUVFRUVFRUWFhUY'
+            b'HSggGBolGxUVITEhJSkrLi4uFx8zODMtNygtLisBCgoKDg0OGxAQGy0lHyUtLS0tLS0tLS0tLS0t'
+            b'LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAKAAoAMBIgACEQEDEQH/xAAb'
+            b'AAACAgMBAAAAAAAAAAAAAAAFBgMHAQIEA//EADYQAAEDAQYEBQQDAAAAAAAAAAECAwQFESEGEjFB'
+            b'URNhInGBkaGxwRQjQlJicoKSorL/xAAZAQADAQEBAAAAAAAAAAAAAAABAgMABAX/xAAlEQACAQME'
+            b'AgMBAQAAAAAAAAABAhEDIRIxBCJBE1FhBWHwkeH/2gAMAwEAAhEDEQA/APaQAAAAAAAAAAAAAAAA'
+            b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+            b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/Z'
+        )
+        BLACK_JPEG = base64.b64decode(BLACK_JPEG_B64)
 
         def generate():
             while True:
-                frame_data = camera.get_frame_jpeg()
-                if not frame_data:
-                    time.sleep(0.1)
-                    continue
+                try:
+                    if app.camera is None:
+                        # Камеры нет — отдаём заглушку и ждём
+                        yield (boundary + b'\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
+                        time.sleep(1.0)
+                        continue
 
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                    frame_data = app.camera.get_frame_jpeg()
+                    if not frame_data:
+                        # Нет кадров сейчас — отдаём заглушку, но не ломаем MIME
+                        yield (boundary + b'\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
+                        time.sleep(
+                            1.0 / (app.camera.config.stream_fps if app.camera else 5))
+                        continue
 
-                time.sleep(1.0 / (camera.config.stream_fps if camera else 10))
+                    yield (boundary + b'\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                    time.sleep(
+                        1.0 / (app.camera.config.stream_fps if app.camera else 10))
+                except GeneratorExit:
+                    break
+                except Exception as e:
+                    logger.error(f"MJPEG generator error: {e}")
+                    time.sleep(0.5)
 
-        return Response(
-            generate(),
-            mimetype='multipart/x-mixed-replace; boundary=frame'
-        )
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     @bp.route("/camera/frame", methods=["GET"])
     def get_frame():

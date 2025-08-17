@@ -145,16 +145,7 @@ info "Установка Python зависимостей..."
 pip install --upgrade pip setuptools wheel
 
 # Основные зависимости
-pip install flask>=2.3.0 gunicorn>=20.1.0 
-
-# I2C библиотека (может не установиться на некоторых системах)
-pip install smbus2 || warn "smbus2 не установлен - будет работать в режиме эмуляции"
-
-# OpenCV для Python (если не установлен через apt)
-pip install opencv-python>=4.5.0 || warn "opencv-python не установлен через pip"
-
-# Дополнительные зависимости
-pip install requests python-dotenv numpy
+pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 || true
 
 # Проверяем доступность OpenCV
 python3 -c "import cv2; print(f'✅ OpenCV {cv2.__version__} успешно импортирован')" || warn "OpenCV недоступен"
@@ -366,19 +357,19 @@ Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONPATH=$PROJECT_DIR"
 EnvironmentFile=$ENV_FILE
 
-# Gunicorn с оптимизированными настройками для камеры
+# Gunicorn: один воркер, потоковый класс
 ExecStart=$VENV_DIR/bin/gunicorn \
-    --workers 2 \
-    --threads 4 \
-    --timeout 60 \
-    --keep-alive 10 \
+    --workers 1 \
+    --worker-class gthread \
+    --threads 8 \
+    --timeout 120 \
+    --keep-alive 5 \
     --max-requests 500 \
     --max-requests-jitter 50 \
     --bind 0.0.0.0:5000 \
     --access-logfile $LOG_DIR/access.log \
     --error-logfile $LOG_DIR/error.log \
     --log-level info \
-    --worker-class sync \
     run:app
 
 # Перезапуск при сбоях
@@ -395,7 +386,7 @@ SyslogIdentifier=robot-web
 # Доступ к устройствам
 SupplementaryGroups=i2c gpio spi video
 
-# Безопасность (ослаблены для доступа к камере)
+# Безопасность
 NoNewPrivileges=true
 PrivateTmp=true
 
@@ -433,18 +424,25 @@ echo ""
 echo "🐍 Тест Python OpenCV:"
 python3 -c "
 import cv2
-import sys
+import sys, time
 
 print(f'OpenCV версия: {cv2.__version__}')
-
-# Пробуем открыть камеру
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
 if cap.isOpened():
-    ret, frame = cap.read()
-    if ret:
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    try:
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        time.sleep(0.05)
+    except Exception as e:
+        print('FOURCC set failed:', e)
+
+    ok, frame = cap.read()
+    if ok and frame is not None:
         print('✅ Камера работает, получен кадр:', frame.shape)
     else:
-        print('❌ Камера открыта, но не может захватить кадр')
+        print('❌ Камера открыта, но кадр не получен (проверьте формат/FPS)')
     cap.release()
 else:
     print('❌ Не удалось открыть камеру')
