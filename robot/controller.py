@@ -1,3 +1,4 @@
+# controller.py
 from __future__ import annotations
 import time
 import struct
@@ -76,23 +77,32 @@ class RobotController:
     # ---------- низкоуровневые I2C ----------
     def _i2c_write(self, data: list[int], retries: int = 3, backoff: float = 0.02) -> bool:
         """Отправка команды на Arduino через I2C"""
+        logger.info("Попытка отправки I2C команды: %s", data)  # ДОБАВИТЬ
+
         if not self.bus:
-            logger.debug("[I2C] эмуляция записи: %s", data)
+            logger.warning("[I2C] эмуляция записи: %s", data)
             return True
 
         for i in range(retries):
             try:
                 # Отправляем первый байт как регистр, остальные как данные
                 if len(data) > 1:
+                    logger.info("Отправка I2C block data: addr=0x%02X, reg=0x%02X, data=%s",
+                                ARDUINO_ADDRESS, data[0], data[1:])  # ДОБАВИТЬ
                     self.bus.write_i2c_block_data(
                         ARDUINO_ADDRESS, data[0], data[1:])
                 else:
+                    logger.info("Отправка I2C byte: addr=0x%02X, data=0x%02X",
+                                ARDUINO_ADDRESS, data[0])  # ДОБАВИТЬ
                     self.bus.write_byte(ARDUINO_ADDRESS, data[0])
-                logger.debug("I2C write успешно: %s", data)
+                logger.info("I2C write успешно: %s", data)
                 return True
             except Exception as e:
-                logger.warning("I2C write fail %d/%d: %s", i+1, retries, e)
+                logger.error("I2C write fail %d/%d: %s", i+1, retries, e)
                 time.sleep(backoff * (i + 1))
+
+        logger.error("I2C write полностью провалился после %d попыток",
+                     retries)  # ДОБАВИТЬ
         return False
 
     def _i2c_read_sensors(self) -> Tuple[int, int]:

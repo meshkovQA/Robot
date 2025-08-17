@@ -5,16 +5,25 @@ let connectionActive = false;
 let robotMoving = false;
 let currentDirection = 0;
 
-// Элементы интерфейса (инициализируются после загрузки DOM)
-let speedSlider, speedValue;
+// Элементы интерфейса
+const speedSlider = document.getElementById('speed-slider');
+const speedValue = document.getElementById('speed-value');
+
+// Обработчик ползунка скорости
+speedSlider.addEventListener('input', function () {
+    const speed = parseInt(this.value);
+    speedValue.textContent = speed;
+    document.getElementById('current-speed').textContent = speed;
+
+    // Отправляем новую скорость только если робот движется
+    updateSpeed(speed);
+});
 
 // Функции управления движением
 function moveForward() {
-    console.log('moveForward called');
-    const speed = speedSlider ? parseInt(speedSlider.value) : 150;
+    const speed = parseInt(speedSlider.value);
     sendCommand('/api/move/forward', 'POST', { speed: speed })
         .then(data => {
-            console.log('Move forward response:', data);
             if (data.success) {
                 showAlert(`Движение вперед (${speed})`, 'success');
                 updateMovementState(true, 'Движение вперед');
@@ -23,8 +32,7 @@ function moveForward() {
 }
 
 function moveBackward() {
-    console.log('moveBackward called');
-    const speed = speedSlider ? parseInt(speedSlider.value) : 150;
+    const speed = parseInt(speedSlider.value);
     sendCommand('/api/move/backward', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
@@ -35,8 +43,7 @@ function moveBackward() {
 }
 
 function tankTurnLeft() {
-    console.log('tankTurnLeft called');
-    const speed = speedSlider ? parseInt(speedSlider.value) : 150;
+    const speed = parseInt(speedSlider.value);
     sendCommand('/api/turn/left', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
@@ -47,8 +54,7 @@ function tankTurnLeft() {
 }
 
 function tankTurnRight() {
-    console.log('tankTurnRight called');
-    const speed = speedSlider ? parseInt(speedSlider.value) : 150;
+    const speed = parseInt(speedSlider.value);
     sendCommand('/api/turn/right', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
@@ -59,7 +65,6 @@ function tankTurnRight() {
 }
 
 function stopRobot() {
-    console.log('stopRobot called');
     sendCommand('/api/stop', 'POST')
         .then(data => {
             if (data.success) {
@@ -70,7 +75,6 @@ function stopRobot() {
 }
 
 function emergencyStop() {
-    console.log('emergencyStop called');
     sendCommand('/api/emergency_stop', 'POST')
         .then(data => {
             if (data.success) {
@@ -89,9 +93,28 @@ function updateSpeed(newSpeed) {
         });
 }
 
+// Обновление состояния движения в UI
+function updateMovementState(moving, state) {
+    robotMoving = moving;
+    const statusDisplay = document.getElementById('movement-status-display');
+    const robotState = document.getElementById('robot-state');
+    const speedInfo = document.getElementById('speed-info');
+    const movementDirection = document.getElementById('movement-direction');
+
+    robotState.textContent = state;
+    movementDirection.textContent = state;
+
+    if (moving) {
+        statusDisplay.className = 'movement-status moving';
+        speedInfo.textContent = 'Используйте ползунок для изменения скорости';
+    } else {
+        statusDisplay.className = 'movement-status stopped';
+        speedInfo.textContent = 'Установите скорость и нажмите направление';
+    }
+}
+
 // Универсальная функция отправки команд
 async function sendCommand(url, method, data = null) {
-    console.log('Sending command:', url, method, data);
     try {
         const options = {
             method: method,
@@ -106,7 +129,6 @@ async function sendCommand(url, method, data = null) {
 
         const response = await fetch(url, options);
         const result = await response.json();
-        console.log('Command response:', result);
 
         if (!result.success) {
             showAlert(`Ошибка команды: ${result.error}`, 'danger');
@@ -120,31 +142,140 @@ async function sendCommand(url, method, data = null) {
     }
 }
 
-// Обновление состояния движения в UI
-function updateMovementState(moving, state) {
-    robotMoving = moving;
-    const statusDisplay = document.getElementById('movement-status-display');
-    const robotState = document.getElementById('robot-state');
-    const speedInfo = document.getElementById('speed-info');
-    const movementDirection = document.getElementById('movement-direction');
+// Обновление данных датчиков
+function updateSensorData() {
+    fetch('/api/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const status = data.data;
 
-    if (robotState) robotState.textContent = state;
-    if (movementDirection) movementDirection.textContent = state;
+                // Обновление индикаторов состояния
+                updateConnectionStatus(true);
+                updateMovementStatusIndicator(status.is_moving);
+                updateObstacleStatus(status.obstacles.front || status.obstacles.rear);
 
-    if (statusDisplay) {
-        if (moving) {
-            statusDisplay.className = 'movement-status moving';
-            if (speedInfo) speedInfo.textContent = 'Используйте ползунок для изменения скорости';
-        } else {
-            statusDisplay.className = 'movement-status stopped';
-            if (speedInfo) speedInfo.textContent = 'Установите скорость и нажмите направление';
+                // Обновление текущих значений
+                document.getElementById('current-speed').textContent = status.current_speed;
+
+                // Обновление состояния движения
+                const directionText = getDirectionText(status.movement_direction, status.is_moving);
+                updateMovementState(status.is_moving, directionText);
+
+                // Обновление датчиков расстояния
+                updateSensorDisplay('front', status.front_distance);
+                updateSensorDisplay('rear', status.rear_distance);
+
+                // Предупреждения о препятствиях
+                updateObstacleWarnings(status.obstacles, status.sensor_error);
+
+                // Обновление времени
+                const now = new Date();
+                document.getElementById('last-update').textContent =
+                    `Обновлено: ${now.toLocaleTimeString()}`;
+
+                lastUpdateTime = Date.now();
+                obstacleDetected = status.obstacles.front || status.obstacles.rear;
+                connectionActive = true;
+            } else {
+                updateConnectionStatus(false);
+                connectionActive = false;
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка получения статуса:', error);
+            updateConnectionStatus(false);
+            connectionActive = false;
+        });
+}
+
+function getDirectionText(direction, isMoving) {
+    if (!isMoving) return 'Остановлен';
+
+    switch (direction) {
+        case 1: return 'Движение вперед';
+        case 2: return 'Движение назад';
+        case 3: return 'Поворот влево';
+        case 4: return 'Поворот вправо';
+        default: return 'Остановлен';
+    }
+}
+
+// Обновление отображения датчика
+function updateSensorDisplay(sensor, distance) {
+    const valueElement = document.getElementById(`${sensor}-distance`);
+    const cardElement = document.getElementById(`${sensor}-sensor`);
+
+    // Сброс классов
+    valueElement.className = 'sensor-value';
+    cardElement.className = 'sensor-card';
+
+    if (distance === 999) {
+        valueElement.textContent = 'ERR';
+        valueElement.classList.add('error');
+    } else {
+        valueElement.textContent = distance;
+
+        if (distance < 10) {
+            valueElement.classList.add('danger');
+            cardElement.classList.add('danger');
+        } else if (distance < 20) {
+            valueElement.classList.add('warning');
+            cardElement.classList.add('warning');
         }
+    }
+}
+
+// Обновление индикаторов состояния
+function updateConnectionStatus(connected) {
+    const indicator = document.getElementById('connection-status');
+    indicator.className = 'status-indicator' + (connected ? ' active' : '');
+}
+
+function updateMovementStatusIndicator(moving) {
+    const indicator = document.getElementById('movement-status');
+    indicator.className = 'status-indicator' + (moving ? ' active' : '');
+}
+
+function updateObstacleStatus(obstacles) {
+    const indicator = document.getElementById('obstacle-status');
+    if (obstacles) {
+        indicator.className = 'status-indicator warning';
+    } else {
+        indicator.className = 'status-indicator';
+    }
+}
+
+// Обновление предупреждений о препятствиях
+function updateObstacleWarnings(obstacles, sensorError) {
+    const warningsContainer = document.getElementById('obstacle-warnings');
+    warningsContainer.innerHTML = '';
+
+    if (sensorError) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'obstacle-warning danger';
+        errorDiv.textContent = '⚠️ ОШИБКА ДАТЧИКОВ! Проверьте подключение.';
+        warningsContainer.appendChild(errorDiv);
+        return;
+    }
+
+    if (obstacles.front) {
+        const frontWarning = document.createElement('div');
+        frontWarning.className = 'obstacle-warning danger';
+        frontWarning.textContent = '🚫 ПРЕПЯТСТВИЕ СПЕРЕДИ! Движение вперед заблокировано.';
+        warningsContainer.appendChild(frontWarning);
+    }
+
+    if (obstacles.rear) {
+        const rearWarning = document.createElement('div');
+        rearWarning.className = 'obstacle-warning danger';
+        rearWarning.textContent = '🚫 ПРЕПЯТСТВИЕ СЗАДИ! Движение назад заблокировано.';
+        warningsContainer.appendChild(rearWarning);
     }
 }
 
 // Показ уведомлений
 function showAlert(message, type = 'success') {
-    console.log('Alert:', message, type);
     // Удаляем существующие уведомления
     const existingAlerts = document.querySelectorAll('.alert');
     existingAlerts.forEach(alert => alert.remove());
@@ -162,40 +293,8 @@ function showAlert(message, type = 'success') {
     }, 3000);
 }
 
-// Обновление данных датчиков
-function updateSensorData() {
-    fetch('/api/status')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const status = data.data;
-
-                // Обновление текущих значений
-                const currentSpeedEl = document.getElementById('current-speed');
-                if (currentSpeedEl) currentSpeedEl.textContent = status.current_speed;
-
-                // Обновление времени
-                const lastUpdateEl = document.getElementById('last-update');
-                if (lastUpdateEl) {
-                    const now = new Date();
-                    lastUpdateEl.textContent = `Обновлено: ${now.toLocaleTimeString()}`;
-                }
-
-                lastUpdateTime = Date.now();
-                connectionActive = true;
-            } else {
-                connectionActive = false;
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка получения статуса:', error);
-            connectionActive = false;
-        });
-}
-
 // Управление с клавиатуры
 document.addEventListener('keydown', function (event) {
-    console.log('Key pressed:', event.key);
     // Игнорируем если фокус на input элементах
     if (event.target.tagName === 'INPUT') return;
 
@@ -229,44 +328,41 @@ document.addEventListener('keydown', function (event) {
     }
 });
 
+// Предотвращение случайного закрытия страницы при движении
+window.addEventListener('beforeunload', function (event) {
+    if (robotMoving) {
+        event.preventDefault();
+        event.returnValue = 'Робот все еще движется. Вы уверены, что хотите закрыть страницу?';
+        return event.returnValue;
+    }
+});
+
+// Обработка потери фокуса окна
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden && robotMoving) {
+        console.log('Окно потеряло фокус - автоматическая остановка');
+        stopRobot();
+    }
+});
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🤖 DOM загружен, инициализация...');
+    console.log('🤖 Интерфейс управления роботом загружен');
 
-    // Инициализируем элементы интерфейса
-    speedSlider = document.getElementById('speed-slider');
-    speedValue = document.getElementById('speed-value');
-
-    if (speedSlider && speedValue) {
-        console.log('Slider elements found, adding event listener');
-        // Обработчик ползунка скорости
-        speedSlider.addEventListener('input', function () {
-            const speed = parseInt(this.value);
-            speedValue.textContent = speed;
-            const currentSpeedEl = document.getElementById('current-speed');
-            if (currentSpeedEl) currentSpeedEl.textContent = speed;
-            updateSpeed(speed);
-        });
-    } else {
-        console.error('Slider elements not found!');
-    }
-
-    // Запуск периодического обновления данных каждые 2 секунды
-    setInterval(updateSensorData, 2000);
+    // Запуск периодического обновления данных каждые 500мс
+    setInterval(updateSensorData, 500);
 
     // Первоначальное обновление
     updateSensorData();
 
-    showAlert('Управление: W/S - движение, A/D - повороты, Пробел - стоп, Кнопки - мышью', 'success');
-    console.log('🤖 Инициализация завершена');
+    // Проверка соединения
+    setInterval(() => {
+        if (Date.now() - lastUpdateTime > 3000 && connectionActive) {
+            updateConnectionStatus(false);
+            showAlert('Потеряно соединение с роботом', 'danger');
+            connectionActive = false;
+        }
+    }, 1000);
+
+    showAlert('Управление: W/S - движение, A/D - повороты, Пробел - стоп', 'success');
 });
-
-// Сделаем функции глобальными для onclick
-window.moveForward = moveForward;
-window.moveBackward = moveBackward;
-window.tankTurnLeft = tankTurnLeft;
-window.tankTurnRight = tankTurnRight;
-window.stopRobot = stopRobot;
-window.emergencyStop = emergencyStop;
-
-console.log('🤖 JavaScript файл загружен');
