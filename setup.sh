@@ -67,7 +67,7 @@ sudo apt install -y python3 python3-venv python3-pip python3-dev \
                     v4l-utils uvcdynctrl guvcview \
                     libopencv-dev python3-opencv \
                     ffmpeg libavcodec-dev libavformat-dev libswscale-dev \
-                    libjpeg-dev libpng-dev libtiff-dev flask-cors
+                    libjpeg-dev libpng-dev libtiff-dev
 
 ok "Базовые пакеты установлены"
 
