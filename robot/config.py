@@ -2,6 +2,7 @@
 
 import os
 
+HOME_DIR = os.path.expanduser("~")
 # ==================== I2C НАСТРОЙКИ ====================
 I2C_AVAILABLE = True
 try:
@@ -51,8 +52,10 @@ CAMERA_CONTRAST = int(os.getenv("CAMERA_CONTRAST", "50"))      # 0-100
 CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "50"))  # 0-100
 
 # Пути сохранения
-CAMERA_SAVE_PATH = os.getenv("CAMERA_SAVE_PATH", "/home/pi/robot_web/photos")
-CAMERA_VIDEO_PATH = os.getenv("CAMERA_VIDEO_PATH", "/home/pi/robot_web/videos")
+CAMERA_SAVE_PATH = os.getenv(
+    "CAMERA_SAVE_PATH", f"{HOME_DIR}/robot_web/photos")
+CAMERA_VIDEO_PATH = os.getenv(
+    "CAMERA_VIDEO_PATH", f"{HOME_DIR}/robot_web/videos")
 
 # Автозапуск камеры
 CAMERA_AUTO_START = os.getenv("CAMERA_AUTO_START", "true").lower() == "true"

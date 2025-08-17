@@ -16,13 +16,14 @@ logging.basicConfig(level=LOG_LEVEL, format=LOG_FMT)
 logger = logging.getLogger(__name__)
 
 
-def create_app(controller: RobotController | None = None) -> Flask:
+def create_app(controller: RobotController | None = None, camera_instance: USBCamera | None = None) -> Flask:
     app = Flask(__name__,
                 template_folder='../templates',
                 static_folder='../static')
     robot = controller or RobotController()
 
     # Инициализация камеры
+    camera = camera_instance
     if camera is None:
         try:
             available_cameras = list_available_cameras()

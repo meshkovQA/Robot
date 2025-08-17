@@ -452,7 +452,7 @@ else:
 
 echo ""
 echo "🤖 Тест модуля робота:"
-cd /home/pi/robot_web
+cd "$PROJECT_DIR" 
 python3 -c "
 from robot.camera import list_available_cameras, create_camera
 try:
