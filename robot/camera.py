@@ -8,6 +8,7 @@ import base64
 from typing import Optional, Tuple, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from .api import PHOTOS_DIR, VIDEOS_DIR
 import os
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,8 @@ class CameraConfig:
     fps: int = 30
     quality: int = 80  # JPEG качество (1-100)
     auto_start: bool = True
-    save_path: str = f"{os.path.expanduser('~')}/robot_web/static/photos"
-    video_path: str = f"{os.path.expanduser('~')}/robot_web/static/videos"
+    save_path = str(PHOTOS_DIR),   # ← ВАЖНО
+    video_path = str(VIDEOS_DIR),  # ← ВАЖНО
 
     # Настройки камеры
     brightness: int = 50  # 0-100

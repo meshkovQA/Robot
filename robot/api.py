@@ -28,6 +28,11 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     STATIC_ROOT = Path(app.static_folder).resolve()
 
+    PHOTOS_DIR = STATIC_ROOT / "photos"
+    VIDEOS_DIR = STATIC_ROOT / "videos"
+    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+
     # ВКЛЮЧАЕМ CORS ДЛЯ ВСЕХ МАРШРУТОВ
     CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
@@ -383,7 +388,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     # --------- мониторинг и диагностика ----------
 
-    def _collect_files(dir_path: str, exts: tuple[str, ...]) -> list[dict]:
+    def _collect_files(dir_path: str | Path, exts: tuple[str, ...]) -> list[dict]:
         base = Path(dir_path)
         base.mkdir(parents=True, exist_ok=True)
 
@@ -392,21 +397,13 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             if f.is_file() and f.suffix.lower() in exts:
                 stat = f.stat()
                 created = int(stat.st_mtime)
-
-                # Пытаемся построить URL относительно /static
-                try:
-                    rel = f.resolve().relative_to(STATIC_ROOT)         # photos/xxx.jpg
-                    # /static/photos/xxx.jpg
-                    url = f"/static/{rel.as_posix()}"
-                except Exception:
-                    # Фоллбэк: ищем подпапку 'static' в полном пути
-                    parts = f.resolve().as_posix().split("/static/", 1)
-                    url = f"/static/{parts[1]}" if len(parts) == 2 else ""
-
+                # путь относительно /static
+                rel = f.resolve().relative_to(STATIC_ROOT)
+                url = f"/static/{rel.as_posix()}"
                 items.append({
                     "filename": f.name,
-                    "path": str(f.resolve()),        # для удаления
-                    "url": url,                      # ← фронт будет использовать это
+                    "path": str(f.resolve()),     # для удаления
+                    "url": url,                   # ← фронт будет использовать это
                     "size": stat.st_size,
                     "created": created,
                     "created_str": datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M:%S"),
@@ -417,7 +414,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/files/photos", methods=["GET"])
     def files_photos():
         try:
-            files = _collect_files(CAMERA_SAVE_PATH, (".jpg", ".jpeg", ".png"))
+            files = _collect_files(PHOTOS_DIR, (".jpg", ".jpeg", ".png"))
             return ok({"files": files})
         except Exception as e:
             return err(f"Ошибка списка фото: {e}", 500)
@@ -426,7 +423,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def files_videos():
         try:
             files = _collect_files(
-                CAMERA_VIDEO_PATH, (".mp4", ".avi", ".mov", ".mkv"))
+                VIDEOS_DIR, (".mp4", ".avi", ".mov", ".mkv"))
             return ok({"files": files})
         except Exception as e:
             return err(f"Ошибка списка видео: {e}", 500)

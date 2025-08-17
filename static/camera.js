@@ -325,18 +325,18 @@ function viewPhoto(url, filename, created, size) {
     document.getElementById('photo-modal').style.display = 'block';
 }
 
-function closePhotoModal() {
-    document.getElementById('photo-modal').style.display = 'none';
+function downloadFile(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showAlert(`⬇️ Скачивание: ${filename}`, 'success');
 }
 
-function downloadFile(url, filename) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showAlert(`⬇️ Скачивание: ${filename}`, 'success');
+function closePhotoModal() {
+    document.getElementById('photo-modal').style.display = 'none';
 }
 
 function deleteFile(filepath, filename) {

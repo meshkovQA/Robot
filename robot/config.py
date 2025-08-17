@@ -1,6 +1,11 @@
 # config.py - обновленная версия с поддержкой камеры
 
 import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+STATIC_DIR = PROJECT_ROOT / "static"
 
 HOME_DIR = os.path.expanduser("~")
 # ==================== I2C НАСТРОЙКИ ====================
@@ -52,10 +57,8 @@ CAMERA_CONTRAST = int(os.getenv("CAMERA_CONTRAST", "50"))      # 0-100
 CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "50"))  # 0-100
 
 # Пути сохранения
-CAMERA_SAVE_PATH = os.getenv(
-    "CAMERA_SAVE_PATH", f"{HOME_DIR}/robot_web/static/photos")
-CAMERA_VIDEO_PATH = os.getenv(
-    "CAMERA_VIDEO_PATH", f"{HOME_DIR}/robot_web/static/videos")
+CAMERA_SAVE_PATH = os.getenv("CAMERA_SAVE_PATH", str(STATIC_DIR / "photos"))
+CAMERA_VIDEO_PATH = os.getenv("CAMERA_VIDEO_PATH", str(STATIC_DIR / "videos"))
 
 # Автозапуск камеры
 CAMERA_AUTO_START = os.getenv("CAMERA_AUTO_START", "true").lower() == "true"
