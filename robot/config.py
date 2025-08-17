@@ -14,8 +14,8 @@ ARDUINO_ADDRESS = int(os.getenv("ARDUINO_ADDRESS", "0x08"), 16)
 
 # Сенсоры/пороги
 SENSOR_ERR = 999
-SENSOR_FWD_STOP_CM = int(os.getenv("SENSOR_FWD_STOP_CM", "15"))
-SENSOR_BWD_STOP_CM = int(os.getenv("SENSOR_BWD_STOP_CM", "10"))
+SENSOR_FWD_STOP_CM = int(os.getenv("SENSOR_FWD_STOP_CM", "25"))
+SENSOR_BWD_STOP_CM = int(os.getenv("SENSOR_BWD_STOP_CM", "20"))
 SENSOR_MAX_VALID = int(os.getenv("SENSOR_MAX_VALID", "500"))
 
 # Скорость (0..255)

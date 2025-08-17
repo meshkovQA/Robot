@@ -149,6 +149,14 @@ class RobotController:
     def move_forward(self, speed: int) -> bool:
         """Движение вперед с заданной скоростью"""
         speed = _clip_speed(speed)
+
+        # Проверяем препятствие спереди перед началом движения
+        front_dist, _ = self.read_sensors()
+        if front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM:
+            logger.warning("Движение вперед заблокировано: препятствие на %d см (порог %d см)",
+                           front_dist, SENSOR_FWD_STOP_CM)
+            return False
+
         with self._lock:
             self.current_speed = speed
             self.is_moving = True
@@ -164,6 +172,14 @@ class RobotController:
     def move_backward(self, speed: int) -> bool:
         """Движение назад с заданной скоростью"""
         speed = _clip_speed(speed)
+
+        # Проверяем препятствие сзади перед началом движения
+        _, rear_dist = self.read_sensors()
+        if rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM:
+            logger.warning("Движение назад заблокировано: препятствие на %d см (порог %d см)",
+                           rear_dist, SENSOR_BWD_STOP_CM)
+            return False
+
         with self._lock:
             self.current_speed = speed
             self.is_moving = True
@@ -296,20 +312,24 @@ class RobotController:
 
                     last_sensor_update = now
 
-                    # Проверка автостопа
+                    # Проверка автостопа при движении
                     if moving and direction in (1, 2):
+                        # Проверка препятствия спереди при движении вперед
                         if (direction == 1 and
                             front_dist != SENSOR_ERR and
                                 front_dist < SENSOR_FWD_STOP_CM):
                             logger.warning(
-                                "АВТОСТОП: препятствие спереди %d см", front_dist)
+                                "АВТОСТОП: препятствие спереди %d см (порог %d см)",
+                                front_dist, SENSOR_FWD_STOP_CM)
                             self.stop()
 
+                        # Проверка препятствия сзади при движении назад
                         elif (direction == 2 and
                               rear_dist != SENSOR_ERR and
                               rear_dist < SENSOR_BWD_STOP_CM):
                             logger.warning(
-                                "АВТОСТОП: препятствие сзади %d см", rear_dist)
+                                "АВТОСТОП: препятствие сзади %d см (порог %d см)",
+                                rear_dist, SENSOR_BWD_STOP_CM)
                             self.stop()
 
                 time.sleep(0.05)  # Короткий сон между итерациями
