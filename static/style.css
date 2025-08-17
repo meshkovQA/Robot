@@ -1,247 +1,443 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #333;
     min-height: 100vh;
-    padding: 0;
-    /* ИЗМЕНЕНО: убрали padding: 20px */
+    padding: 20px;
 }
 
-/* 2. ОБНОВИТЬ .container */
 .container {
-    max-width: 100vw;
-    /* ИЗМЕНЕНО: было 1200px */
-    margin: 0;
-    /* ИЗМЕНЕНО: было 0 auto */
+    max-width: 1400px;
+    margin: 0 auto;
     background: rgba(255, 255, 255, 0.95);
-    border-radius: 0;
-    /* ИЗМЕНЕНО: было 20px */
+    border-radius: 20px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
     overflow: hidden;
-    min-height: 100vh;
-    /* ДОБАВЛЕНО */
 }
 
-/* 3. ОБНОВИТЬ .header */
 .header {
     background: linear-gradient(90deg, #4CAF50, #45a049);
     color: white;
-    padding: 15px 20px;
-    /* ИЗМЕНЕНО: было 20px */
+    padding: 20px;
     text-align: center;
 }
 
 .header h1 {
-    margin: 0 0 10px 0;
-    /* ИЗМЕНЕНО: было margin-bottom: 10px */
-    font-size: 1.8em;
-    /* ИЗМЕНЕНО: было 2.5em */
+    margin-bottom: 10px;
+    font-size: 2.5em;
 }
 
-/* 4. ОБНОВИТЬ .status-bar */
 .status-bar {
-    background: transparent;
-    /* ИЗМЕНЕНО: было #f8f9fa */
-    padding: 0;
-    /* ИЗМЕНЕНО: было 15px 20px */
-    border: none;
-    /* ИЗМЕНЕНО: было border-bottom */
+    background: #f8f9fa;
+    padding: 15px 20px;
+    border-bottom: 1px solid #dee2e6;
     display: flex;
-    justify-content: center;
-    /* ИЗМЕНЕНО: было space-between */
+    justify-content: space-between;
     flex-wrap: wrap;
     gap: 15px;
-    margin-top: 10px;
-    /* ДОБАВЛЕНО */
 }
 
-.status-item span {
-    color: rgba(255, 255, 255, 0.9);
-    /* ДОБАВЛЕНО для белого текста */
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
 }
 
-/* 5. ЗАМЕНИТЬ .main-content НА .main-grid */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #dc3545;
+}
+
+.status-indicator.active {
+    background: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.warning {
+    background: #ffc107;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
 .main-content {
-    display: none;
-    /* Скрываем старый макет */
-}
-
-.main-grid {
     display: grid;
-    grid-template-columns: 1fr 350px;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    padding: 30px;
+}
+
+.left-side {
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    padding: 20px;
-    height: calc(100vh - 140px);
-    overflow: hidden;
 }
 
-.left-column {
+.right-side {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    overflow: hidden;
+    gap: 20px;
 }
 
-.right-column {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    overflow-y: auto;
-}
-
-/* 6. ДОБАВИТЬ НОВЫЕ СЕКЦИИ */
-.video-section {
+.control-panel {
     background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.control-panel h2 {
+    margin-bottom: 20px;
+    color: #333;
+    text-align: center;
+    font-size: 1.5em;
+}
+
+.control-group {
+    margin-bottom: 25px;
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #555;
+}
+
+.slider-container {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #ddd;
+    outline: none;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+    appearance: none;
+}
+
+.slider:hover {
+    opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.slider-value {
+    position: absolute;
+    right: 0;
+    top: -35px;
+    background: #333;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: bold;
+    min-width: 60px;
+    text-align: center;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.control-btn {
+    padding: 15px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.control-btn:active {
+    transform: scale(0.95);
+}
+
+.control-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-forward {
+    background: #28a745;
+    color: white;
+}
+
+.btn-tank-left {
+    background: #ffc107;
+    color: #333;
+}
+
+.btn-stop {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-tank-right {
+    background: #ffc107;
+    color: #333;
+}
+
+.btn-backward {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-emergency {
+    background: #dc3545;
+    color: white;
+    grid-column: span 3;
+    font-size: 1.3em;
+    animation: emergency-glow 2s infinite alternate;
+}
+
+@keyframes emergency-glow {
+    from {
+        box-shadow: 0 0 5px #dc3545;
+    }
+
+    to {
+        box-shadow: 0 0 20px #dc3545, 0 0 30px #dc3545;
+    }
+}
+
+.sensor-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.sensor-card {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    border: 3px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.sensor-card.warning {
+    border-color: #ffc107;
+    background: #fff8dc;
+}
+
+.sensor-card.danger {
+    border-color: #dc3545;
+    background: #ffe6e6;
+    animation: danger-pulse 1s infinite;
+}
+
+@keyframes danger-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
+}
+
+.sensor-value {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #4CAF50;
+    transition: color 0.3s ease;
+}
+
+.sensor-value.warning {
+    color: #ffc107;
+}
+
+.sensor-value.danger {
+    color: #dc3545;
+}
+
+.sensor-value.error {
+    color: #666;
+}
+
+.sensor-label {
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 5px;
+    font-weight: 600;
+}
+
+.current-values {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.current-values h3 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.value-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.movement-status {
+    background: #e3f2fd;
+    border: 2px solid #2196f3;
     border-radius: 10px;
     padding: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    flex: 1;
-    min-height: 0;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.movement-status.moving {
+    background: #e8f5e8;
+    border-color: #4caf50;
+}
+
+.movement-status.stopped {
+    background: #ffeaa7;
+    border-color: #fdcb6e;
+}
+
+.obstacle-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    font-weight: 600;
+}
+
+.obstacle-warning.danger {
+    background: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 5px;
+    font-weight: 600;
+    z-index: 1000;
+    animation: slideIn 0.3s ease-out;
+}
+
+.alert.success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.alert.danger {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.alert.warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* ==================== КАМЕРА ==================== */
+
+.camera-container {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 20px;
+    border: 2px solid #e9ecef;
 }
 
 .video-wrapper {
     position: relative;
     background: #000;
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
-    margin-bottom: 10px;
-    height: calc(100% - 50px);
+    margin-bottom: 15px;
+    min-height: 300px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .video-wrapper img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    max-width: 100%;
+    height: auto;
+    display: block;
 }
 
-.control-section {
-    background: white;
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.sensors-section {
-    background: white;
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    flex-shrink: 0;
-}
-
-.files-section {
-    background: white;
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-/* 7. КОМПАКТНЫЕ ВЕРСИИ */
-.sensors-section h3,
-.files-section h3 {
-    margin: 0 0 12px 0;
-    font-size: 1.1em;
-    color: #333;
-}
-
-.current-values.compact {
-    background: #f8f9fa;
-    padding: 10px;
-    border-radius: 6px;
-    margin-bottom: 12px;
-}
-
-.sensor-grid.compact {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.sensor-grid.compact .sensor-card {
-    padding: 12px;
-}
-
-.sensor-grid.compact .sensor-value {
-    font-size: 1.8em;
-}
-
-.sensor-grid.compact .sensor-label {
-    font-size: 0.8em;
-    margin-top: 3px;
-}
-
-.movement-status.compact {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin-bottom: 15px;
-    text-align: center;
-    font-weight: 600;
-}
-
-.button-grid.compact {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-top: 0;
-}
-
-.button-grid.compact .control-btn {
-    padding: 12px 8px;
-    font-size: 1.5em;
-}
-
-.button-grid.compact .btn-emergency {
-    font-size: 0.9em;
-    padding: 8px;
-}
-
-/* 8. ОБНОВИТЬ АДАПТИВНОСТЬ */
-@media (max-width: 1200px) {
-    .main-grid {
-        grid-template-columns: 1fr 300px;
-    }
-}
-
-@media (max-width: 768px) {
-    .main-grid {
-        grid-template-columns: 1fr;
-        height: auto;
-        overflow: visible;
-    }
-
-    .right-column {
-        overflow: visible;
-    }
-
-    .video-wrapper {
-        height: 250px;
-    }
-
-    .button-grid.compact {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .button-grid.compact .btn-emergency {
-        grid-column: span 2;
-    }
-
-    /* Переопределяем старое правило для мобильных */
-    .main-content {
-        display: none !important;
-    }
-}
-
-/* 9. ОСТАЛЬНЫЕ СТИЛИ КАМЕРЫ */
 .camera-overlay {
     position: absolute;
     top: 10px;
@@ -286,18 +482,24 @@ body {
 
 .camera-controls {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     justify-content: center;
 }
 
 .camera-btn {
-    padding: 8px 16px;
+    padding: 12px 20px;
     border: none;
-    border-radius: 6px;
-    font-size: 1.1em;
+    border-radius: 8px;
+    font-size: 1em;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    min-width: auto;
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.camera-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .btn-photo {
@@ -305,12 +507,362 @@ body {
     color: white;
 }
 
+.btn-photo:hover {
+    background: #218838;
+}
+
 .btn-record {
     background: #dc3545;
     color: white;
 }
 
+.btn-record:hover {
+    background: #c82333;
+}
+
+.btn-stop-record {
+    background: #6c757d;
+    color: white;
+    animation: stop-record-glow 2s infinite alternate;
+}
+
+@keyframes stop-record-glow {
+    from {
+        box-shadow: 0 0 5px #dc3545;
+    }
+
+    to {
+        box-shadow: 0 0 15px #dc3545, 0 0 25px #dc3545;
+    }
+}
+
 .btn-refresh {
     background: #007bff;
     color: white;
+}
+
+.btn-refresh:hover {
+    background: #0056b3;
+}
+
+/* ==================== ФАЙЛЫ ==================== */
+
+.file-tabs {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    color: #6c757d;
+}
+
+.tab-btn:hover {
+    color: #495057;
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.tab-btn.active {
+    color: #007bff;
+    border-bottom-color: #007bff;
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.file-list {
+    min-height: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px;
+    background: white;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #f1f3f4;
+    transition: background 0.2s ease;
+}
+
+.file-item:hover {
+    background: #f8f9fa;
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-info {
+    flex: 1;
+}
+
+.file-name {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 2px;
+}
+
+.file-details {
+    font-size: 0.85em;
+    color: #6c757d;
+}
+
+.file-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.file-action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+    background: #f8f9fa;
+    color: #6c757d;
+}
+
+.file-action-btn:hover {
+    background: #e9ecef;
+    transform: scale(1.1);
+}
+
+.file-action-btn.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.file-action-btn.btn-danger:hover {
+    background: #c82333;
+}
+
+.file-loading,
+.file-error,
+.file-empty {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.file-error {
+    color: #dc3545;
+}
+
+.file-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    justify-content: center;
+}
+
+.file-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #007bff;
+    color: white;
+}
+
+.file-btn:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+}
+
+.file-btn.btn-danger {
+    background: #dc3545;
+}
+
+.file-btn.btn-danger:hover {
+    background: #c82333;
+}
+
+/* ==================== МОДАЛЬНОЕ ОКНО ==================== */
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.modal-content {
+    position: relative;
+    background-color: white;
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 15px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow: hidden;
+    animation: slideIn 0.3s ease;
+}
+
+.modal-content img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.modal-info {
+    padding: 20px;
+    text-align: center;
+}
+
+.modal-info h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+
+.modal-info p {
+    margin: 0;
+    color: #6c757d;
+}
+
+.close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    color: white;
+    font-size: 32px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.close:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: scale(1.1);
+}
+
+/* ==================== АДАПТИВНОСТЬ ==================== */
+
+@media (max-width: 768px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        padding: 15px;
+    }
+
+    .status-bar {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .button-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .btn-emergency {
+        grid-column: span 2;
+    }
+
+    .camera-controls {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .camera-btn {
+        min-width: auto;
+        padding: 10px 15px;
+    }
+
+    .file-tabs {
+        flex-direction: column;
+    }
+
+    .tab-btn {
+        border-bottom: none;
+        border-left: 3px solid transparent;
+        text-align: left;
+    }
+
+    .tab-btn.active {
+        border-left-color: #007bff;
+        border-bottom-color: transparent;
+    }
+
+    .file-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .file-actions {
+        align-self: stretch;
+        justify-content: flex-end;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        margin: 0;
+        border-radius: 0;
+    }
+
+    body {
+        padding: 0;
+    }
+
+    .camera-info,
+    .recording-indicator {
+        font-size: 0.75em;
+        padding: 4px 8px;
+    }
+
+    .file-controls {
+        flex-direction: column;
+    }
+
+    .camera-container {
+        padding: 15px;
+    }
 }
