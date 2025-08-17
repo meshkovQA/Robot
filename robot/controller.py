@@ -36,24 +36,20 @@ def _clip_steering(angle: int) -> int:
 
 def _pack_command(cmd: RobotCommand) -> list[int]:
     """
-    Упаковка команды в формат, ожидаемый Arduino:
-    [speed_low, speed_high, direction, steering_angle, front_wheels, rear_wheels, checksum]
+    Упаковка команды в формат, ожидаемый Arduino (совместимость с рабочим кодом)
     """
-    speed = cmd.speed & 0xFFFF
-    data = [
-        speed & 0xFF,           # speed low byte
-        (speed >> 8) & 0xFF,    # speed high byte
-        cmd.direction & 0xFF,   # direction
-        cmd.steering_angle & 0xFF,  # steering angle
-        1 if cmd.front_wheels else 0,  # front wheels enable
-        1 if cmd.rear_wheels else 0,   # rear wheels enable
-    ]
+    data = []
+    speed_value = cmd.speed
+    data.append(speed_value & 0xFF)           # speed low byte
+    data.append((speed_value >> 8) & 0xFF)    # speed high byte
+    data.append(cmd.direction & 0xFF)         # direction low byte
+    data.append((cmd.direction >> 8) & 0xFF)  # direction high byte
+    data.append(90)  # Фиксированное значение для совместимости (steering)
+    data.append(0)   # Фиксированное значение для совместимости
+    data.append(1 if cmd.front_wheels else 0)  # front wheels enable
+    data.append(1 if cmd.rear_wheels else 0)   # rear wheels enable
 
-    # Простая контрольная сумма
-    checksum = sum(data) & 0xFF
-    data.append(checksum)
-
-    logger.debug("Пакет команды: %s", data)
+    logger.debug("Пакет команды (8 байт): %s", data)
     return data
 
 
@@ -77,7 +73,7 @@ class RobotController:
     # ---------- низкоуровневые I2C ----------
     def _i2c_write(self, data: list[int], retries: int = 3, backoff: float = 0.02) -> bool:
         """Отправка команды на Arduino через I2C"""
-        logger.info("Попытка отправки I2C команды: %s", data)  # ДОБАВИТЬ
+        logger.info("Попытка отправки I2C команды: %s", data)
 
         if not self.bus:
             logger.warning("[I2C] эмуляция записи: %s", data)
@@ -85,15 +81,15 @@ class RobotController:
 
         for i in range(retries):
             try:
-                # Отправляем первый байт как регистр, остальные как данные
+                # Отправляем все данные как block data с первым байтом как регистром
                 if len(data) > 1:
                     logger.info("Отправка I2C block data: addr=0x%02X, reg=0x%02X, data=%s",
-                                ARDUINO_ADDRESS, data[0], data[1:])  # ДОБАВИТЬ
+                                ARDUINO_ADDRESS, data[0], data[1:])
                     self.bus.write_i2c_block_data(
                         ARDUINO_ADDRESS, data[0], data[1:])
                 else:
                     logger.info("Отправка I2C byte: addr=0x%02X, data=0x%02X",
-                                ARDUINO_ADDRESS, data[0])  # ДОБАВИТЬ
+                                ARDUINO_ADDRESS, data[0])
                     self.bus.write_byte(ARDUINO_ADDRESS, data[0])
                 logger.info("I2C write успешно: %s", data)
                 return True
@@ -101,8 +97,8 @@ class RobotController:
                 logger.error("I2C write fail %d/%d: %s", i+1, retries, e)
                 time.sleep(backoff * (i + 1))
 
-        logger.error("I2C write полностью провалился после %d попыток",
-                     retries)  # ДОБАВИТЬ
+        logger.error(
+            "I2C write полностью провалился после %d попыток", retries)
         return False
 
     def _i2c_read_sensors(self) -> Tuple[int, int]:
