@@ -15,7 +15,7 @@ command -v sudo >/dev/null || { err "sudo не найден"; exit 1; }
 
 # --- конфигурация путей/репо ---
 USER_NAME="$USER"
-HOME_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)"
+HOME_DIR="$HOME"
 PROJECT_DIR="$HOME_DIR/robot_web"
 VENV_DIR="$PROJECT_DIR/venv"
 LOG_DIR="$PROJECT_DIR/logs"
@@ -115,6 +115,13 @@ fi
 # Добавляем пользователя в группы
 sudo usermod -a -G i2c,gpio,spi,video "$USER_NAME" || true
 
+# Проверка что пользователь действительно в группе video
+if ! groups "$USER_NAME" | grep -q video; then
+    warn "Пользователь не в группе video. Попробуем добавить принудительно..."
+    sudo usermod -a -G video "$USER_NAME"
+    warn "Требуется перезагрузка для применения прав доступа к камере"
+fi
+
 # --- создание структуры проекта ---
 info "Создание структуры проекта в $PROJECT_DIR ..."
 mkdir -p "$PROJECT_DIR"/{robot,templates,static,logs,photos,videos}
@@ -194,8 +201,8 @@ CAMERA_CONTRAST=50
 CAMERA_SATURATION=50
 
 # Пути сохранения
-CAMERA_SAVE_PATH=/home/pi/robot_web/photos
-CAMERA_VIDEO_PATH=/home/pi/robot_web/videos
+CAMERA_SAVE_PATH=$HOME_DIR/robot_web/photos
+CAMERA_VIDEO_PATH=$HOME_DIR/robot_web/videos
 
 # Автозапуск
 CAMERA_AUTO_START=true
@@ -537,8 +544,8 @@ echo -e "\n📁 Файлы проекта:"
 ls -la /home/*/robot_web/ 2>/dev/null | head -10
 
 echo -e "\n📸 Медиафайлы:"
-PHOTOS_COUNT=$(find /home/*/robot_web/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
-VIDEOS_COUNT=$(find /home/*/robot_web/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
+PHOTOS_COUNT=$(find $HOME_DIR/robot_web/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
+VIDEOS_COUNT=$(find $HOME_DIR/robot_web/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
 echo "Фотографий: $PHOTOS_COUNT"
 echo "Видеофайлов: $VIDEOS_COUNT"
 
@@ -699,6 +706,21 @@ if python3 -c "from robot.api import create_app; from robot.camera import USBCam
     ok "Python модули работают корректно"
 else
     warn "Есть проблемы с Python модулями, но основная функциональность может работать"
+fi
+
+info "Тестирование запуска приложения..."
+cd "$PROJECT_DIR"
+if timeout 10 python3 run.py --help >/dev/null 2>&1; then
+    ok "run.py доступен"
+else
+    warn "Проблемы с run.py"
+fi
+
+# Тест gunicorn
+if timeout 5 "$VENV_DIR/bin/gunicorn" --check-config run:app; then
+    ok "Gunicorn конфигурация корректна"
+else
+    err "Проблемы с конфигурацией Gunicorn"
 fi
 
 # --- первый запуск ---
