@@ -1,18 +1,25 @@
 # robot/camera.py
 
 from __future__ import annotations
-import cv2
 import threading
 import time
 import logging
 import base64
-import io
 from typing import Optional, Tuple, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 import os
 
 logger = logging.getLogger(__name__)
+
+# Проверяем доступность OpenCV
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    logger.info("OpenCV доступен")
+except ImportError:
+    OPENCV_AVAILABLE = False
+    logger.warning("OpenCV недоступен - камера будет недоступна")
 
 
 @dataclass
@@ -55,6 +62,9 @@ class USBCamera:
     """Управление USB камерой с поддержкой стрима, записи и фото"""
 
     def __init__(self, config: CameraConfig = None):
+        if not OPENCV_AVAILABLE:
+            raise ImportError("OpenCV недоступен - установите python3-opencv")
+
         self.config = config or CameraConfig()
         self.status = CameraStatus()
 
@@ -69,7 +79,7 @@ class USBCamera:
 
         # Синхронизация
         self._frame_lock = threading.RLock()
-        self._current_frame: Optional[cv2.typing.MatLike] = None
+        self._current_frame: Optional = None
         self._stream_frame: Optional[bytes] = None
 
         # Статистика
@@ -77,7 +87,7 @@ class USBCamera:
         self._recording_start_time: float = 0.0
 
         # Колбэки
-        self._frame_callbacks: list[Callable[[cv2.typing.MatLike], None]] = []
+        self._frame_callbacks: list[Callable] = []
 
         self._watchdog_thread: Optional[threading.Thread] = None
 
@@ -90,11 +100,18 @@ class USBCamera:
     def _ensure_directories(self):
         """Создание необходимых директорий"""
         for path in [self.config.save_path, self.config.video_path]:
-            Path(path).mkdir(parents=True, exist_ok=True)
-            logger.info(f"Директория создана/проверена: {path}")
+            try:
+                Path(path).mkdir(parents=True, exist_ok=True)
+                logger.info(f"Директория создана/проверена: {path}")
+            except Exception as e:
+                logger.error(f"Ошибка создания директории {path}: {e}")
 
     def start(self) -> bool:
         """Запуск камеры"""
+        if not OPENCV_AVAILABLE:
+            self.status.error_message = "OpenCV недоступен"
+            return False
+
         if self.status.is_connected:
             logger.warning("Камера уже запущена")
             return True
@@ -103,7 +120,7 @@ class USBCamera:
             logger.info(
                 f"Попытка подключения к камере /dev/video{self.config.device_id}")
 
-            # Открываем камеру
+            # Открываем камеру с CV_CAP_V4L2
             self._cap = cv2.VideoCapture(self.config.device_id, cv2.CAP_V4L2)
 
             if not self._cap.isOpened():
@@ -154,52 +171,71 @@ class USBCamera:
         if not self._cap:
             return
 
-        # Базовые параметры
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
-        self._cap.set(cv2.CAP_PROP_FPS, self.config.fps)
-
-        # Пытаемся MJPG (стабильные FPS), иначе YUYV как фолбэк
         try:
-            self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            time.sleep(0.05)
-            ok, _ = self._cap.read()
-            if not ok:
+            # Базовые параметры
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
+            self._cap.set(cv2.CAP_PROP_FPS, self.config.fps)
+
+            # Пытаемся MJPG для стабильности
+            try:
                 self._cap.set(cv2.CAP_PROP_FOURCC,
-                              cv2.VideoWriter_fourcc(*'YUYV'))
-                time.sleep(0.05)
+                              cv2.VideoWriter_fourcc(*'MJPG'))
+                time.sleep(0.1)
+                # Проверяем что формат применился
+                ret, _ = self._cap.read()
+                if not ret:
+                    logger.warning("MJPG не работает, переключаемся на YUYV")
+                    self._cap.set(cv2.CAP_PROP_FOURCC,
+                                  cv2.VideoWriter_fourcc(*'YUYV'))
+                    time.sleep(0.1)
+            except Exception as e:
+                logger.warning(f"Ошибка установки FOURCC: {e}")
+
+            # Минимальный буфер для уменьшения задержки
+            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            # Настройки изображения (если поддерживаются)
+            try:
+                self._cap.set(cv2.CAP_PROP_BRIGHTNESS,
+                              self.config.brightness / 100.0)
+                self._cap.set(cv2.CAP_PROP_CONTRAST,
+                              self.config.contrast / 100.0)
+                self._cap.set(cv2.CAP_PROP_SATURATION,
+                              self.config.saturation / 100.0)
+            except Exception as e:
+                logger.warning(
+                    f"Не удалось установить параметры изображения: {e}")
+
+            logger.info("Параметры камеры настроены")
+
         except Exception as e:
-            logger.warning(f"FOURCC set failed: {e}")
-
-        # Яркость/контраст/насыщенность (если поддерживаются)
-        try:
-            self._cap.set(cv2.CAP_PROP_BRIGHTNESS,
-                          self.config.brightness / 100.0)
-            self._cap.set(cv2.CAP_PROP_CONTRAST,
-                          self.config.contrast / 100.0)
-            self._cap.set(cv2.CAP_PROP_SATURATION,
-                          self.config.saturation / 100.0)
-        except Exception as e:
-            logger.warning(f"Не удалось установить параметры изображения: {e}")
-
-        # Минимальный буфер (меньше лаг)
-        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        logger.info("Параметры камеры настроены")
+            logger.error(f"Ошибка настройки камеры: {e}")
 
     def _capture_loop(self):
         """Основной цикл захвата кадров"""
         logger.info("Запущен поток захвата кадров")
+        consecutive_errors = 0
+        max_consecutive_errors = 10
 
         while not self._stop_event.is_set() and self._cap and self._cap.isOpened():
             try:
                 ret, frame = self._cap.read()
 
                 if not ret or frame is None:
-                    logger.warning("Не удалось получить кадр")
+                    consecutive_errors += 1
+                    logger.warning(
+                        f"Не удалось получить кадр (ошибка {consecutive_errors}/{max_consecutive_errors})")
+
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(
+                            "Слишком много ошибок чтения кадров - перезапуск камеры")
+                        break
+
                     time.sleep(0.1)
                     continue
 
+                consecutive_errors = 0  # Сброс счетчика при успешном кадре
                 current_time = time.time()
 
                 with self._frame_lock:
@@ -226,15 +262,21 @@ class USBCamera:
 
                 # Запись видео
                 if self.status.is_recording and self._writer:
-                    self._writer.write(frame)
-                    self.status.recording_duration = current_time - self._recording_start_time
+                    try:
+                        self._writer.write(frame)
+                        self.status.recording_duration = current_time - self._recording_start_time
+                    except Exception as e:
+                        logger.error(f"Ошибка записи кадра в видео: {e}")
 
-                # Небольшая пауза для снижения нагрузки
-                time.sleep(
-                    1.0 / self.config.fps if self.config.fps > 0 else 0.033)
+                # Контроль FPS
+                time.sleep(1.0 / max(self.config.fps, 5)
+                           if self.config.fps > 0 else 0.033)
 
             except Exception as e:
+                consecutive_errors += 1
                 logger.error(f"Ошибка в цикле захвата: {e}")
+                if consecutive_errors >= max_consecutive_errors:
+                    break
                 time.sleep(1.0)
 
         logger.info("Поток захвата кадров завершен")
@@ -252,8 +294,8 @@ class USBCamera:
 
                     frame = self._current_frame.copy()
 
-                # Изменяем размер для стрима (экономим трафик)
-                stream_width = min(self.config.width, 480)
+                # Изменяем размер для стрима (экономия трафика)
+                stream_width = min(self.config.width, 640)
                 stream_height = int(
                     stream_width * self.config.height / self.config.width)
 
@@ -263,14 +305,15 @@ class USBCamera:
                 # Кодируем в JPEG для веб-стрима
                 encode_param = [cv2.IMWRITE_JPEG_QUALITY,
                                 self.config.stream_quality]
-                _, buffer = cv2.imencode('.jpg', frame, encode_param)
+                ret, buffer = cv2.imencode('.jpg', frame, encode_param)
 
-                with self._frame_lock:
-                    self._stream_frame = buffer.tobytes()
+                if ret:
+                    with self._frame_lock:
+                        self._stream_frame = buffer.tobytes()
 
                 # Ограничиваем FPS стрима
-                time.sleep(
-                    1.0 / self.config.stream_fps if self.config.stream_fps > 0 else 0.066)
+                time.sleep(1.0 / max(self.config.stream_fps, 5)
+                           if self.config.stream_fps > 0 else 0.066)
 
             except Exception as e:
                 logger.error(f"Ошибка в потоке стрима: {e}")
@@ -279,23 +322,29 @@ class USBCamera:
         logger.info("Поток веб-стрима завершен")
 
     def _watchdog_loop(self):
+        """Watchdog для мониторинга состояния камеры"""
         logger.info("Запущен watchdog камеры")
         last_restart = 0.0
-        min_restart_interval = 5.0  # сек
+        min_restart_interval = 10.0  # секунд
+
         while not self._stop_event.is_set():
             try:
                 now = time.time()
                 silent_for = now - self.status.last_frame_time if self.status.last_frame_time else 0
-                if self.status.is_connected and silent_for > 3.0:
+
+                if self.status.is_connected and silent_for > 5.0:
                     if now - last_restart >= min_restart_interval:
                         logger.warning(
                             f"Watchdog: нет кадров {silent_for:.1f} сек — перезапуск камеры")
                         last_restart = now
                         self.restart()
+
             except Exception as e:
                 logger.error(f"Watchdog error: {e}")
             finally:
-                time.sleep(1.0)
+                time.sleep(2.0)
+
+        logger.info("Watchdog камеры завершен")
 
     def get_frame_jpeg(self) -> Optional[bytes]:
         """Получение текущего кадра в формате JPEG для веб-стрима"""
@@ -426,11 +475,11 @@ class USBCamera:
             logger.error(error_msg)
             return False, error_msg
 
-    def add_frame_callback(self, callback: Callable[[cv2.typing.MatLike], None]):
+    def add_frame_callback(self, callback: Callable):
         """Добавить колбэк для обработки каждого кадра"""
         self._frame_callbacks.append(callback)
 
-    def remove_frame_callback(self, callback: Callable[[cv2.typing.MatLike], None]):
+    def remove_frame_callback(self, callback: Callable):
         """Удалить колбэк обработки кадров"""
         if callback in self._frame_callbacks:
             self._frame_callbacks.remove(callback)
@@ -457,18 +506,22 @@ class USBCamera:
 
     def _cleanup_camera(self):
         """Очистка ресурсов камеры"""
-        if self._writer:
-            self._writer.release()
-            self._writer = None
+        try:
+            if self._writer:
+                self._writer.release()
+                self._writer = None
 
-        if self._cap:
-            self._cap.release()
-            self._cap = None
+            if self._cap:
+                self._cap.release()
+                self._cap = None
+        except Exception as e:
+            logger.error(f"Ошибка при очистке камеры: {e}")
 
         self.status.is_connected = False
         self.status.is_streaming = False
 
     def stop(self):
+        """Остановка камеры"""
         logger.info("Начало остановки камеры...")
 
         if self.status.is_recording:
@@ -476,10 +529,11 @@ class USBCamera:
 
         self._stop_event.set()
 
+        # Ждем завершения потоков
         current = threading.current_thread()
         for t in [self._capture_thread, self._stream_thread, self._watchdog_thread]:
             if t and t.is_alive() and t is not current:
-                t.join(timeout=2.0)
+                t.join(timeout=3.0)
 
         self._cleanup_camera()
         self.status.is_recording = False
@@ -489,17 +543,24 @@ class USBCamera:
         """Перезапуск камеры"""
         logger.info("Перезапуск камеры...")
         self.stop()
-        time.sleep(1.0)
+        time.sleep(2.0)
         return self.start()
 
     def __del__(self):
         """Деструктор"""
-        self.stop()
+        try:
+            self.stop()
+        except Exception:
+            pass
 
 
 # Удобные функции для быстрого использования
-def create_camera(device_id: int = 0, width: int = 640, height: int = 480) -> USBCamera:
+def create_camera(device_id: int = 0, width: int = 640, height: int = 480) -> Optional[USBCamera]:
     """Создание камеры с базовыми настройками"""
+    if not OPENCV_AVAILABLE:
+        logger.error("OpenCV недоступен")
+        return None
+
     config = CameraConfig(
         device_id=device_id,
         width=width,
@@ -510,10 +571,22 @@ def create_camera(device_id: int = 0, width: int = 640, height: int = 480) -> US
 
 
 def list_available_cameras() -> list[int]:
+    """Список доступных камер"""
+    if not OPENCV_AVAILABLE:
+        logger.warning("OpenCV недоступен - невозможно проверить камеры")
+        return []
+
     available = []
-    for i in range(10):
-        cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
-        if cap.isOpened():
-            available.append(i)
-        cap.release()
+    for i in range(5):  # Проверяем первые 5 устройств
+        try:
+            cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
+            if cap.isOpened():
+                ret, _ = cap.read()
+                if ret:
+                    available.append(i)
+            cap.release()
+        except Exception as e:
+            logger.debug(f"Ошибка проверки камеры {i}: {e}")
+
+    logger.info(f"Найдено камер: {available}")
     return available

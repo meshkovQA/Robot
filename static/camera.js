@@ -19,9 +19,9 @@ let streamReconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let streamInitialized = false;
 
-let reconnectTimeoutId = null;   // id активного таймера
-let reconnectDisabled = false;   // жёсткий стоп после лимита
-let lastStreamUrl = '';          // чтобы не дергать одинаковый src
+let reconnectTimeoutId = null;
+let reconnectDisabled = false;
+let lastStreamUrl = '';
 
 // ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
@@ -37,7 +37,7 @@ function takePhoto() {
         .then(data => {
             if (data.success) {
                 showAlert(`📸 Фото сохранено: ${data.data.filename}`, 'success');
-                refreshFiles(); // Обновляем список файлов
+                refreshFiles();
             } else {
                 showAlert(`Ошибка фото: ${data.error}`, 'danger');
             }
@@ -108,7 +108,7 @@ function stopRecording() {
                 recordingTime.textContent = '00:00';
 
                 showAlert(`⏹️ Запись остановлена: ${data.data.filename}`, 'success');
-                refreshFiles(); // Обновляем список файлов
+                refreshFiles();
             } else {
                 showAlert(`Ошибка остановки записи: ${data.error}`, 'danger');
             }
@@ -136,10 +136,14 @@ function refreshCamera() {
             if (data.success) {
                 showAlert('✅ Камера перезапущена', 'success');
 
+                // Сбрасываем флаги переподключения
+                reconnectDisabled = false;
+                streamReconnectAttempts = 0;
+
                 // Перезагружаем стрим через небольшую задержку
                 setTimeout(() => {
                     initializeVideoStream();
-                }, 2000);
+                }, 3000);
             } else {
                 showAlert(`Ошибка перезапуска: ${data.error}`, 'danger');
             }
@@ -154,7 +158,7 @@ function refreshCamera() {
 
 function initializeVideoStream() {
     if (!cameraStream) {
-        console.error('Элемент video stream не найден');
+        console.error('Элемент camera-stream не найден');
         return;
     }
     if (reconnectDisabled) {
@@ -163,13 +167,8 @@ function initializeVideoStream() {
     }
 
     const streamUrl = `/camera/stream?t=${Date.now()}`;
-    if (lastStreamUrl === streamUrl) {
-        // теоретически не попадём сюда из-за timestamp, но оставим защиту
-        return;
-    }
-    lastStreamUrl = streamUrl;
-
     console.log('Инициализация видеопотока:', streamUrl);
+
     cameraStream.src = streamUrl;
     streamInitialized = true;
 }
@@ -188,7 +187,7 @@ function handleStreamError() {
 
     if (streamReconnectAttempts < maxReconnectAttempts) {
         streamReconnectAttempts++;
-        const delay = 2000 * streamReconnectAttempts;
+        const delay = 3000 * streamReconnectAttempts; // Увеличиваем задержку
         console.log(`Попытка переподключения через ${delay}ms`);
         reconnectTimeoutId = setTimeout(() => {
             reconnectTimeoutId = null;
@@ -199,9 +198,9 @@ function handleStreamError() {
     } else {
         reconnectDisabled = true;
         console.error('Максимальное количество попыток переподключения исчерпано');
-        showAlert('Не удается подключиться к камере', 'danger');
-        // сбросим src, чтобы остановить дальнейшие onerror от текущего bad-response
-        try { cameraStream.src = ''; } catch (_) { }
+        showAlert('Камера недоступна. Попробуйте перезапустить.', 'danger');
+        // Показываем placeholder
+        cameraStream.src = '/static/no-camera.svg';
     }
 }
 
@@ -221,12 +220,19 @@ function handleStreamLoad() {
 
 // ==================== УПРАВЛЕНИЕ ФАЙЛАМИ ====================
 
-function showFileTab(tabName, ev) {
+function showFileTab(tabName, event) {
     currentFileTab = tabName;
+
+    // Обновляем активную вкладку
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    if (ev && ev.target) ev.target.classList.add('active');
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
+
+    // Показываем нужный список
     document.getElementById('photos-list').style.display = tabName === 'photos' ? 'block' : 'none';
     document.getElementById('videos-list').style.display = tabName === 'videos' ? 'block' : 'none';
+
     refreshFiles();
 }
 
@@ -354,7 +360,7 @@ function deleteFile(filepath, filename) {
         .then(data => {
             if (data.success) {
                 showAlert(`🗑️ Файл удален: ${filename}`, 'warning');
-                refreshFiles(); // Обновляем список
+                refreshFiles();
             } else {
                 showAlert(`Ошибка удаления: ${data.error}`, 'danger');
             }
@@ -372,7 +378,6 @@ function clearOldFiles() {
         return;
     }
 
-    // Получаем список файлов и удаляем старые (старше 7 дней)
     const endpoint = currentFileTab === 'photos' ? '/api/files/photos' : '/api/files/videos';
 
     fetch(endpoint)
@@ -380,7 +385,7 @@ function clearOldFiles() {
         .then(data => {
             if (data.success) {
                 const files = data.data.files;
-                const weekAgo = Date.now() / 1000 - (7 * 24 * 60 * 60); // 7 дней назад
+                const weekAgo = Date.now() / 1000 - (7 * 24 * 60 * 60);
                 const oldFiles = files.filter(file => file.created < weekAgo);
 
                 if (oldFiles.length === 0) {
@@ -388,7 +393,6 @@ function clearOldFiles() {
                     return;
                 }
 
-                // Удаляем файлы один за другим
                 let deleted = 0;
                 oldFiles.forEach(file => {
                     sendCommand('/api/files/delete', 'POST', { filepath: file.path })
@@ -513,33 +517,31 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
+    // Обработчики событий видеопотока
     cameraStream.addEventListener('error', handleStreamError, { once: false });
+    cameraStream.addEventListener('load', handleStreamLoad);
 
-    const tag = cameraStream.tagName.toLowerCase();
-    if (tag === 'img') {
-        cameraStream.addEventListener('load', handleStreamLoad);
-    } else {
-        cameraStream.addEventListener('loadstart', function () {
-            console.log('Начало загрузки видеопотока');
-        });
-        cameraStream.addEventListener('canplay', handleStreamLoad);
-    }
-
+    // Проверка доступности камеры и инициализация стрима
     setTimeout(() => {
         checkCameraAvailability().then(available => {
             if (available) {
+                console.log('Камера доступна, инициализация стрима...');
                 initializeVideoStream();
             } else {
                 console.warn('Камера недоступна при инициализации');
                 updateCameraStatusIndicator(false);
+                cameraStream.src = '/static/no-camera.svg';
             }
         });
-    }, 1000);
+    }, 2000);
 
-    setTimeout(() => { refreshFiles(); }, 2000);
+    // Загрузка списка файлов
+    setTimeout(() => { refreshFiles(); }, 3000);
+
+    // Показываем подсказки
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
-    }, 3000);
+    }, 5000);
 });
 
 // ==================== ИНТЕГРАЦИЯ С ОСНОВНЫМ МОДУЛЕМ ====================
@@ -590,8 +592,13 @@ document.addEventListener('DOMContentLoaded', function () {
 function checkCameraAvailability() {
     return fetch('/api/camera/status')
         .then(response => response.json())
-        .then(data => data.success && data.data.available)
-        .catch(() => false);
+        .then(data => {
+            return data.success && data.data.available && data.data.connected;
+        })
+        .catch(() => {
+            console.warn('Ошибка проверки доступности камеры');
+            return false;
+        });
 }
 
 // Функция для получения списка доступных камер

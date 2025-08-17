@@ -6,7 +6,7 @@ import signal
 import os
 import time
 from datetime import datetime
-from flask import Flask, Blueprint, jsonify, request, render_template,  Response, stream_template
+from flask import Flask, Blueprint, jsonify, request, render_template, Response
 from pathlib import Path
 
 from .controller import RobotController
@@ -29,17 +29,25 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     camera = camera_instance
     if camera is None and not LIGHT_INIT:
         try:
-            available_cameras = list_available_cameras()
-            if available_cameras:
-                camera_config = CameraConfig(
-                    device_id=available_cameras[0],
-                    width=640, height=480, fps=30, auto_start=True
-                )
-                camera = USBCamera(camera_config)
-                logger.info(
-                    f"🎥 Камера инициализирована: /dev/video{available_cameras[0]}")
+            from .config import CAMERA_AVAILABLE, CAMERA_CONFIG
+            if CAMERA_AVAILABLE:
+                available_cameras = list_available_cameras()
+                if available_cameras:
+                    camera_config = CameraConfig(
+                        device_id=available_cameras[0],
+                        width=CAMERA_CONFIG.get('width', 640),
+                        height=CAMERA_CONFIG.get('height', 480),
+                        fps=CAMERA_CONFIG.get('fps', 30),
+                        auto_start=True
+                    )
+                    camera = USBCamera(camera_config)
+                    logger.info(
+                        f"🎥 Камера инициализирована: /dev/video{available_cameras[0]}")
+                else:
+                    logger.warning("🎥 USB камеры не найдены")
+                    camera = None
             else:
-                logger.warning("🎥 USB камеры не найдены")
+                logger.warning("🎥 OpenCV недоступен")
                 camera = None
         except Exception as e:
             logger.error(f"🎥 Ошибка инициализации камеры: {e}")
@@ -133,28 +141,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             **robot.get_status()
         })
 
-    # --------- универсальное управление ----------
-    @bp.route("/move", methods=["POST"])
-    def universal_move():
-        """Универсальное управление движением и рулем"""
-        data = request.get_json() or {}
-        speed = int(data.get("speed", 0))
-        direction = int(data.get("direction", 0))  # 0=stop, 1=fwd, 2=bwd
-        steering = int(data.get("steering", 90))   # 10-170, 90=center
-
-        speed = max(SPEED_MIN, min(SPEED_MAX, speed))
-        steering = max(10, min(170, steering))
-
-        success = robot.move_with_steering(speed, direction, steering)
-        return ok({
-            "command": "universal_move",
-            "speed": speed,
-            "direction": direction,
-            "steering": steering,
-            "success": success,
-            **robot.get_status()
-        })
-
     @bp.route("/speed", methods=["POST"])
     def update_speed():
         data = request.get_json() or {}
@@ -198,6 +184,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         if not camera:
             return ok({
                 "available": False,
+                "connected": False,
                 "error": "Камера не инициализирована"
             })
 
@@ -296,53 +283,56 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # --------- Веб-стрим камеры ----------
     @app.route("/camera/stream")
     def camera_stream():
-        """MJPEG стрим камеры. Никогда не шлём 503 и не вставляем text/plain части."""
-        boundary = b'--frame'
-
-        # 1x1 чёрный JPEG (base64) как заглушка, когда нет кадров
-        import base64
-        BLACK_JPEG_B64 = (
-            b'/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxISEhAQEBAVFhUVFRUVFRUVFRUVFRUVFRUWFhUY'
-            b'HSggGBolGxUVITEhJSkrLi4uFx8zODMtNygtLisBCgoKDg0OGxAQGy0lHyUtLS0tLS0tLS0tLS0t'
-            b'LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAKAAoAMBIgACEQEDEQH/xAAb'
-            b'AAACAgMBAAAAAAAAAAAAAAAFBgMHAQIEA//EADYQAAEDAQYEBQQDAAAAAAAAAAECAwQFESEGEjFB'
-            b'URNhInGBkaGxwRQjQlJicoKSorL/xAAZAQADAQEBAAAAAAAAAAAAAAABAgMABAX/xAAlEQACAQME'
-            b'AgMBAQAAAAAAAAABAhEDIRIxBCJBE1FhBWHwkeH/2gAMAwEAAhEDEQA/APaQAAAAAAAAAAAAAAAA'
-            b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-            b'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/Z'
-        )
-        BLACK_JPEG = base64.b64decode(BLACK_JPEG_B64)
-
+        """MJPEG стрим камеры"""
         def generate():
+            # 1x1 чёрный JPEG как заглушка
+            import base64
+            BLACK_JPEG_B64 = (
+                b'/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAd'
+                b'Hx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3'
+                b'Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAAEAAQMBIgACEQEDEQH/'
+                b'xAFiAAEBAAAAAAAAAAAAAAAAAAAABgEBAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAA'
+                b'AABQEAAAAAAAAAAAAAAAAAAAAAUAAAAAAAAAAAAAAAAAAAAP/2gAMAwEAAhEDEQA/AJ/9k='
+            )
+            BLACK_JPEG = base64.b64decode(BLACK_JPEG_B64)
+
             while True:
                 try:
-                    if app.camera is None:
-                        # Камеры нет — отдаём заглушку и ждём
-                        yield (boundary + b'\r\n'
+                    if camera is None or not camera.status.is_connected:
+                        # Камеры нет — отдаём заглушку
+                        yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
                         time.sleep(1.0)
                         continue
 
-                    frame_data = app.camera.get_frame_jpeg()
+                    frame_data = camera.get_frame_jpeg()
                     if not frame_data:
-                        # Нет кадров сейчас — отдаём заглушку, но не ломаем MIME
-                        yield (boundary + b'\r\n'
+                        # Нет кадров сейчас — отдаём заглушку
+                        yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
-                        time.sleep(
-                            1.0 / (app.camera.config.stream_fps if app.camera else 5))
+                        time.sleep(0.5)
                         continue
 
-                    yield (boundary + b'\r\n'
+                    yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-                    time.sleep(
-                        1.0 / (app.camera.config.stream_fps if app.camera else 10))
+
+                    # Контролируем FPS стрима
+                    stream_fps = getattr(camera.config, 'stream_fps', 15)
+                    time.sleep(1.0 / max(stream_fps, 5))
+
                 except GeneratorExit:
                     break
                 except Exception as e:
                     logger.error(f"MJPEG generator error: {e}")
-                    time.sleep(0.5)
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
+                    time.sleep(1.0)
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        return Response(generate(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame',
+                        headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                 'Pragma': 'no-cache',
+                                 'Expires': '0'})
 
     @bp.route("/camera/frame", methods=["GET"])
     def get_frame():
@@ -361,7 +351,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         else:
             return err("Нет доступных кадров")
 
-    # --------- мониторинг и диагностика (существующие + расширенные) ----------
+    # --------- мониторинг и диагностика ----------
     @bp.route("/status", methods=["GET"])
     def status():
         robot_status = robot.get_status()
@@ -370,7 +360,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         if camera:
             robot_status["camera"] = camera.get_status()
         else:
-            robot_status["camera"] = {"available": False}
+            robot_status["camera"] = {"available": False, "connected": False}
 
         return ok(robot_status)
 
@@ -382,7 +372,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             "controller_active": True,
             "camera_available": camera is not None,
             "camera_connected": camera.status.is_connected if camera else False,
-            "api_version": "2.1"  # Обновили версию для поддержки камеры
+            "api_version": "2.1"
         })
         return ok(status)
 
@@ -421,14 +411,15 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
             photos = []
             for file in photo_dir.glob("*.jpg"):
-                stat = file.stat()
-                photos.append({
-                    "filename": file.name,
-                    "path": str(file),
-                    "size": stat.st_size,
-                    "created": stat.st_mtime,
-                    "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                })
+                if file.is_file():
+                    stat = file.stat()
+                    photos.append({
+                        "filename": file.name,
+                        "path": str(file),
+                        "size": stat.st_size,
+                        "created": stat.st_mtime,
+                        "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                    })
 
             # Сортируем по времени создания (новые первые)
             photos.sort(key=lambda x: x["created"], reverse=True)
@@ -440,6 +431,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             })
 
         except Exception as e:
+            logger.error(f"Ошибка чтения директории фото: {e}")
             return err(f"Ошибка чтения директории фото: {e}")
 
     @bp.route("/files/videos", methods=["GET"])
@@ -455,14 +447,15 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
             videos = []
             for file in video_dir.glob("*.mp4"):
-                stat = file.stat()
-                videos.append({
-                    "filename": file.name,
-                    "path": str(file),
-                    "size": stat.st_size,
-                    "created": stat.st_mtime,
-                    "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                })
+                if file.is_file():
+                    stat = file.stat()
+                    videos.append({
+                        "filename": file.name,
+                        "path": str(file),
+                        "size": stat.st_size,
+                        "created": stat.st_mtime,
+                        "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                    })
 
             # Сортируем по времени создания (новые первые)
             videos.sort(key=lambda x: x["created"], reverse=True)
@@ -474,6 +467,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             })
 
         except Exception as e:
+            logger.error(f"Ошибка чтения директории видео: {e}")
             return err(f"Ошибка чтения директории видео: {e}")
 
     @bp.route("/files/delete", methods=["POST"])
@@ -495,7 +489,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                     Path(camera.config.video_path)
                 ]
 
-                if not any(file_path.is_relative_to(dir) for dir in allowed_dirs):
+                if not any(str(file_path).startswith(str(dir)) for dir in allowed_dirs):
                     return err("Файл вне разрешенных директорий", 403)
 
             if file_path.exists():
@@ -509,6 +503,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 return err("Файл не найден", 404)
 
         except Exception as e:
+            logger.error(f"Ошибка удаления файла: {e}")
             return err(f"Ошибка удаления файла: {e}")
 
     # Регистрируем API blueprint
@@ -519,12 +514,14 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def not_found(error):
         if request.path.startswith("/api/"):
             return err("endpoint not found", 404)
-        return render_template("index.html")  # Возвращаем главную для SPA
+        return render_template("index.html")
 
     @app.errorhandler(500)
     def internal_error(error):
         logger.error("Internal server error: %s", error)
-        return err("internal server error", 500)
+        if request.path.startswith("/api/"):
+            return err("internal server error", 500)
+        return render_template("index.html")
 
     # --------- корректное завершение ----------
     def _graceful_shutdown(*_):
@@ -542,8 +539,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     signal.signal(signal.SIGTERM, _graceful_shutdown)
 
     # Сохраняем ссылки на компоненты для доступа извне
-    app.robot = robot  # type: ignore[attr-defined]
-    app.camera = camera  # type: ignore[attr-defined]
+    app.robot = robot
+    app.camera = camera
 
     logger.info("🤖 Flask приложение создано успешно с поддержкой камеры")
     return app
