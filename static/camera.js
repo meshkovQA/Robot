@@ -243,8 +243,7 @@ function loadPhotosList() {
     const photosList = document.getElementById('photos-list');
     photosList.innerHTML = '<div class="file-loading">Загрузка...</div>';
 
-    fetch('/api/files/photos')
-        .then(response => response.json())
+    sendCommand('/api/files/photos', 'GET')
         .then(data => {
             if (data.success) {
                 displayFileList(data.data.files, 'photos-list', 'photo');
@@ -262,8 +261,7 @@ function loadVideosList() {
     const videosList = document.getElementById('videos-list');
     videosList.innerHTML = '<div class="file-loading">Загрузка...</div>';
 
-    fetch('/api/files/videos')
-        .then(response => response.json())
+    sendCommand('/api/files/videos', 'GET')
         .then(data => {
             if (data.success) {
                 displayFileList(data.data.files, 'videos-list', 'video');
@@ -321,7 +319,7 @@ function formatFileSize(bytes) {
 }
 
 function viewPhoto(filepath, filename, created, size) {
-    const photoUrl = `/static/photos/${filename}`;
+    const photoUrl = `/static/photos/${filename}?_t=${Date.now()}`;
 
     document.getElementById('modal-photo').src = photoUrl;
     document.getElementById('modal-photo-name').textContent = filename;
@@ -373,8 +371,7 @@ function clearOldFiles() {
 
     const endpoint = currentFileTab === 'photos' ? '/api/files/photos' : '/api/files/videos';
 
-    fetch(endpoint)
-        .then(response => response.json())
+    sendCommand(endpoint, 'GET')
         .then(data => {
             if (data.success) {
                 const files = data.data.files;
