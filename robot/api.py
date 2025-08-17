@@ -26,6 +26,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 template_folder='../templates',
                 static_folder='../static')
 
+    STATIC_ROOT = Path(app.static_folder).resolve()
+
     # ВКЛЮЧАЕМ CORS ДЛЯ ВСЕХ МАРШРУТОВ
     CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
@@ -382,23 +384,33 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # --------- мониторинг и диагностика ----------
 
     def _collect_files(dir_path: str, exts: tuple[str, ...]) -> list[dict]:
-        p = Path(dir_path)
-        if not p.exists():
-            p.mkdir(parents=True, exist_ok=True)
+        base = Path(dir_path)
+        base.mkdir(parents=True, exist_ok=True)
 
         items = []
-        for f in p.iterdir():
+        for f in base.iterdir():
             if f.is_file() and f.suffix.lower() in exts:
                 stat = f.stat()
                 created = int(stat.st_mtime)
+
+                # Пытаемся построить URL относительно /static
+                try:
+                    rel = f.resolve().relative_to(STATIC_ROOT)         # photos/xxx.jpg
+                    # /static/photos/xxx.jpg
+                    url = f"/static/{rel.as_posix()}"
+                except Exception:
+                    # Фоллбэк: ищем подпапку 'static' в полном пути
+                    parts = f.resolve().as_posix().split("/static/", 1)
+                    url = f"/static/{parts[1]}" if len(parts) == 2 else ""
+
                 items.append({
                     "filename": f.name,
-                    "path": str(f.resolve()),
+                    "path": str(f.resolve()),        # для удаления
+                    "url": url,                      # ← фронт будет использовать это
                     "size": stat.st_size,
                     "created": created,
                     "created_str": datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M:%S"),
                 })
-        # новые сверху
         items.sort(key=lambda x: x["created"], reverse=True)
         return items
 
