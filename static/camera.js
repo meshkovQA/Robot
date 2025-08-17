@@ -19,6 +19,10 @@ let streamReconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let streamInitialized = false;
 
+let reconnectTimeoutId = null;   // id активного таймера
+let reconnectDisabled = false;   // жёсткий стоп после лимита
+let lastStreamUrl = '';          // чтобы не дергать одинаковый src
+
 // ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
 function takePhoto() {
@@ -153,57 +157,76 @@ function initializeVideoStream() {
         console.error('Элемент video stream не найден');
         return;
     }
+    if (reconnectDisabled) {
+        console.warn('Переподключение отключено — достигнут лимит попыток');
+        return;
+    }
 
     const streamUrl = `/camera/stream?t=${Date.now()}`;
+    if (lastStreamUrl === streamUrl) {
+        // теоретически не попадём сюда из-за timestamp, но оставим защиту
+        return;
+    }
+    lastStreamUrl = streamUrl;
+
     console.log('Инициализация видеопотока:', streamUrl);
     cameraStream.src = streamUrl;
     streamInitialized = true;
 }
 
 function handleStreamError() {
-    console.warn(`Ошибка видеопотока (попытка ${streamReconnectAttempts + 1}/${maxReconnectAttempts})`);
+    if (reconnectDisabled) return;
 
+    console.warn(`Ошибка видеопотока (попытка ${streamReconnectAttempts + 1}/${maxReconnectAttempts})`);
     cameraConnected = false;
     updateCameraStatusIndicator(false);
+
+    if (reconnectTimeoutId) {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = null;
+    }
 
     if (streamReconnectAttempts < maxReconnectAttempts) {
         streamReconnectAttempts++;
         const delay = 2000 * streamReconnectAttempts;
         console.log(`Попытка переподключения через ${delay}ms`);
-        setTimeout(() => {
-            if (streamReconnectAttempts <= maxReconnectAttempts) initializeVideoStream();
+        reconnectTimeoutId = setTimeout(() => {
+            reconnectTimeoutId = null;
+            if (!reconnectDisabled && streamReconnectAttempts <= maxReconnectAttempts) {
+                initializeVideoStream();
+            }
         }, delay);
     } else {
-        if (streamReconnectAttempts === maxReconnectAttempts) {
-            console.error('Максимальное количество попыток переподключения исчерпано');
-            showAlert('Не удается подключиться к камере', 'danger');
-        }
+        reconnectDisabled = true;
+        console.error('Максимальное количество попыток переподключения исчерпано');
+        showAlert('Не удается подключиться к камере', 'danger');
+        // сбросим src, чтобы остановить дальнейшие onerror от текущего bad-response
+        try { cameraStream.src = ''; } catch (_) { }
     }
 }
 
 function handleStreamLoad() {
     console.log('Видеопоток успешно загружен');
+
+    if (reconnectTimeoutId) {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = null;
+    }
     streamReconnectAttempts = 0;
+    reconnectDisabled = false;
+
     cameraConnected = true;
     updateCameraStatusIndicator(true);
 }
 
 // ==================== УПРАВЛЕНИЕ ФАЙЛАМИ ====================
 
-function showFileTab(tabName) {
+function showFileTab(tabName, ev) {
     currentFileTab = tabName;
-
-    // Обновляем активную вкладку
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-
-    // Показываем соответствующий список
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (ev && ev.target) ev.target.classList.add('active');
     document.getElementById('photos-list').style.display = tabName === 'photos' ? 'block' : 'none';
     document.getElementById('videos-list').style.display = tabName === 'videos' ? 'block' : 'none';
-
-    // Загружаем файлы если еще не загружены
     refreshFiles();
 }
 
@@ -496,7 +519,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (tag === 'img') {
         cameraStream.addEventListener('load', handleStreamLoad);
     } else {
-        cameraStream.addEventListener('loadstart', () => console.log('Начало загрузки видеопотока'));
+        cameraStream.addEventListener('loadstart', function () {
+            console.log('Начало загрузки видеопотока');
+        });
         cameraStream.addEventListener('canplay', handleStreamLoad);
     }
 
@@ -511,10 +536,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }, 1000);
 
-    setTimeout(() => {
-        refreshFiles();
-    }, 2000);
-
+    setTimeout(() => { refreshFiles(); }, 2000);
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
     }, 3000);
