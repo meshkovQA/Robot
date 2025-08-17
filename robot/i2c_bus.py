@@ -5,7 +5,7 @@ import time
 import logging
 from typing import Protocol, Tuple, Optional
 
-from .config import I2C_AVAILABLE, I2C_BUS, ARDUINO_ADDRESS
+from robot.config import I2C_AVAILABLE, I2C_BUS, ARDUINO_ADDRESS
 
 logger = logging.getLogger(__name__)
 

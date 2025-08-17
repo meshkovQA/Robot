@@ -10,12 +10,11 @@ from flask import Flask, Blueprint, jsonify, request, render_template, Response
 from flask_cors import CORS  # ДОБАВЛЯЕМ CORS
 from pathlib import Path
 
-from .controller import RobotController
-from .camera import USBCamera, CameraConfig, list_available_cameras
-from .config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX
+from robot.controller import RobotController
+from robot.camera import USBCamera, CameraConfig, list_available_cameras
+from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
 from datetime import datetime
 from pathlib import Path
-from .config import CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
 
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FMT)
 logger = logging.getLogger(__name__)
