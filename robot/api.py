@@ -43,7 +43,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     camera = camera_instance
     if camera is None and not LIGHT_INIT:
         try:
-            from .config import CAMERA_AVAILABLE, CAMERA_CONFIG
+            from robot.config import CAMERA_AVAILABLE, CAMERA_CONFIG
             if CAMERA_AVAILABLE:
                 available_cameras = list_available_cameras()
                 if available_cameras:
