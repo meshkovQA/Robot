@@ -31,13 +31,13 @@ function moveForward() {
         });
 }
 
-function moveForward() {
+function moveBackward() {
     const speed = parseInt(speedSlider.value);
-    sendCommand('/api/move/forward', 'POST', { speed: speed })
+    sendCommand('/api/move/backward', 'POST', { speed: speed })
         .then(data => {
             if (data.success) {
-                showAlert(`Движение вперед (${speed})`, 'success');
-                updateMovementState(true, 'Движение вперед');
+                showAlert(`Движение назад (${speed})`, 'success');
+                updateMovementState(true, 'Движение назад');
             }
         });
 }
