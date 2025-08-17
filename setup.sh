@@ -67,7 +67,7 @@ sudo apt install -y python3 python3-venv python3-pip python3-dev \
                     v4l-utils uvcdynctrl guvcview \
                     libopencv-dev python3-opencv \
                     ffmpeg libavcodec-dev libavformat-dev libswscale-dev \
-                    libjpeg-dev libpng-dev libtiff-dev
+                    libjpeg-dev libpng-dev libtiff-dev flask-cors
 
 ok "Базовые пакеты установлены"
 
@@ -145,7 +145,7 @@ info "Установка Python зависимостей..."
 pip install --upgrade pip setuptools wheel
 
 # Основные зависимости
-pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 opencv-python || true
+pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 opencv-python flask-cors || true
 
 # Проверяем доступность OpenCV
 python3 -c "import cv2; print(f'✅ OpenCV {cv2.__version__} успешно импортирован')" || warn "OpenCV недоступен"
