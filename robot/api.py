@@ -13,6 +13,9 @@ from pathlib import Path
 from .controller import RobotController
 from .camera import USBCamera, CameraConfig, list_available_cameras
 from .config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX
+from datetime import datetime
+from pathlib import Path
+from .config import CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
 
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FMT)
 logger = logging.getLogger(__name__)
@@ -377,6 +380,69 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             return err("Нет доступных кадров")
 
     # --------- мониторинг и диагностика ----------
+
+    def _collect_files(dir_path: str, exts: tuple[str, ...]) -> list[dict]:
+        p = Path(dir_path)
+        if not p.exists():
+            p.mkdir(parents=True, exist_ok=True)
+
+        items = []
+        for f in p.iterdir():
+            if f.is_file() and f.suffix.lower() in exts:
+                stat = f.stat()
+                created = int(stat.st_mtime)
+                items.append({
+                    "filename": f.name,
+                    "path": str(f.resolve()),
+                    "size": stat.st_size,
+                    "created": created,
+                    "created_str": datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M:%S"),
+                })
+        # новые сверху
+        items.sort(key=lambda x: x["created"], reverse=True)
+        return items
+
+    @bp.route("/files/photos", methods=["GET"])
+    def files_photos():
+        try:
+            files = _collect_files(CAMERA_SAVE_PATH, (".jpg", ".jpeg", ".png"))
+            return ok({"files": files})
+        except Exception as e:
+            return err(f"Ошибка списка фото: {e}", 500)
+
+    @bp.route("/files/videos", methods=["GET"])
+    def files_videos():
+        try:
+            files = _collect_files(
+                CAMERA_VIDEO_PATH, (".mp4", ".avi", ".mov", ".mkv"))
+            return ok({"files": files})
+        except Exception as e:
+            return err(f"Ошибка списка видео: {e}", 500)
+
+    @bp.route("/files/delete", methods=["POST"])
+    def files_delete():
+        data = request.get_json() or {}
+        filepath = data.get("filepath")
+        if not filepath:
+            return err("Не указан filepath", 400)
+
+        try:
+            target = Path(filepath).resolve()
+            photos_root = Path(CAMERA_SAVE_PATH).resolve()
+            videos_root = Path(CAMERA_VIDEO_PATH).resolve()
+
+            # защита: удаляем только из наших директорий
+            if not (str(target).startswith(str(photos_root)) or str(target).startswith(str(videos_root))):
+                return err("Недопустимый путь", 400)
+
+            if target.exists() and target.is_file():
+                target.unlink()
+                return ok({"deleted": str(target.name)})
+            else:
+                return err("Файл не найден", 404)
+        except Exception as e:
+            return err(f"Ошибка удаления: {e}", 500)
+
     @bp.route("/status", methods=["GET"])
     def status():
         robot_status = robot.get_status()
