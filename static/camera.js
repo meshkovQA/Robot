@@ -154,18 +154,9 @@ function initializeVideoStream() {
         return;
     }
 
-    // Сбрасываем счетчик попыток при новой инициализации
-    streamReconnectAttempts = 0;
-
-    // Устанавливаем новый URL с timestamp для избежания кеширования
     const streamUrl = `/camera/stream?t=${Date.now()}`;
-
     console.log('Инициализация видеопотока:', streamUrl);
-
-    // Устанавливаем источник
     cameraStream.src = streamUrl;
-
-    // Помечаем как инициализированный
     streamInitialized = true;
 }
 
@@ -177,26 +168,22 @@ function handleStreamError() {
 
     if (streamReconnectAttempts < maxReconnectAttempts) {
         streamReconnectAttempts++;
-
-        // Увеличиваем задержку с каждой попыткой
         const delay = 2000 * streamReconnectAttempts;
-
         console.log(`Попытка переподключения через ${delay}ms`);
-
         setTimeout(() => {
-            if (streamReconnectAttempts <= maxReconnectAttempts) {
-                initializeVideoStream();
-            }
+            if (streamReconnectAttempts <= maxReconnectAttempts) initializeVideoStream();
         }, delay);
     } else {
-        console.error('Максимальное количество попыток переподключения исчерпано');
-        showAlert('Не удается подключиться к камере', 'danger');
+        if (streamReconnectAttempts === maxReconnectAttempts) {
+            console.error('Максимальное количество попыток переподключения исчерпано');
+            showAlert('Не удается подключиться к камере', 'danger');
+        }
     }
 }
 
 function handleStreamLoad() {
     console.log('Видеопоток успешно загружен');
-    streamReconnectAttempts = 0; // Сбрасываем счетчик при успешном подключении
+    streamReconnectAttempts = 0;
     cameraConnected = true;
     updateCameraStatusIndicator(true);
 }
@@ -498,23 +485,21 @@ document.addEventListener('keydown', function (event) {
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🎥 Модуль камеры загружен');
 
-    // Проверяем наличие элемента видеопотока
     if (!cameraStream) {
         console.error('Элемент camera-stream не найден в DOM');
         return;
     }
 
-    // Устанавливаем единственный обработчик ошибок
     cameraStream.addEventListener('error', handleStreamError, { once: false });
 
-    // Устанавливаем обработчик успешной загрузки
-    cameraStream.addEventListener('loadstart', function () {
-        console.log('Начало загрузки видеопотока');
-    });
+    const tag = cameraStream.tagName.toLowerCase();
+    if (tag === 'img') {
+        cameraStream.addEventListener('load', handleStreamLoad);
+    } else {
+        cameraStream.addEventListener('loadstart', () => console.log('Начало загрузки видеопотока'));
+        cameraStream.addEventListener('canplay', handleStreamLoad);
+    }
 
-    cameraStream.addEventListener('canplay', handleStreamLoad);
-
-    // Инициализация видеопотока с задержкой
     setTimeout(() => {
         checkCameraAvailability().then(available => {
             if (available) {
@@ -526,12 +511,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }, 1000);
 
-    // Загружаем начальный список фото
     setTimeout(() => {
         refreshFiles();
     }, 2000);
 
-    // Показываем подсказку по горячим клавишам
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
     }, 3000);

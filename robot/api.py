@@ -299,22 +299,17 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def camera_stream():
         """MJPEG стрим камеры"""
         if not camera or not camera.status.is_connected:
-            # Возвращаем статическое изображение с ошибкой
-            return Response(
-                b'--frame\r\nContent-Type: text/plain\r\n\r\nCamera not available\r\n',
-                mimetype='multipart/x-mixed-replace; boundary=frame'
-            )
+            return Response("Camera not available", status=503, mimetype="text/plain")
 
         def generate():
             while True:
                 frame_data = camera.get_frame_jpeg()
-                if frame_data:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-                else:
-                    # Если нет кадра, отправляем заглушку
-                    yield (b'--frame\r\n'
-                           b'Content-Type: text/plain\r\n\r\nNo frame available\r\n')
+                if not frame_data:
+                    time.sleep(0.1)
+                    continue
+
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
 
                 time.sleep(1.0 / (camera.config.stream_fps if camera else 10))
 
