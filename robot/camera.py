@@ -8,7 +8,7 @@ import base64
 from typing import Optional, Tuple, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from .api import PHOTOS_DIR, VIDEOS_DIR
+from .config import CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
 import os
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class CameraConfig:
     fps: int = 30
     quality: int = 80  # JPEG качество (1-100)
     auto_start: bool = True
-    save_path = str(PHOTOS_DIR),   # ← ВАЖНО
-    video_path = str(VIDEOS_DIR),  # ← ВАЖНО
+    save_path = str(CAMERA_SAVE_PATH),   # ← ВАЖНО
+    video_path = str(CAMERA_VIDEO_PATH),  # ← ВАЖНО
 
     # Настройки камеры
     brightness: int = 50  # 0-100
