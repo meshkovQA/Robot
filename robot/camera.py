@@ -31,8 +31,8 @@ class CameraConfig:
     fps: int = 30
     quality: int = 80  # JPEG качество (1-100)
     auto_start: bool = True
-    save_path: str = f"{os.path.expanduser('~')}/robot_web/photos"
-    video_path: str = f"{os.path.expanduser('~')}/robot_web/videos"
+    save_path: str = f"{os.path.expanduser('~')}/robot_web/static/photos"
+    video_path: str = f"{os.path.expanduser('~')}/robot_web/static/videos"
 
     # Настройки камеры
     brightness: int = 50  # 0-100
