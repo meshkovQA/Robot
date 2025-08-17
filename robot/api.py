@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(controller: RobotController | None = None) -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__,
+                template_folder='../templates',
+                static_folder='../static')
     robot = controller or RobotController()
 
     # API Blueprint
