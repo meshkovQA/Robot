@@ -221,7 +221,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
         data = request.get_json() or {}
         filename = data.get("filename")
-        duration = data.get("duration")  # Максимальная длительность в секундах
+        duration = data.get("duration")
 
         success, result = camera.start_recording(filename, duration)
 
@@ -280,59 +280,73 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         except Exception as e:
             return err(f"Ошибка сканирования камер: {e}")
 
-    # --------- Веб-стрим камеры ----------
+    # --------- ИСПРАВЛЕННЫЙ Веб-стрим камеры ----------
     @app.route("/camera/stream")
     def camera_stream():
-        """MJPEG стрим камеры"""
+        """MJPEG стрим камеры - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+
         def generate():
-            # 1x1 чёрный JPEG как заглушка
+            """Генератор кадров для MJPEG стрима"""
+            # Заглушка - черный квадрат в JPEG
             import base64
-            BLACK_JPEG_B64 = (
-                b'/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAd'
-                b'Hx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3'
-                b'Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAAEAAQMBIgACEQEDEQH/'
-                b'xAFiAAEBAAAAAAAAAAAAAAAAAAAABgEBAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAA'
-                b'AABQEAAAAAAAAAAAAAAAAAAAAAUAAAAAAAAAAAAAAAAAAAAP/2gAMAwEAAhEDEQA/AJ/9k='
-            )
+            BLACK_JPEG_B64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/gA=='
             BLACK_JPEG = base64.b64decode(BLACK_JPEG_B64)
+
+            logger.info("Запущен MJPEG генератор")
 
             while True:
                 try:
-                    if camera is None or not camera.status.is_connected:
-                        # Камеры нет — отдаём заглушку
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
-                        time.sleep(1.0)
-                        continue
+                    frame_data = None
 
-                    frame_data = camera.get_frame_jpeg()
+                    # Пытаемся получить кадр от камеры
+                    if camera and camera.status.is_connected:
+                        frame_data = camera.get_frame_jpeg()
+
+                    # Если нет кадра - используем заглушку
                     if not frame_data:
-                        # Нет кадров сейчас — отдаём заглушку
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
-                        time.sleep(0.5)
-                        continue
+                        frame_data = BLACK_JPEG
 
+                    # Отправляем кадр в MJPEG формате
                     yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                           b'Content-Type: image/jpeg\r\n'
+                           b'Content-Length: ' +
+                           str(len(frame_data)).encode() + b'\r\n'
+                           b'\r\n' + frame_data + b'\r\n')
 
-                    # Контролируем FPS стрима
-                    stream_fps = getattr(camera.config, 'stream_fps', 15)
-                    time.sleep(1.0 / max(stream_fps, 5))
+                    # Контролируем FPS
+                    if camera and hasattr(camera.config, 'stream_fps'):
+                        fps = max(camera.config.stream_fps, 5)
+                    else:
+                        fps = 10
+
+                    time.sleep(1.0 / fps)
 
                 except GeneratorExit:
+                    logger.info("MJPEG генератор остановлен")
                     break
                 except Exception as e:
-                    logger.error(f"MJPEG generator error: {e}")
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + BLACK_JPEG + b'\r\n')
+                    logger.error(f"Ошибка в MJPEG генераторе: {e}")
+                    # При ошибке отправляем заглушку
+                    try:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n'
+                               b'Content-Length: ' +
+                               str(len(BLACK_JPEG)).encode() + b'\r\n'
+                               b'\r\n' + BLACK_JPEG + b'\r\n')
+                    except:
+                        break
                     time.sleep(1.0)
 
-        return Response(generate(),
-                        mimetype='multipart/x-mixed-replace; boundary=frame',
-                        headers={'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                 'Pragma': 'no-cache',
-                                 'Expires': '0'})
+        return Response(
+            generate(),
+            mimetype='multipart/x-mixed-replace; boundary=frame',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'Connection': 'close'
+            }
+        )
 
     @bp.route("/camera/frame", methods=["GET"])
     def get_frame():
@@ -421,7 +435,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                         "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
                     })
 
-            # Сортируем по времени создания (новые первые)
             photos.sort(key=lambda x: x["created"], reverse=True)
 
             return ok({
@@ -457,7 +470,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                         "created_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
                     })
 
-            # Сортируем по времени создания (новые первые)
             videos.sort(key=lambda x: x["created"], reverse=True)
 
             return ok({
