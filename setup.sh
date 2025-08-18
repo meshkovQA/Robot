@@ -125,10 +125,8 @@ fi
 # --- создание структуры проекта ---
 info "Создание структуры проекта в $PROJECT_DIR ..."
 mkdir -p "$PROJECT_DIR"/{robot,templates,static,logs,photos,videos}
+mkdir -p "$PROJECT_DIR/static"/{photos,videos}
 
-# Создаем символические ссылки для веб-доступа к медиафайлам
-ln -sf "$PROJECT_DIR/photos" "$PROJECT_DIR/static/photos" 2>/dev/null || true
-ln -sf "$PROJECT_DIR/videos" "$PROJECT_DIR/static/videos" 2>/dev/null || true
 
 # --- виртуальное окружение ---
 if [[ ! -d "$VENV_DIR" ]]; then
@@ -192,8 +190,8 @@ CAMERA_CONTRAST=50
 CAMERA_SATURATION=50
 
 # Пути сохранения
-CAMERA_SAVE_PATH=$HOME_DIR/robot_web/photos
-CAMERA_VIDEO_PATH=$HOME_DIR/robot_web/videos
+CAMERA_SAVE_PATH=$HOME_DIR/robot_web/static/photos
+CAMERA_VIDEO_PATH=$HOME_DIR/robot_web/static/videos
 
 # Автозапуск
 CAMERA_AUTO_START=true
@@ -425,8 +423,8 @@ chmod -R u+rwX "$PROJECT_DIR"
 find "$PROJECT_DIR" -type f -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
 
 # Права для папок с медиафайлами
-chmod 755 "$PROJECT_DIR"/{photos,videos}
-chown -R "$USER_NAME:$USER_NAME" "$PROJECT_DIR"/{photos,videos} 2>/dev/null || true
+chmod 755 "$PROJECT_DIR/static"/{photos,videos}
+chown -R "$USER_NAME:$USER_NAME" "$PROJECT_DIR/static"/{photos,videos} 2>/dev/null || true
 
 # --- проверка синтаксиса Python ---
 info "Проверка синтаксиса Python файлов..."
@@ -707,8 +705,8 @@ echo -e "\n📁 Файлы проекта:"
 ls -la $HOME/robot_web/ 2>/dev/null | head -10
 
 echo -e "\n📸 Медиафайлы:"
-PHOTOS_COUNT=$(find $HOME/robot_web/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
-VIDEOS_COUNT=$(find $HOME/robot_web/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
+PHOTOS_COUNT=$(find $HOME/robot_web/static/photos -name "*.jpg" 2>/dev/null | wc -l || echo "0")
+VIDEOS_COUNT=$(find $HOME/robot_web/static/videos -name "*.mp4" 2>/dev/null | wc -l || echo "0")
 echo "Фотографий: $PHOTOS_COUNT"
 echo "Видеофайлов: $VIDEOS_COUNT"
 
@@ -926,8 +924,8 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo ""
     echo "📂 Файлы проекта: $PROJECT_DIR"
     echo "⚙️ Конфигурация: $ENV_FILE"
-    echo "📸 Фотографии: $PROJECT_DIR/photos"
-    echo "🎬 Видео: $PROJECT_DIR/videos"
+    echo "📸 Фотографии: $PROJECT_DIR/static/photos"
+    echo "🎬 Видео: $PROJECT_DIR/static/videos"
     echo ""
     
     # Информация о камере
