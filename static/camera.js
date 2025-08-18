@@ -277,7 +277,6 @@ function loadVideosList() {
 
 function displayFileList(files, containerId, fileType) {
     const container = document.getElementById(containerId);
-
     if (files.length === 0) {
         container.innerHTML = `<div class="file-empty">Нет сохраненных ${fileType === 'photo' ? 'фотографий' : 'видео'}</div>`;
         return;
@@ -289,19 +288,19 @@ function displayFileList(files, containerId, fileType) {
         const icon = fileType === 'photo' ? '📸' : '🎥';
 
         html += `
-            <div class="file-item">
-                <div class="file-info">
-                    <div class="file-name">${icon} ${file.filename}</div>
-                    <div class="file-details">${file.created_str} • ${sizeStr}</div>
-                </div>
-                <div class="file-actions">
-                    ${fileType === 'photo'
+      <div class="file-item">
+        <div class="file-info">
+          <div class="file-name">${icon} ${file.filename}</div>
+          <div class="file-details">${file.created_str} • ${sizeStr}</div>
+        </div>
+        <div class="file-actions">
+          ${fileType === 'photo'
                 ? `<button class="file-action-btn" onclick="viewPhoto('${file.url}', '${file.filename}', '${file.created_str}', '${sizeStr}')">👁️</button>`
                 : `<button class="file-action-btn" onclick="downloadFile('${file.url}', '${file.filename}')">⬇️</button>`
             }
-                    <button class="file-action-btn btn-danger" onclick="deleteFile('${file.path}', '${file.filename}')">🗑️</button>
-                </div>
-            </div>`;
+          <button class="file-action-btn btn-danger" onclick="deleteFile('${file.path}', '${file.filename}')">🗑️</button>
+        </div>
+      </div>`;
     });
 
     container.innerHTML = html;
@@ -326,12 +325,12 @@ function viewPhoto(url, filename, created, size) {
 }
 
 function downloadFile(url, filename) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     showAlert(`⬇️ Скачивание: ${filename}`, 'success');
 }
 
