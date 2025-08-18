@@ -189,10 +189,6 @@ CAMERA_BRIGHTNESS=50
 CAMERA_CONTRAST=50
 CAMERA_SATURATION=50
 
-# Пути сохранения
-CAMERA_SAVE_PATH=$HOME_DIR/robot_web/static/photos
-CAMERA_VIDEO_PATH=$HOME_DIR/robot_web/static/videos
-
 # Автозапуск
 CAMERA_AUTO_START=true
 
