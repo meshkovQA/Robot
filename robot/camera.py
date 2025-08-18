@@ -32,8 +32,8 @@ class CameraConfig:
     fps: int = 30
     quality: int = 80  # JPEG качество (1-100)
     auto_start: bool = True
-    save_path = str(CAMERA_SAVE_PATH)  # ← ВАЖНО
-    video_path = str(CAMERA_VIDEO_PATH)  # ← ВАЖНО
+    save_path: str = CAMERA_SAVE_PATH
+    video_path: str = CAMERA_VIDEO_PATH
 
     # Настройки камеры
     brightness: int = 50  # 0-100
@@ -198,12 +198,9 @@ class USBCamera:
 
             # Настройки изображения (если поддерживаются)
             try:
-                self._cap.set(cv2.CAP_PROP_BRIGHTNESS,
-                              self.config.brightness / 100.0)
-                self._cap.set(cv2.CAP_PROP_CONTRAST,
-                              self.config.contrast / 100.0)
-                self._cap.set(cv2.CAP_PROP_SATURATION,
-                              self.config.saturation / 100.0)
+                self._cap.set(cv2.CAP_PROP_SATURATION, 128)
+                self._cap.set(cv2.CAP_PROP_BRIGHTNESS, 128)
+                self._cap.set(cv2.CAP_PROP_CONTRAST, 128)
             except Exception as e:
                 logger.warning(
                     f"Не удалось установить параметры изображения: {e}")

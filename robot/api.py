@@ -27,8 +27,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     STATIC_ROOT = Path(app.static_folder).resolve()
 
-    PHOTOS_DIR = STATIC_ROOT / "photos"
-    VIDEOS_DIR = STATIC_ROOT / "videos"
+    PHOTOS_DIR = Path(CAMERA_SAVE_PATH)
+    VIDEOS_DIR = Path(CAMERA_VIDEO_PATH)
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 

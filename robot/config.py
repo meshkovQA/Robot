@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 STATIC_DIR = PROJECT_ROOT / "static"
 
@@ -54,7 +54,7 @@ CAMERA_STREAM_FPS = int(os.getenv("CAMERA_STREAM_FPS", "15"))  # FPS веб-ст
 # Настройки изображения
 CAMERA_BRIGHTNESS = int(os.getenv("CAMERA_BRIGHTNESS", "50"))  # 0-100
 CAMERA_CONTRAST = int(os.getenv("CAMERA_CONTRAST", "50"))      # 0-100
-CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "50"))  # 0-100
+CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "65"))  # 0-100
 
 # Пути сохранения
 CAMERA_SAVE_PATH = os.getenv("CAMERA_SAVE_PATH", str(STATIC_DIR / "photos"))
