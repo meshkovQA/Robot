@@ -66,6 +66,48 @@
                             <button class="camera-btn btn-record" id="record-btn" onclick="toggleRecording()">🎥 Запись</button>
                             <button class="camera-btn btn-refresh" onclick="refreshCamera()">🔄 Обновить</button>
                         </div>
+
+                        <div class="camera-pan-tilt-controls">
+                            <h3>🎯 Управление поворотом камеры</h3>
+                            
+                            <div class="pan-tilt-grid">
+                                <!-- Вертикальные кнопки -->
+                                <div></div>
+                                <button class="pan-tilt-btn btn-tilt-up" onclick="cameraTiltUp()">⬆️</button>
+                                <div></div>
+                                
+                                <!-- Горизонтальные кнопки и центр -->
+                                <button class="pan-tilt-btn btn-pan-left" onclick="cameraPanLeft()">⬅️</button>
+                                <button class="pan-tilt-btn btn-center" onclick="cameraCenter()">🎯</button>
+                                <button class="pan-tilt-btn btn-pan-right" onclick="cameraPanRight()">➡️</button>
+                                
+                                <!-- Вертикальные кнопки -->
+                                <div></div>
+                                <button class="pan-tilt-btn btn-tilt-down" onclick="cameraTiltDown()">⬇️</button>
+                                <div></div>
+                            </div>
+                            
+                            <div class="angle-display">
+                                <div class="angle-info">
+                                    <span>Горизонт: <strong id="pan-angle">90°</strong></span>
+                                    <span>Вертикаль: <strong id="tilt-angle">90°</strong></span>
+                                </div>
+                                <div class="angle-sliders">
+                                    <div class="angle-slider-group">
+                                        <label>Pan (0° - 180°)</label>
+                                        <input type="range" class="angle-slider" id="pan-slider" 
+                                            min="0" max="180" value="90" step="5"
+                                            onchange="setCameraPan(this.value)">
+                                    </div>
+                                    <div class="angle-slider-group">
+                                        <label>Tilt (50° - 150°)</label>
+                                        <input type="range" class="angle-slider" id="tilt-slider" 
+                                            min="50" max="150" value="90" step="5"
+                                            onchange="setCameraTilt(this.value)">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -175,6 +217,7 @@
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script src="{{ url_for('static', filename='camera.js') }}"></script>
+    <script src="{{ url_for('static', filename='camera-control.js') }}"></script>
 </body>
 
 </html>
