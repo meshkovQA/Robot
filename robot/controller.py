@@ -327,13 +327,13 @@ class RobotController:
     def pan_left(self, step: int = None) -> bool:
         """Повернуть камеру влево на заданный шаг"""
         step = step or CAMERA_STEP_SIZE
-        new_angle = self.current_pan_angle - step
+        new_angle = self.current_pan_angle + step
         return self.set_camera_pan(new_angle)
 
     def pan_right(self, step: int = None) -> bool:
         """Повернуть камеру вправо на заданный шаг"""
         step = step or CAMERA_STEP_SIZE
-        new_angle = self.current_pan_angle + step
+        new_angle = self.current_pan_angle - step
         return self.set_camera_pan(new_angle)
 
     def tilt_up(self, step: int = None) -> bool:
