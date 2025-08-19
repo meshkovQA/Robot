@@ -65,8 +65,9 @@ async function fetchCameraLimits() {
             const tiltSlider = document.getElementById('tilt-slider');
 
             if (panSlider) {
-                panSlider.min = cameraLimits.pan.min;
-                panSlider.max = cameraLimits.pan.max;
+                panSlider.min = 180 - cameraLimits.pan.max; // ИНВЕРТИРУЕМ
+                panSlider.max = 180 - cameraLimits.pan.min;
+                panSlider.value = 180 - cameraAngles.pan;
             }
 
             if (tiltSlider) {
@@ -168,14 +169,15 @@ function updateAngleSliders() {
     const panSlider = document.getElementById('pan-slider');
     const tiltSlider = document.getElementById('tilt-slider');
 
-    if (panSlider && panSlider.value != cameraAngles.pan) {
-        panSlider.value = cameraAngles.pan;
+    if (panSlider && panSlider.value != (180 - cameraAngles.pan)) {
+        panSlider.value = 180 - cameraAngles.pan; // ИНВЕРТИРУЕМ
     }
 
     if (tiltSlider && tiltSlider.value != cameraAngles.tilt) {
         tiltSlider.value = cameraAngles.tilt;
     }
 }
+
 
 // ==================== АВТООБНОВЛЕНИЕ ====================
 
