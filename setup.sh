@@ -313,112 +313,66 @@ EOF
 
 chmod +x "$PROJECT_DIR/test_frame.py"
 
-# --- создание файла настроек конфигурации ---
-info "Создание файла настроек конфигурации..."
-cat > "$PROJECT_DIR/config_local.py" <<'EOF'
-# config_local.py - Локальные настройки робота
-# Этот файл можно редактировать для изменения конфигурации
-# Импортируется после основного config.py и переопределяет значения
+# --- создание документации по настройкам ---
+info "Создание документации по настройкам..."
+cat > "$PROJECT_DIR/SETTINGS.md" <<'EOF'
+# Настройки Robot Web Interface
 
-# ==================== ОСНОВНЫЕ НАСТРОЙКИ ====================
+Все настройки находятся в файле `robot/config.py`.
 
-# I2C адрес Arduino (по умолчанию 0x08)
-# ARDUINO_ADDRESS = 0x08
+## Основные параметры:
 
-# Пороги остановки (в сантиметрах)
-# SENSOR_FWD_STOP_CM = 15  # остановка при движении вперед
-# SENSOR_BWD_STOP_CM = 10  # остановка при движении назад
+### I2C и датчики:
+- `ARDUINO_ADDRESS = 0x08` - адрес Arduino
+- `SENSOR_FWD_STOP_CM = 15` - порог остановки спереди (см)
+- `SENSOR_BWD_STOP_CM = 10` - порог остановки сзади (см)
 
-# Скорость по умолчанию (0-255)
-# DEFAULT_SPEED = 70
+### Камера:
+- `CAMERA_DEVICE_ID = 0` - номер устройства (/dev/video0)
+- `CAMERA_WIDTH = 640` - ширина изображения
+- `CAMERA_HEIGHT = 480` - высота изображения
+- `CAMERA_FPS = 15` - частота кадров
 
-# ==================== НАСТРОЙКИ КАМЕРЫ ====================
+### Повороты камеры:
+- `CAMERA_PAN_MIN = 0` - минимальный угол поворота
+- `CAMERA_PAN_MAX = 180` - максимальный угол поворота
+- `CAMERA_PAN_DEFAULT = 90` - центральная позиция
 
-# Основные параметры камеры
-# CAMERA_DEVICE_ID = 0     # /dev/video0
-# CAMERA_WIDTH = 640
-# CAMERA_HEIGHT = 480
-# CAMERA_FPS = 15
+- `CAMERA_TILT_MIN = 50` - минимальный угол наклона
+- `CAMERA_TILT_MAX = 150` - максимальный угол наклона
+- `CAMERA_TILT_DEFAULT = 90` - центральная позиция
 
-# Качество изображения (1-100)
-# CAMERA_QUALITY = 70           # качество фото
-# CAMERA_STREAM_QUALITY = 50    # качество видеопотока
+- `CAMERA_STEP_SIZE = 10` - шаг поворота в градусах
 
-# Предустановка качества: "low", "medium", "high", "ultra"
-# CAMERA_PRESET = "low"
+### Логирование:
+- `LOG_LEVEL = "INFO"` - уровень логов (DEBUG, INFO, WARNING, ERROR)
 
-# ==================== ПОВОРОТЫ КАМЕРЫ ====================
+## Как изменить настройки:
 
-# Ограничения углов поворота (0-180 градусов)
-# CAMERA_PAN_MIN = 0
-# CAMERA_PAN_MAX = 180
-# CAMERA_PAN_DEFAULT = 90
+1. Отредактируйте файл: `nano robot/config.py`
+2. Найдите нужный параметр и измените его значение
+3. Перезапустите сервис: `./restart.sh`
 
-# Ограничения углов наклона (50-150 градусов)
-# CAMERA_TILT_MIN = 50
-# CAMERA_TILT_MAX = 150
-# CAMERA_TILT_DEFAULT = 90
+## Примеры изменений:
 
-# Шаг поворота (градусы за одну команду)
-# CAMERA_STEP_SIZE = 10
-
-# ==================== БЕЗОПАСНОСТЬ ====================
-
-# API ключ для защиты (оставьте пустым для отключения)
-# API_KEY = ""
-
-# ==================== ЛОГИРОВАНИЕ ====================
-
-# Уровень логирования: "DEBUG", "INFO", "WARNING", "ERROR"
-# LOG_LEVEL = "INFO"
-
-# Отладка камеры
-# ENABLE_CAMERA_DEBUG = False
-
-# ==================== РАСШИРЕННЫЕ ФУНКЦИИ ====================
-
-# Автоматические функции (True/False)
-# RECORD_ON_ROBOT_MOVE = False      # запись при движении
-# PHOTO_ON_OBSTACLE = False         # фото при препятствии
-# SAVE_FRAME_ON_EMERGENCY = True   # кадр при аварийной остановке
-
-# Детекция движения
-# ENABLE_MOTION_DETECTION = False
-# AUTO_RECORD_ON_MOTION = False
-
-# Наложения на видео
-# ENABLE_VIDEO_OVERLAY = False
-# OVERLAY_TIMESTAMP = False
-
-# ==================== ИНСТРУКЦИИ ====================
-
-"""
-Для изменения настроек:
-1. Раскомментируйте нужную строку (уберите # в начале)
-2. Измените значение
-3. Перезапустите сервис: ./restart.sh
-
-Примеры:
-
+```python
 # Изменить разрешение камеры на HD
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
-CAMERA_PRESET = "high"
 
-# Изменить пороги остановки
+# Ужесточить пороги остановки
 SENSOR_FWD_STOP_CM = 20
 SENSOR_BWD_STOP_CM = 15
 
-# Включить отладку
-LOG_LEVEL = "DEBUG"
-ENABLE_CAMERA_DEBUG = True
-
-# Ограничить углы камеры
+# Ограничить углы поворота камеры
 CAMERA_PAN_MIN = 30
 CAMERA_PAN_MAX = 150
-CAMERA_TILT_MIN = 60
-CAMERA_TILT_MAX = 120
-"""
+
+# Включить отладку
+LOG_LEVEL = "DEBUG"
+```
+
+После изменений всегда выполняйте: `./restart.sh`
 EOF
 
 # --- установка прав доступа ---
@@ -511,129 +465,7 @@ ok "Systemd сервис создан и включен для автозапу�
 # --- создание вспомогательных скриптов ---
 info "Создание управляющих скриптов..."
 
-# Скрипт тестирования камеры
-cat > "$PROJECT_DIR/test_camera.sh" <<'EOF'
-#!/bin/bash
-echo "🎥 Расширенное тестирование USB камеры..."
-
-echo "📋 Доступные видеоустройства:"
-ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
-
-echo ""
-echo "🔍 Информация о камерах:"
-for device in /dev/video*; do
-    if [[ -c "$device" ]]; then
-        echo "Устройство: $device"
-        v4l2-ctl --device="$device" --info 2>/dev/null | head -5 || echo "Ошибка чтения $device"
-        echo "Поддерживаемые форматы:"
-        v4l2-ctl --device="$device" --list-formats-ext 2>/dev/null | head -10 || echo "Ошибка чтения форматов"
-        echo "---"
-    fi
-done
-
-echo ""
-echo "👥 Права доступа:"
-echo "Пользователь: $USER"
-echo "Группы: $(groups $USER)"
-echo "Права на /dev/video0:"
-ls -la /dev/video0 2>/dev/null || echo "/dev/video0 не найден"
-
-echo ""
-echo "🐍 Тест Python OpenCV:"
-python3 -c "
-import cv2
-import sys
-import time
-
-print(f'OpenCV версия: {cv2.__version__}')
-
-# Проверяем доступные камеры
-available_cameras = []
-for i in range(5):
-    cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
-    if cap.isOpened():
-        ret, _ = cap.read()
-        if ret:
-            available_cameras.append(i)
-        cap.release()
-
-print(f'Доступные камеры: {available_cameras}')
-
-if available_cameras:
-    device_id = available_cameras[0]
-    print(f'Тестируем камеру /dev/video{device_id}...')
-    
-    cap = cv2.VideoCapture(device_id, cv2.CAP_V4L2)
-    if cap.isOpened():
-        print(f'✅ Камера /dev/video{device_id} открыта успешно')
-        
-        # Настраиваем камеру
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 15)
-        
-        # Читаем несколько кадров
-        success_count = 0
-        for i in range(5):
-            ret, frame = cap.read()
-            if ret and frame is not None:
-                success_count += 1
-            time.sleep(0.2)
-        
-        if success_count > 2:
-            print(f'✅ Получено {success_count}/5 кадров - камера работает!')
-            print(f'Размер кадра: {frame.shape if \"frame\" in locals() else \"неизвестно\"}')
-        else:
-            print(f'⚠️ Получено только {success_count}/5 кадров - возможны проблемы')
-        
-        cap.release()
-    else:
-        print(f'❌ Не удалось открыть камеру /dev/video{device_id}')
-else:
-    print('❌ Камеры не найдены или недоступны')
-"
-
-echo ""
-echo "🤖 Тест модуля робота:"
-cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || cd "$HOME/robot_web"
-
-if [[ -f "robot/camera.py" ]]; then
-    python3 -c "
-import sys
-sys.path.insert(0, '.')
-
-try:
-    from robot.camera import list_available_cameras, USBCamera, OPENCV_AVAILABLE
-    print(f'OpenCV доступен: {OPENCV_AVAILABLE}')
-    
-    if OPENCV_AVAILABLE:
-        cameras = list_available_cameras()
-        print(f'Доступные камеры через модуль: {cameras}')
-        
-        if cameras:
-            print('✅ Модуль камеры находит устройства')
-        else:
-            print('⚠️ Модуль не нашел камер')
-    else:
-        print('❌ OpenCV недоступен в модуле')
-        
-except Exception as e:
-    print(f'❌ Ошибка модуля камеры: {e}')
-"
-else
-    echo "❌ Файл robot/camera.py не найден"
-fi
-
-echo ""
-echo "📝 Рекомендации:"
-echo "1. Убедитесь что USB камера подключена"
-echo "2. Проверьте права: groups \$USER (должно содержать video)"
-echo "3. Если нет прав: sudo usermod -a -G video \$USER && sudo reboot"
-echo "4. Попробуйте тест API: python3 test_frame.py"
-echo "5. Проверьте логи: ./logs.sh | grep camera"
-EOF
-
-# Остальные скрипты...
+# Основные скрипты управления
 cat > "$PROJECT_DIR/start.sh" <<EOF
 #!/bin/bash
 echo "🚀 Запуск Robot Web Interface v2.1..."
@@ -669,6 +501,7 @@ echo "================================================"
 sudo journalctl -u $SERVICE_NAME -f --no-pager
 EOF
 
+# Скрипт управления конфигурацией
 cat > "$PROJECT_DIR/config.sh" <<'EOF'
 #!/bin/bash
 # config.sh - Управление конфигурацией робота
@@ -779,3 +612,330 @@ except Exception as e:
         ;;
 esac
 EOF
+
+# Скрипт тестирования камеры
+cat > "$PROJECT_DIR/test_camera.sh" <<'EOF'
+#!/bin/bash
+echo "🎥 Расширенное тестирование USB камеры..."
+
+echo "📋 Доступные видеоустройства:"
+ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
+
+echo ""
+echo "🔍 Информация о камерах:"
+for device in /dev/video*; do
+    if [[ -c "$device" ]]; then
+        echo "Устройство: $device"
+        v4l2-ctl --device="$device" --info 2>/dev/null | head -5 || echo "Ошибка чтения $device"
+        echo "Поддерживаемые форматы:"
+        v4l2-ctl --device="$device" --list-formats-ext 2>/dev/null | head -10 || echo "Ошибка чтения форматов"
+        echo "---"
+    fi
+done
+
+echo ""
+echo "👥 Права доступа:"
+echo "Пользователь: $USER"
+echo "Группы: $(groups $USER)"
+echo "Права на /dev/video0:"
+ls -la /dev/video0 2>/dev/null || echo "/dev/video0 не найден"
+
+echo ""
+echo "🤖 Тест модуля робота:"
+cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || cd "$HOME/robot_web"
+
+if [[ -f "robot/camera.py" ]]; then
+    python3 -c "
+import sys
+sys.path.insert(0, '.')
+
+try:
+    from robot.camera import list_available_cameras, USBCamera, OPENCV_AVAILABLE
+    print(f'OpenCV доступен: {OPENCV_AVAILABLE}')
+    
+    if OPENCV_AVAILABLE:
+        cameras = list_available_cameras()
+        print(f'Доступные камеры через модуль: {cameras}')
+        
+        if cameras:
+            print('✅ Модуль камеры находит устройства')
+        else:
+            print('⚠️ Модуль не нашел камер')
+    else:
+        print('❌ OpenCV недоступен в модуле')
+        
+except Exception as e:
+    print(f'❌ Ошибка модуля камеры: {e}')
+"
+else
+    echo "❌ Файл robot/camera.py не найден"
+fi
+EOF
+
+# Расширенный скрипт диагностики
+cat > "$PROJECT_DIR/status.sh" <<'EOF'
+#!/bin/bash
+SERVICE=robot-web.service
+echo "🔍 Диагностика Robot Web Interface v2.1"
+echo "========================================"
+
+echo "📊 Статус сервиса:"
+sudo systemctl status "$SERVICE" --no-pager -l
+
+echo -e "\n🌐 Сетевые подключения:"
+sudo netstat -tlnp 2>/dev/null | grep :5000 || echo "Порт 5000 не занят"
+
+echo -e "\n🔌 I2C устройства:"
+if command -v i2cdetect &>/dev/null; then 
+    sudo i2cdetect -y 1 2>/dev/null || echo "Ошибка чтения I2C шины"
+else 
+    echo "i2c-tools не установлены"
+fi
+
+echo -e "\n🎥 USB камеры:"
+ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
+lsusb | grep -i -E "(camera|webcam|uvc)" || echo "USB камеры не найдены"
+
+echo -e "\n⚙️ Конфигурация:"
+python3 -c "
+import sys
+sys.path.insert(0, '$HOME/robot_web')
+try:
+    from robot.config import *
+    print(f'Камера: {CAMERA_WIDTH}x{CAMERA_HEIGHT}@{CAMERA_FPS}fps')
+    print(f'Пороги: FWD={SENSOR_FWD_STOP_CM}см, BWD={SENSOR_BWD_STOP_CM}см')
+    print(f'Pan: {CAMERA_PAN_MIN}-{CAMERA_PAN_MAX}°, Tilt: {CAMERA_TILT_MIN}-{CAMERA_TILT_MAX}°')
+    print(f'Логи: {LOG_LEVEL}')
+except Exception as e:
+    print(f'Ошибка конфигурации: {e}')
+"
+
+echo -e "\n📄 Последние логи:"
+sudo journalctl -u "$SERVICE" --no-pager -n 10
+
+IP=$(hostname -I | awk '{print $1}')
+echo -e "\n🔗 Адреса:"
+echo "Веб-интерфейс: http://$IP:5000"
+echo "Видеопоток: http://$IP:5000/camera/stream"
+echo "API статус: http://$IP:5000/api/status"
+
+echo -e "\n🧪 Тестирование:"
+echo "Настройки: ./config.sh show"
+echo "Тест камеры: ./test_camera.sh"
+echo "Тест API: python3 test_frame.py"
+EOF
+
+# Скрипт обновления
+cat > "$PROJECT_DIR/update.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
+echo -e "${BLUE}🔄 Обновление Robot Web Interface v2.1${NC}"
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GITHUB_RAW="https://raw.githubusercontent.com/meshkovQA/Robot/main"
+
+# Список файлов для обновления
+declare -A FILES=(
+    ["run.py"]="run.py"
+    ["robot/__init__.py"]="robot/__init__.py"
+    ["robot/config.py"]="robot/config.py"
+    ["robot/i2c_bus.py"]="robot/i2c_bus.py"
+    ["robot/controller.py"]="robot/controller.py"
+    ["robot/camera.py"]="robot/camera.py"
+    ["robot/api.py"]="robot/api.py"
+    ["templates/index.html"]="templates/index.html"
+    ["static/style.css"]="static/style.css"
+    ["static/script.js"]="static/script.js"
+    ["static/camera.js"]="static/camera.js"
+    ["README.md"]="README.md"
+)
+
+backup_and_download() {
+    local remote="$1"
+    local local="$2"
+    local url="$GITHUB_RAW/$remote"
+    local full_path="$PROJECT_DIR/$local"
+    
+    # Создаем директорию
+    mkdir -p "$(dirname "$full_path")"
+    
+    # Бэкап существующего файла
+    if [[ -f "$full_path" ]]; then
+        cp "$full_path" "$full_path.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    # Скачиваем новую версию
+    if curl -fsSL "$url" -o "$full_path"; then
+        echo -e "✅ $local"
+        return 0
+    else
+        echo -e "${RED}❌ $local${NC}"
+        return 1
+    fi
+}
+
+echo -e "${YELLOW}⏸️ Остановка сервиса...${NC}"
+sudo systemctl stop robot-web.service || true
+
+echo -e "${BLUE}📥 Загрузка файлов...${NC}"
+failed_files=()
+
+for remote in "${!FILES[@]}"; do
+    local="${FILES[$remote]}"
+    if ! backup_and_download "$remote" "$local"; then
+        failed_files+=("$local")
+    fi
+done
+
+if [[ ${#failed_files[@]} -gt 0 ]]; then
+    echo -e "${YELLOW}⚠️ Не удалось обновить: ${failed_files[*]}${NC}"
+fi
+
+echo -e "${BLUE}🔍 Проверка синтаксиса...${NC}"
+cd "$PROJECT_DIR"
+if python3 -m py_compile run.py robot/*.py; then
+    echo -e "${GREEN}✅ Синтаксис корректен${NC}"
+else
+    echo -e "${RED}❌ Ошибки в синтаксисе!${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}🚀 Запуск сервиса...${NC}"
+sudo systemctl start robot-web.service
+
+sleep 3
+
+if systemctl is-active --quiet robot-web.service; then
+    echo -e "${GREEN}✅ Обновление завершено успешно!${NC}"
+    IP=$(hostname -I | awk '{print $1}')
+    echo -e "${GREEN}🌐 Интерфейс: http://$IP:5000${NC}"
+else
+    echo -e "${RED}❌ Сервис не запустился после обновления${NC}"
+    echo "Проверьте логи: ./logs.sh"
+    exit 1
+fi
+EOF
+
+# Установка прав на выполнение для всех скриптов
+chmod +x "$PROJECT_DIR"/{start.sh,stop.sh,restart.sh,logs.sh,status.sh,update.sh,test_camera.sh,config.sh}
+ok "Управляющие скрипты созданы"
+
+# --- тестирование камеры ---
+info "Первичное тестирование камеры..."
+cd "$PROJECT_DIR"
+bash test_camera.sh
+
+# --- проверка установки ---
+info "Проверка установки..."
+
+# Проверяем Python модули
+cd "$PROJECT_DIR"
+if python3 -c "from robot.api import create_app; from robot.camera import USBCamera; print('✓ Все модули импортированы успешно')"; then
+    ok "Python модули работают корректно"
+else
+    warn "Есть проблемы с Python модулями, но основная функциональность может работать"
+fi
+
+info "Тестирование запуска приложения..."
+cd "$PROJECT_DIR"
+if timeout 10 python3 run.py --help >/dev/null 2>&1; then
+    ok "run.py доступен"
+else
+    warn "Проблемы с run.py"
+fi
+
+# Тест gunicorn
+APP_LIGHT_INIT=1 "$VENV_DIR/bin/gunicorn" --check-config run:app \
+  && ok "Gunicorn конфигурация корректна" \
+  || warn "Пропускаю строгую проверку Gunicorn (камера отключена для check-config)"
+
+# --- первый запуск ---
+info "Первый запуск сервиса..."
+sudo systemctl start "$SERVICE_NAME"
+sleep 5
+
+# Проверяем статус
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+    ok "Сервис запущен успешно"
+    
+    # Получаем IP адрес
+    IP=$(hostname -I | awk '{print $1}')
+    
+    echo ""
+    echo "=============================================="
+    ok "🎉 Установка завершена успешно!"
+    echo "=============================================="
+    echo ""
+    echo "🌐 Веб-интерфейс доступен по адресу:"
+    echo "   http://$IP:5000"
+    echo ""
+    echo "🎥 Прямой видеопоток:"
+    echo "   http://$IP:5000/camera/stream"
+    echo ""
+    echo "🎮 Управление сервисом:"
+    echo "   ./start.sh       - запуск"
+    echo "   ./stop.sh        - остановка"  
+    echo "   ./restart.sh     - перезапуск"
+    echo "   ./logs.sh        - просмотр логов"
+    echo "   ./status.sh      - диагностика"
+    echo "   ./update.sh      - обновление"
+    echo "   ./test_camera.sh - тест камеры"
+    echo "   ./config.sh      - управление настройками"
+    echo ""
+    echo "🧪 Тестирование:"
+    echo "   python3 test_frame.py - тест API камеры"
+    echo ""
+    echo "⚙️ Конфигурация:"
+    echo "   ./config.sh edit - редактировать настройки"
+    echo "   ./config.sh show - показать текущие настройки"
+    echo "   Файл: $PROJECT_DIR/robot/config.py"
+    echo "   Документация: cat SETTINGS.md"
+    echo ""
+    echo "📂 Файлы проекта: $PROJECT_DIR"
+    echo "📸 Фотографии: $PROJECT_DIR/static/photos"
+    echo "🎬 Видео: $PROJECT_DIR/static/videos"
+    echo ""
+    
+    # Информация о камере
+    if [[ $V4L_DEVICES -gt 0 ]]; then
+        echo "📹 Камера:"
+        echo "   Найдено устройств: $V4L_DEVICES"
+        echo "   Основное устройство: /dev/video0"
+        echo "   Управление поворотами: Pan (0-180°), Tilt (50-150°)"
+        echo "   API управления: /api/camera/pan, /api/camera/tilt"
+        echo "   Тест API: python3 test_frame.py"
+    else
+        echo "⚠️ Камера:"
+        echo "   USB камеры не обнаружены"
+        echo "   Подключите USB камеру и перезапустите сервис"
+        echo "   Или проверьте права: groups \$USER"
+    fi
+    
+    echo ""
+    
+    if [[ ${#failed_downloads[@]} -gt 0 ]]; then
+        warn "⚠️ Некоторые файлы не загружены: ${failed_downloads[*]}"
+        warn "Используйте ./update.sh для повторной загрузки"
+    fi
+    
+    echo "🔧 Для применения всех прав доступа выполните:"
+    echo "   sudo reboot"
+    echo ""
+    echo "📚 Документация и примеры:"
+    echo "   https://github.com/meshkovQA/Robot"
+    
+else
+    err "❌ Сервис не запустился"
+    echo ""
+    echo "🔍 Диагностика:"
+    echo "   ./status.sh      - полная диагностика"
+    echo "   ./test_camera.sh - тест камеры"
+    echo "   python3 test_frame.py - тест API камеры"
+    echo "   ./logs.sh        - просмотр ошибок"
+    echo ""
+    echo "📄 Логи ошибок:"
+    sudo journalctl -u "$SERVICE_NAME" --no-pager -n 20
+    exit 1
+fi
