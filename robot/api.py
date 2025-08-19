@@ -1,9 +1,8 @@
-# api.py - ИСПРАВЛЕНИЕ CORS
+# api.py
 
 from __future__ import annotations
 import logging
 import signal
-import os
 import time
 from datetime import datetime
 from flask import Flask, Blueprint, jsonify, request, render_template, Response
@@ -38,7 +37,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     robot = controller or RobotController()
 
     # Если включён «лёгкий» режим – не поднимаем камеру
-    LIGHT_INIT = os.getenv("APP_LIGHT_INIT", "0") == "1"
+    LIGHT_INIT = "1"
 
     camera = camera_instance
     if camera is None and not LIGHT_INIT:
@@ -192,6 +191,239 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             "command": "emergency_stop",
             "success": success,
             **robot.get_status()
+        })
+
+    # --------- API маршруты управления поворотами камеры ----------
+
+    @bp.route("/camera/pan", methods=["POST"])
+    def camera_pan():
+        """Установка угла поворота камеры по горизонтали"""
+        data = request.get_json() or {}
+        angle = data.get("angle")
+
+        if angle is None:
+            return err("Не указан угол поворота", 400)
+
+        try:
+            angle = int(angle)
+        except (TypeError, ValueError):
+            return err("Неверный формат угла", 400)
+
+        success = robot.set_camera_pan(angle)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "set_camera_pan",
+            "requested_angle": angle,
+            "actual_angle": pan_angle,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/tilt", methods=["POST"])
+    def camera_tilt():
+        """Установка угла наклона камеры по вертикали"""
+        data = request.get_json() or {}
+        angle = data.get("angle")
+
+        if angle is None:
+            return err("Не указан угол наклона", 400)
+
+        try:
+            angle = int(angle)
+        except (TypeError, ValueError):
+            return err("Неверный формат угла", 400)
+
+        success = robot.set_camera_tilt(angle)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "set_camera_tilt",
+            "requested_angle": angle,
+            "actual_angle": tilt_angle,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/angles", methods=["POST"])
+    def camera_angles():
+        """Установка обоих углов камеры одновременно"""
+        data = request.get_json() or {}
+        pan = data.get("pan")
+        tilt = data.get("tilt")
+
+        if pan is None or tilt is None:
+            return err("Не указаны углы pan и tilt", 400)
+
+        try:
+            pan = int(pan)
+            tilt = int(tilt)
+        except (TypeError, ValueError):
+            return err("Неверный формат углов", 400)
+
+        success = robot.set_camera_angles(pan, tilt)
+        actual_pan, actual_tilt = robot.get_camera_angles()
+
+        return ok({
+            "command": "set_camera_angles",
+            "requested": {"pan": pan, "tilt": tilt},
+            "actual": {"pan": actual_pan, "tilt": actual_tilt},
+            "success": success,
+            "camera": {
+                "pan_angle": actual_pan,
+                "tilt_angle": actual_tilt
+            }
+        })
+
+    @bp.route("/camera/center", methods=["POST"])
+    def camera_center():
+        """Установка камеры в центральное положение"""
+        success = robot.center_camera()
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "center_camera",
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/pan/left", methods=["POST"])
+    def camera_pan_left():
+        """Повернуть камеру влево на шаг"""
+        data = request.get_json() or {}
+        step = data.get("step")  # опциональный параметр
+
+        if step is not None:
+            try:
+                step = int(step)
+            except (TypeError, ValueError):
+                return err("Неверный формат шага", 400)
+
+        success = robot.pan_left(step)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "pan_left",
+            "step": step,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/pan/right", methods=["POST"])
+    def camera_pan_right():
+        """Повернуть камеру вправо на шаг"""
+        data = request.get_json() or {}
+        step = data.get("step")  # опциональный параметр
+
+        if step is not None:
+            try:
+                step = int(step)
+            except (TypeError, ValueError):
+                return err("Неверный формат шага", 400)
+
+        success = robot.pan_right(step)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "pan_right",
+            "step": step,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/tilt/up", methods=["POST"])
+    def camera_tilt_up():
+        """Наклонить камеру вверх на шаг"""
+        data = request.get_json() or {}
+        step = data.get("step")  # опциональный параметр
+
+        if step is not None:
+            try:
+                step = int(step)
+            except (TypeError, ValueError):
+                return err("Неверный формат шага", 400)
+
+        success = robot.tilt_up(step)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "tilt_up",
+            "step": step,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/tilt/down", methods=["POST"])
+    def camera_tilt_down():
+        """Наклонить камеру вниз на шаг"""
+        data = request.get_json() or {}
+        step = data.get("step")  # опциональный параметр
+
+        if step is not None:
+            try:
+                step = int(step)
+            except (TypeError, ValueError):
+                return err("Неверный формат шага", 400)
+
+        success = robot.tilt_down(step)
+        pan_angle, tilt_angle = robot.get_camera_angles()
+
+        return ok({
+            "command": "tilt_down",
+            "step": step,
+            "success": success,
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            }
+        })
+
+    @bp.route("/camera/limits", methods=["GET"])
+    def camera_limits():
+        """Получить ограничения углов камеры"""
+        limits = robot.get_camera_limits()
+        current_pan, current_tilt = robot.get_camera_angles()
+
+        return ok({
+            "limits": limits,
+            "current": {
+                "pan_angle": current_pan,
+                "tilt_angle": current_tilt
+            }
+        })
+
+    @bp.route("/camera/position", methods=["GET"])
+    def camera_position():
+        """Получить текущую позицию камеры"""
+        pan_angle, tilt_angle = robot.get_camera_angles()
+        limits = robot.get_camera_limits()
+
+        return ok({
+            "camera": {
+                "pan_angle": pan_angle,
+                "tilt_angle": tilt_angle
+            },
+            "limits": limits,
+            "is_centered": (pan_angle == limits["pan"]["default"] and
+                            tilt_angle == limits["tilt"]["default"])
         })
 
     # --------- API маршруты камеры ----------

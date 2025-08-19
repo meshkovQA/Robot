@@ -9,7 +9,6 @@ from typing import Optional, Tuple, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from robot.config import CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
-import os
 
 logger = logging.getLogger(__name__)
 

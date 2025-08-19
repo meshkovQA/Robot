@@ -1,13 +1,12 @@
-# config.py - обновленная версия с поддержкой камеры
+# config.py
 
-import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 STATIC_DIR = PROJECT_ROOT / "static"
 
-HOME_DIR = os.path.expanduser("~")
+HOME_DIR = Path.home()
 # ==================== I2C НАСТРОЙКИ ====================
 I2C_AVAILABLE = True
 try:
@@ -15,19 +14,33 @@ try:
 except ImportError:
     I2C_AVAILABLE = False
 
-I2C_BUS = int(os.getenv("I2C_BUS", "1"))
-ARDUINO_ADDRESS = int(os.getenv("ARDUINO_ADDRESS", "0x08"), 16)
+I2C_BUS = 1
+ARDUINO_ADDRESS = 0x08
 
 # ==================== СЕНСОРЫ/ПОРОГИ ====================
 SENSOR_ERR = 999
-SENSOR_FWD_STOP_CM = int(os.getenv("SENSOR_FWD_STOP_CM", "25"))
-SENSOR_BWD_STOP_CM = int(os.getenv("SENSOR_BWD_STOP_CM", "20"))
-SENSOR_MAX_VALID = int(os.getenv("SENSOR_MAX_VALID", "500"))
+SENSOR_FWD_STOP_CM = 30
+SENSOR_BWD_STOP_CM = 30
+SENSOR_MAX_VALID = 500
 
 # ==================== СКОРОСТЬ (0..255) ====================
 SPEED_MIN = 0
 SPEED_MAX = 255
-DEFAULT_SPEED = int(os.getenv("DEFAULT_SPEED", "70"))
+DEFAULT_SPEED = 70
+
+# ==================== ПОВОРОТЫ КАМЕРЫ ====================
+
+# Ограничения углов поворота камеры
+CAMERA_PAN_MIN = 0      # минимальный угол горизонтального поворота
+CAMERA_PAN_MAX = 180    # максимальный угол горизонтального поворота
+CAMERA_PAN_DEFAULT = 90  # центральная позиция по горизонтали
+
+CAMERA_TILT_MIN = 50    # минимальный угол вертикального наклона
+CAMERA_TILT_MAX = 150   # максимальный угол вертикального наклона
+CAMERA_TILT_DEFAULT = 90  # центральная позиция по вертикали
+
+# Шаг поворота камеры (градусы за одну команду)
+CAMERA_STEP_SIZE = 10
 
 # ==================== КАМЕРА ====================
 
@@ -39,83 +52,76 @@ except ImportError:
     CAMERA_AVAILABLE = False
 
 # Основные настройки камеры
-CAMERA_DEVICE_ID = int(os.getenv("CAMERA_DEVICE_ID", "0"))  # /dev/video0
-CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "640"))
-CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "480"))
-CAMERA_FPS = int(os.getenv("CAMERA_FPS", "30"))
+CAMERA_DEVICE_ID = 0  # /dev/video0
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+CAMERA_FPS = 30
 
 # Качество изображения
-CAMERA_QUALITY = int(os.getenv("CAMERA_QUALITY", "80")
-                     )  # JPEG качество (1-100)
-CAMERA_STREAM_QUALITY = int(
-    os.getenv("CAMERA_STREAM_QUALITY", "60"))  # Для веб-стрима
-CAMERA_STREAM_FPS = int(os.getenv("CAMERA_STREAM_FPS", "15"))  # FPS веб-стрима
+CAMERA_QUALITY = 80  # JPEG качество (1-100)
+CAMERA_STREAM_QUALITY = 60  # Для веб-стрима
+CAMERA_STREAM_FPS = 15  # FPS веб-стрима
 
 # Настройки изображения
-CAMERA_BRIGHTNESS = int(os.getenv("CAMERA_BRIGHTNESS", "50"))  # 0-100
-CAMERA_CONTRAST = int(os.getenv("CAMERA_CONTRAST", "50"))      # 0-100
-CAMERA_SATURATION = int(os.getenv("CAMERA_SATURATION", "65"))  # 0-100
+CAMERA_BRIGHTNESS = 50  # 0-100
+CAMERA_CONTRAST = 50      # 0-100
+CAMERA_SATURATION = 65  # 0-100
 
 # Пути сохранения
-CAMERA_SAVE_PATH = os.getenv("CAMERA_SAVE_PATH", str(STATIC_DIR / "photos"))
-CAMERA_VIDEO_PATH = os.getenv("CAMERA_VIDEO_PATH", str(STATIC_DIR / "videos"))
+CAMERA_SAVE_PATH = str(STATIC_DIR / "photos")
+CAMERA_VIDEO_PATH = str(STATIC_DIR / "videos")
 
 # Автозапуск камеры
-CAMERA_AUTO_START = os.getenv("CAMERA_AUTO_START", "true").lower() == "true"
+CAMERA_AUTO_START = True
 
 # Максимальные размеры файлов (в байтах)
-MAX_PHOTO_SIZE = int(os.getenv("MAX_PHOTO_SIZE", "10485760"))  # 10MB
-MAX_VIDEO_SIZE = int(os.getenv("MAX_VIDEO_SIZE", "104857600"))  # 100MB
+MAX_PHOTO_SIZE = 10485760  # 10MB
+MAX_VIDEO_SIZE = 104857600  # 100MB
 
 # Максимальное количество файлов
-MAX_PHOTOS = int(os.getenv("MAX_PHOTOS", "100"))
-MAX_VIDEOS = int(os.getenv("MAX_VIDEOS", "20"))
+MAX_PHOTOS = 100
+MAX_VIDEOS = 20
 
 # Автоочистка старых файлов (в днях)
-AUTO_CLEANUP_DAYS = int(os.getenv("AUTO_CLEANUP_DAYS", "7"))
+AUTO_CLEANUP_DAYS = 7
 
 # ==================== БЕЗОПАСНОСТЬ ====================
-API_KEY = os.getenv("API_KEY")  # если None, аутентификация выключена
+API_KEY = None  # если None, аутентификация выключена
 
 # ==================== ЛОГИРОВАНИЕ ====================
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_LEVEL = "INFO"
 LOG_FMT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 # Специальное логирование для камеры
-CAMERA_LOG_LEVEL = os.getenv("CAMERA_LOG_LEVEL", "INFO")
-ENABLE_CAMERA_DEBUG = os.getenv(
-    "ENABLE_CAMERA_DEBUG", "false").lower() == "true"
+CAMERA_LOG_LEVEL = "INFO"
+ENABLE_CAMERA_DEBUG = False
 
 # ==================== ПРОИЗВОДИТЕЛЬНОСТЬ ====================
 
 # Буферизация видео
-VIDEO_BUFFER_SIZE = int(os.getenv("VIDEO_BUFFER_SIZE", "1"))
+VIDEO_BUFFER_SIZE = 1
 
 # Таймауты (в секундах)
-CAMERA_INIT_TIMEOUT = int(os.getenv("CAMERA_INIT_TIMEOUT", "10"))
-CAMERA_CAPTURE_TIMEOUT = int(os.getenv("CAMERA_CAPTURE_TIMEOUT", "5"))
+CAMERA_INIT_TIMEOUT = 10
+CAMERA_CAPTURE_TIMEOUT = 5
 
 # Количество потоков для обработки видео
-CAMERA_THREADS = int(os.getenv("CAMERA_THREADS", "2"))
+CAMERA_THREADS = 1
 
 # ==================== РАСШИРЕННЫЕ ФУНКЦИИ ====================
 
 # Детекция движения
-ENABLE_MOTION_DETECTION = os.getenv(
-    "ENABLE_MOTION_DETECTION", "false").lower() == "true"
-MOTION_THRESHOLD = int(os.getenv("MOTION_THRESHOLD", "30"))
+ENABLE_MOTION_DETECTION = False
+MOTION_THRESHOLD = 30
 
 # Автоматическая запись при движении
-AUTO_RECORD_ON_MOTION = os.getenv(
-    "AUTO_RECORD_ON_MOTION", "false").lower() == "true"
-AUTO_RECORD_DURATION = int(os.getenv("AUTO_RECORD_DURATION", "30"))  # секунд
+AUTO_RECORD_ON_MOTION = False
+AUTO_RECORD_DURATION = 30  # секунд
 
 # Наложение текста на видео
-ENABLE_VIDEO_OVERLAY = os.getenv(
-    "ENABLE_VIDEO_OVERLAY", "true").lower() == "true"
-OVERLAY_TIMESTAMP = os.getenv("OVERLAY_TIMESTAMP", "true").lower() == "true"
-OVERLAY_ROBOT_STATUS = os.getenv(
-    "OVERLAY_ROBOT_STATUS", "false").lower() == "true"
+ENABLE_VIDEO_OVERLAY = True
+OVERLAY_TIMESTAMP = True
+OVERLAY_ROBOT_STATUS = False
 
 # ==================== ВАЛИДАЦИЯ НАСТРОЕК ====================
 
@@ -191,7 +197,7 @@ CAMERA_PRESETS = {
 }
 
 # Текущая предустановка
-CAMERA_PRESET = os.getenv("CAMERA_PRESET", "medium")
+CAMERA_PRESET = "medium"
 
 
 def get_camera_preset(preset_name: str = None) -> dict:
@@ -205,15 +211,13 @@ def get_camera_preset(preset_name: str = None) -> dict:
 
 
 # Автоматическая запись при движении робота
-RECORD_ON_ROBOT_MOVE = os.getenv(
-    "RECORD_ON_ROBOT_MOVE", "false").lower() == "true"
+RECORD_ON_ROBOT_MOVE = False
 
 # Автоматическое фото при препятствиях
-PHOTO_ON_OBSTACLE = os.getenv("PHOTO_ON_OBSTACLE", "false").lower() == "true"
+PHOTO_ON_OBSTACLE = False
 
 # Сохранение кадров при экстренной остановке
-SAVE_FRAME_ON_EMERGENCY = os.getenv(
-    "SAVE_FRAME_ON_EMERGENCY", "true").lower() == "true"
+SAVE_FRAME_ON_EMERGENCY = True
 
 # ==================== СИСТЕМНЫЕ НАСТРОЙКИ ====================
 
