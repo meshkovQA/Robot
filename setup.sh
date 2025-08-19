@@ -40,6 +40,7 @@ declare -A PROJECT_FILES=(
     ["static/style.css"]="static/style.css"
     ["static/script.js"]="static/script.js"
     ["static/camera.js"]="static/camera.js"
+    ["static/camera-control.js"]="static/camera-control.js"
     
     # Документация
     ["README.md"]="README.md"
@@ -749,6 +750,7 @@ declare -A FILES=(
     ["static/style.css"]="static/style.css"
     ["static/script.js"]="static/script.js"
     ["static/camera.js"]="static/camera.js"
+    ["static/camera-control.js"]="static/camera-control.js"
     ["README.md"]="README.md"
 )
 
