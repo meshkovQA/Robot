@@ -48,9 +48,17 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 if available_cameras:
                     camera_config = CameraConfig(
                         device_id=available_cameras[0],
-                        width=CAMERA_CONFIG.get('width', 640),
-                        height=CAMERA_CONFIG.get('height', 480),
-                        fps=CAMERA_CONFIG.get('fps', 30),
+                        width=CAMERA_CONFIG['width'],
+                        height=CAMERA_CONFIG['height'],
+                        fps=CAMERA_CONFIG['fps'],
+                        quality=CAMERA_CONFIG['quality'],
+                        stream_quality=CAMERA_CONFIG['stream_quality'],
+                        stream_fps=CAMERA_CONFIG['stream_fps'],
+                        brightness=CAMERA_CONFIG['brightness'],
+                        contrast=CAMERA_CONFIG['contrast'],
+                        saturation=CAMERA_CONFIG['saturation'],
+                        save_path=CAMERA_CONFIG['save_path'],
+                        video_path=CAMERA_CONFIG['video_path'],
                         auto_start=True
                     )
                     camera = USBCamera(camera_config)
