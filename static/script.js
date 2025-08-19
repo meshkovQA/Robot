@@ -174,6 +174,11 @@ function updateSensorData() {
                 document.getElementById('last-update').textContent =
                     `Обновлено: ${now.toLocaleTimeString()}`;
 
+                // Обновление углов камеры
+                if (window.cameraControl) {
+                    window.cameraControl.updateAnglesFromStatus(status);
+                }
+
                 lastUpdateTime = Date.now();
                 obstacleDetected = status.obstacles.front || status.obstacles.rear;
                 connectionActive = true;
@@ -354,6 +359,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Первоначальное обновление
     updateSensorData();
+
+    // Инициализация управления камерой
+    if (window.cameraControl) {
+        window.cameraControl.init();
+        console.log('🎯 Управление камерой инициализировано');
+    }
 
     // Проверка соединения
     setInterval(() => {
