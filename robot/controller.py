@@ -1,7 +1,8 @@
 # controller.py
 from __future__ import annotations
 import time
-import struct
+
+
 import threading
 import logging
 from dataclasses import dataclass
@@ -10,7 +11,8 @@ from typing import Optional, Tuple
 from .config import (
     ARDUINO_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
     SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM,
-    SPEED_MIN, SPEED_MAX, DEFAULT_SPEED,
+    SPEED_MIN, SPEED_MAX, DEFAULT_SPEED, CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
+    CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE
 )
 from .i2c_bus import I2CBus, open_bus
 
@@ -21,33 +23,47 @@ logger = logging.getLogger(__name__)
 class RobotCommand:
     speed: int = 0
     direction: int = 0  # 0=stop, 1=fwd, 2=bwd, 3=turn_left, 4=turn_right
-    steering_angle: int = 90  # угол поворота руля (10-170)
-    front_wheels: bool = True
-    rear_wheels: bool = True
+    pan_angle: int = 90   # угол поворота камеры по горизонтали (0-180)
+    tilt_angle: int = 90  # угол наклона камеры по вертикали (50-150)
 
 
 def _clip_speed(v: int) -> int:
     return max(SPEED_MIN, min(SPEED_MAX, int(v)))
 
 
-def _clip_steering(angle: int) -> int:
-    return max(10, min(170, int(angle)))
+def _clip_pan_angle(angle: int) -> int:
+    """Ограничение угла поворота камеры (из конфига)"""
+    return max(CAMERA_PAN_MIN, min(CAMERA_PAN_MAX, int(angle)))
+
+
+def _clip_tilt_angle(angle: int) -> int:
+    """Ограничение угла наклона камеры (из конфига)"""
+    return max(CAMERA_TILT_MIN, min(CAMERA_TILT_MAX, int(angle)))
 
 
 def _pack_command(cmd: RobotCommand) -> list[int]:
     """
-    Упаковка команды в формат, ожидаемый Arduino (совместимость с рабочим кодом)
+    Упаковка команды в новый формат (8 байт):
+    speed(2) + direction(2) + pan_angle(2) + tilt_angle(2)
     """
     data = []
+
+    # Speed (2 байта, signed int16)
     speed_value = cmd.speed
     data.append(speed_value & 0xFF)           # speed low byte
     data.append((speed_value >> 8) & 0xFF)    # speed high byte
+
+    # Direction (2 байта)
     data.append(cmd.direction & 0xFF)         # direction low byte
     data.append((cmd.direction >> 8) & 0xFF)  # direction high byte
-    data.append(90)  # Фиксированное значение для совместимости (steering)
-    data.append(0)   # Фиксированное значение для совместимости
-    data.append(1 if cmd.front_wheels else 0)  # front wheels enable
-    data.append(1 if cmd.rear_wheels else 0)   # rear wheels enable
+
+    # Pan angle (2 байта)
+    data.append(cmd.pan_angle & 0xFF)         # pan low byte
+    data.append((cmd.pan_angle >> 8) & 0xFF)  # pan high byte
+
+    # Tilt angle (2 байта)
+    data.append(cmd.tilt_angle & 0xFF)        # tilt low byte
+    data.append((cmd.tilt_angle >> 8) & 0xFF)  # tilt high byte
 
     logger.debug("Пакет команды (8 байт): %s", data)
     return data
@@ -57,7 +73,8 @@ class RobotController:
     def __init__(self, bus: Optional[I2CBus] = None):
         self.bus = bus if bus is not None else open_bus()
         self.current_speed = 0
-        self.current_steering = 90  # центральное положение
+        self.current_pan_angle = CAMERA_PAN_DEFAULT   # из конфига
+        self.current_tilt_angle = CAMERA_TILT_DEFAULT  # из конфига
         self.is_moving = False
         self.movement_direction = 0  # 0 stop, 1 fwd, 2 bwd, 3 L, 4 R
         self.last_command_time = time.time()
@@ -101,34 +118,37 @@ class RobotController:
             "I2C write полностью провалился после %d попыток", retries)
         return False
 
-    def _i2c_read_sensors(self) -> Tuple[int, int]:
-        """Чтение данных с датчиков расстояния"""
+    def _i2c_read_sensors(self) -> Tuple[int, int, int, int]:
+        """Чтение данных с датчиков и углов камеры"""
         if not self.bus:
-            return 25, 30  # эмуляция
+            return 25, 30, 90, 90  # эмуляция
 
         try:
-            # Читаем данные датчиков (регистр 0x10 для данных датчиков)
-            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 4)
-            if len(raw) != 4:
-                logger.warning("Получено %d байт вместо 4", len(raw))
-                return SENSOR_ERR, SENSOR_ERR
+            # Читаем расширенные данные (8 байт): датчики + углы камеры
+            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 8)
+            if len(raw) != 8:
+                logger.warning("Получено %d байт вместо 8", len(raw))
+                return SENSOR_ERR, SENSOR_ERR, 90, 90
 
             # Распаковываем little-endian uint16
             front = (raw[1] << 8) | raw[0]
             rear = (raw[3] << 8) | raw[2]
+            pan = (raw[5] << 8) | raw[4]
+            tilt = (raw[7] << 8) | raw[6]
 
-            # Проверка валидности
+            # Проверка валидности датчиков
             if front > SENSOR_MAX_VALID:
                 front = SENSOR_ERR
             if rear > SENSOR_MAX_VALID:
                 rear = SENSOR_ERR
 
-            logger.debug("Датчики: front=%d, rear=%d", front, rear)
-            return front, rear
+            logger.debug("Датчики: front=%d, rear=%d, pan=%d, tilt=%d",
+                         front, rear, pan, tilt)
+            return front, rear, pan, tilt
 
         except Exception as e:
             logger.error("I2C read failed: %s", e)
-            return SENSOR_ERR, SENSOR_ERR
+            return SENSOR_ERR, SENSOR_ERR, 90, 90
 
     # ---------- публичный API контроллера ----------
     def send_command(self, cmd: RobotCommand) -> bool:
@@ -138,7 +158,8 @@ class RobotController:
             success = self._i2c_write(data)
             if success:
                 self.last_command_time = time.time()
-                self.current_steering = cmd.steering_angle
+                self.current_pan_angle = cmd.pan_angle
+                self.current_tilt_angle = cmd.tilt_angle
             return success
 
     def read_sensors(self) -> Tuple[int, int]:
@@ -146,6 +167,12 @@ class RobotController:
         with self._lock:
             return self._sensor_front, self._sensor_rear
 
+    def get_camera_angles(self) -> Tuple[int, int]:
+        """Получение текущих углов камеры"""
+        with self._lock:
+            return self.current_pan_angle, self.current_tilt_angle
+
+    # ---------- движение робота ----------
     def move_forward(self, speed: int) -> bool:
         """Движение вперед с заданной скоростью"""
         speed = _clip_speed(speed)
@@ -165,7 +192,8 @@ class RobotController:
         cmd = RobotCommand(
             speed=speed,
             direction=1,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
@@ -188,7 +216,8 @@ class RobotController:
         cmd = RobotCommand(
             speed=speed,
             direction=2,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
@@ -202,7 +231,8 @@ class RobotController:
         cmd = RobotCommand(
             speed=speed,
             direction=3,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
@@ -216,7 +246,8 @@ class RobotController:
         cmd = RobotCommand(
             speed=speed,
             direction=4,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
@@ -230,10 +261,102 @@ class RobotController:
         cmd = RobotCommand(
             speed=0,
             direction=0,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
+    # ---------- управление камерой ----------
+    def set_camera_pan(self, angle: int) -> bool:
+        """Установка угла поворота камеры по горизонтали"""
+        angle = _clip_pan_angle(angle)
+
+        with self._lock:
+            speed = self.current_speed
+            direction = self.movement_direction
+            self.current_pan_angle = angle
+
+        cmd = RobotCommand(
+            speed=speed,
+            direction=direction,
+            pan_angle=angle,
+            tilt_angle=self.current_tilt_angle
+        )
+        return self.send_command(cmd)
+
+    def set_camera_tilt(self, angle: int) -> bool:
+        """Установка угла наклона камеры по вертикали"""
+        angle = _clip_tilt_angle(angle)
+
+        with self._lock:
+            speed = self.current_speed
+            direction = self.movement_direction
+            self.current_tilt_angle = angle
+
+        cmd = RobotCommand(
+            speed=speed,
+            direction=direction,
+            pan_angle=self.current_pan_angle,
+            tilt_angle=angle
+        )
+        return self.send_command(cmd)
+
+    def set_camera_angles(self, pan: int, tilt: int) -> bool:
+        """Установка обоих углов камеры одновременно"""
+        pan = _clip_pan_angle(pan)
+        tilt = _clip_tilt_angle(tilt)
+
+        with self._lock:
+            speed = self.current_speed
+            direction = self.movement_direction
+            self.current_pan_angle = pan
+            self.current_tilt_angle = tilt
+
+        cmd = RobotCommand(
+            speed=speed,
+            direction=direction,
+            pan_angle=pan,
+            tilt_angle=tilt
+        )
+        return self.send_command(cmd)
+
+    def center_camera(self) -> bool:
+        """Установка камеры в центральное положение"""
+        return self.set_camera_angles(CAMERA_PAN_DEFAULT, CAMERA_TILT_DEFAULT)
+
+    def pan_left(self, step: int = None) -> bool:
+        """Повернуть камеру влево на заданный шаг"""
+        step = step or CAMERA_STEP_SIZE
+        new_angle = self.current_pan_angle - step
+        return self.set_camera_pan(new_angle)
+
+    def pan_right(self, step: int = None) -> bool:
+        """Повернуть камеру вправо на заданный шаг"""
+        step = step or CAMERA_STEP_SIZE
+        new_angle = self.current_pan_angle + step
+        return self.set_camera_pan(new_angle)
+
+    def tilt_up(self, step: int = None) -> bool:
+        """Наклонить камеру вверх на заданный шаг"""
+        step = step or CAMERA_STEP_SIZE
+        new_angle = self.current_tilt_angle + step
+        return self.set_camera_tilt(new_angle)
+
+    def tilt_down(self, step: int = None) -> bool:
+        """Наклонить камеру вниз на заданный шаг"""
+        step = step or CAMERA_STEP_SIZE
+        new_angle = self.current_tilt_angle - step
+        return self.set_camera_tilt(new_angle)
+
+    def get_camera_limits(self) -> dict:
+        """Получить ограничения углов камеры"""
+        return {
+            "pan": {"min": CAMERA_PAN_MIN, "max": CAMERA_PAN_MAX, "default": CAMERA_PAN_DEFAULT},
+            "tilt": {"min": CAMERA_TILT_MIN, "max": CAMERA_TILT_MAX, "default": CAMERA_TILT_DEFAULT},
+            "step_size": CAMERA_STEP_SIZE
+        }
+
+    # ---------- прочие методы ----------
     def update_speed(self, new_speed: int) -> bool:
         """Обновление скорости без изменения направления"""
         new_speed = _clip_speed(new_speed)
@@ -250,13 +373,16 @@ class RobotController:
         cmd = RobotCommand(
             speed=new_speed,
             direction=direction,
-            steering_angle=self.current_steering
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
 
     def get_status(self) -> dict:
         """Получение полного статуса робота"""
         front_dist, rear_dist = self.read_sensors()
+        pan_angle, tilt_angle = self.get_camera_angles()
+
         with self._lock:
             return {
                 "front_distance": front_dist,
@@ -267,7 +393,10 @@ class RobotController:
                 },
                 "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
                 "current_speed": self.current_speed,
-                "current_steering": self.current_steering,
+                "camera": {
+                    "pan_angle": pan_angle,
+                    "tilt_angle": tilt_angle,
+                },
                 "is_moving": self.is_moving,
                 "movement_direction": self.movement_direction,
                 "last_command_time": self.last_command_time,
@@ -303,10 +432,15 @@ class RobotController:
                 # Ограничиваем частоту опроса датчиков
                 now = time.time()
                 if now - last_sensor_update >= poll_interval:
-                    front_dist, rear_dist = self._i2c_read_sensors()
+                    front_dist, rear_dist, pan, tilt = self._i2c_read_sensors()
 
                     with self._lock:
                         self._sensor_front, self._sensor_rear = front_dist, rear_dist
+                        # Обновляем углы камеры из Arduino (актуальное состояние)
+                        if pan != 0 and tilt != 0:  # проверяем что получили валидные данные
+                            self.current_pan_angle = pan
+                            self.current_tilt_angle = tilt
+
                         moving = self.is_moving
                         direction = self.movement_direction
 
