@@ -329,21 +329,23 @@ def load_preset(preset_name: str):
 
 def create_camera_config_dict():
     """Создать словарь конфигурации для передачи в камеру"""
-    return {
-        'device_id': CAMERA_DEVICE_ID,
-        'width': CAMERA_WIDTH,
-        'height': CAMERA_HEIGHT,
-        'fps': CAMERA_FPS,
-        'quality': CAMERA_QUALITY,
-        'stream_quality': CAMERA_STREAM_QUALITY,
-        'stream_fps': CAMERA_STREAM_FPS,
-        'brightness': CAMERA_BRIGHTNESS,
-        'contrast': CAMERA_CONTRAST,
-        'saturation': CAMERA_SATURATION,
-        'save_path': CAMERA_SAVE_PATH,
-        'video_path': CAMERA_VIDEO_PATH,
-        'auto_start': CAMERA_AUTO_START
-    }
+    from .camera import CameraConfig
+
+    return CameraConfig(
+        device_id=CAMERA_DEVICE_ID,
+        width=CAMERA_WIDTH,
+        height=CAMERA_HEIGHT,
+        fps=CAMERA_FPS,
+        quality=CAMERA_QUALITY,
+        stream_quality=CAMERA_STREAM_QUALITY,
+        stream_fps=CAMERA_STREAM_FPS,
+        brightness=CAMERA_BRIGHTNESS,
+        contrast=CAMERA_CONTRAST,
+        saturation=CAMERA_SATURATION,
+        save_path=CAMERA_SAVE_PATH,
+        video_path=CAMERA_VIDEO_PATH,
+        auto_start=CAMERA_AUTO_START
+    )
 
 # ==================== ОТЛАДКА ====================
 
