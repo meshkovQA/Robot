@@ -12,6 +12,15 @@ let cameraLimits = {
 
 const CAMERA_STEP = 10; // шаг поворота
 
+function showNotification(message, type) {
+    // Используем существующую функцию showAlert из script.js
+    if (typeof showAlert === 'function') {
+        showAlert(message, type);
+    } else {
+        console.log(`[${type}] ${message}`);
+    }
+}
+
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 function initCameraControl() {
