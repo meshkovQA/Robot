@@ -94,10 +94,10 @@
                                 </div>
                                 <div class="angle-sliders">
                                     <div class="angle-slider-group">
-                                        <label>Pan (0° - 180°)</label>
+                                        <label>Pan (180° - 0°)</label>
                                         <input type="range" class="angle-slider" id="pan-slider" 
                                             min="0" max="180" value="90" step="5"
-                                            onchange="setCameraPan(this.value)">
+                                            onchange="setCameraPan(180 - this.value)">
                                     </div>
                                     <div class="angle-slider-group">
                                         <label>Tilt (50° - 150°)</label>
