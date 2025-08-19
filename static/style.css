@@ -95,22 +95,7 @@ body {
 }
 
 .main-content {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 30px;
     padding: 30px;
-}
-
-.left-side {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.right-side {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
 }
 
 .control-panel {
@@ -796,7 +781,6 @@ body {
 
 @media (max-width: 768px) {
     .main-content {
-        grid-template-columns: 1fr;
         padding: 15px;
     }
 
