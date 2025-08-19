@@ -11,7 +11,7 @@ from pathlib import Path
 
 from robot.controller import RobotController
 from robot.camera import USBCamera, CameraConfig, list_available_cameras
-from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
+from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT
 from datetime import datetime
 from pathlib import Path
 
@@ -36,18 +36,25 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     robot = controller or RobotController()
 
-    # Если включён «лёгкий» режим – не поднимаем камеру
-    LIGHT_INIT = "1"
-
     camera = camera_instance
+
+    # инициализируем камеру ТОЛЬКО если лёгкий режим выключен
     if camera is None and not LIGHT_INIT:
         try:
-            from robot.config import CAMERA_AVAILABLE, CAMERA_CONFIG
             if CAMERA_AVAILABLE:
+                # сначала пробуем выбранный в конфиге device_id
+                preferred_id = CAMERA_CONFIG.get("device_id", 0)
                 available_cameras = list_available_cameras()
-                if available_cameras:
+
+                device_id = None
+                if preferred_id in available_cameras:
+                    device_id = preferred_id
+                elif available_cameras:
+                    device_id = available_cameras[0]
+
+                if device_id is not None:
                     camera_config = CameraConfig(
-                        device_id=available_cameras[0],
+                        device_id=device_id,
                         width=CAMERA_CONFIG['width'],
                         height=CAMERA_CONFIG['height'],
                         fps=CAMERA_CONFIG['fps'],
@@ -63,7 +70,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                     )
                     camera = USBCamera(camera_config)
                     logger.info(
-                        f"🎥 Камера инициализирована: /dev/video{available_cameras[0]}")
+                        f"🎥 Камера инициализирована: /dev/video{device_id}")
                 else:
                     logger.warning("🎥 USB камеры не найдены")
                     camera = None
