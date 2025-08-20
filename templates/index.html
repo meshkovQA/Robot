@@ -10,221 +10,140 @@
 
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🤖 Управление роботом</h1>
-        </div>
+        <div class="header"><h1>🤖 Управление роботом</h1></div>
 
         <div class="status-bar">
-            <div class="status-item">
-                <div class="status-indicator" id="connection-status"></div>
-                <span>I2C Соединение</span>
-            </div>
-            <div class="status-item">
-                <div class="status-indicator" id="movement-status"></div>
-                <span>Движение</span>
-            </div>
-            <div class="status-item">
-                <div class="status-indicator" id="obstacle-status"></div>
-                <span>Препятствия</span>
-            </div>
-            <div class="status-item">
-                <div class="status-indicator" id="camera-status"></div>
-                <span>Камера</span>
-            </div>
-            <div class="status-item">
-                <span id="last-update">Обновлено: --:--:--</span>
-            </div>
+        <div class="status-item"><span class="status-indicator" id="connection-status"></span> I2C Соединение</div>
+        <div class="status-item"><span class="status-indicator" id="movement-status"></span> Движение</div>
+        <div class="status-item"><span class="status-indicator" id="obstacle-status"></span> Препятствия</div>
+        <div class="status-item"><span class="status-indicator" id="camera-status"></span> Камера</div>
+        <div class="status-item"><span id="last-update">Обновлено: --:--:--</span></div>
         </div>
 
-        <div class="main-content">
-            <!-- Верхний ряд: Камера слева, Управление справа -->
-            <div class="top-section">
-                <!-- Камера слева -->
-                <div class="camera-section">
-                    <div class="control-panel">
-                        <h2>📹 Видеопоток</h2>
-                        
-                        <div class="camera-container">
-                            <div class="video-wrapper">
-                                <img id="camera-stream" 
-                                    src="/camera/stream" 
-                                    alt="Видеопоток камеры"
-                                    onerror="this.src='/static/no-camera.png'"
-                                    style="width: 100%; height: auto; border-radius: 10px;">
-                                
-                                <div class="camera-overlay">
-                                    <div class="camera-info">
-                                        <span id="camera-fps">-- FPS</span> | 
-                                        <span id="camera-resolution">--x--</span>
-                                    </div>
-                                    <div class="recording-indicator" id="recording-indicator" style="display: none;">
-                                        ⏺️ REC <span id="recording-time">00:00</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="camera-controls">
-                                <button class="camera-btn btn-photo" onclick="takePhoto()">📸 Фото</button>
-                                <button class="camera-btn btn-record" id="record-btn" onclick="toggleRecording()">🎥 Запись</button>
-                                <button class="camera-btn btn-refresh" onclick="refreshCamera()">🔄 Обновить</button>
-                            </div>
-
-                            <div class="camera-pan-tilt-controls">
-                                <h3>🎯 Управление поворотом камеры</h3>
-                                
-                                <div class="pan-tilt-grid">
-                                    <!-- Вертикальные кнопки -->
-                                    <div></div>
-                                    <button class="pan-tilt-btn btn-tilt-up" onclick="cameraTiltUp()">⬆️</button>
-                                    <div></div>
-                                    
-                                    <!-- Горизонтальные кнопки и центр -->
-                                    <button class="pan-tilt-btn btn-pan-left" onclick="cameraPanLeft()">⬅️</button>
-                                    <button class="pan-tilt-btn btn-center" onclick="cameraCenter()">🎯</button>
-                                    <button class="pan-tilt-btn btn-pan-right" onclick="cameraPanRight()">➡️</button>
-                                    
-                                    <!-- Вертикальные кнопки -->
-                                    <div></div>
-                                    <button class="pan-tilt-btn btn-tilt-down" onclick="cameraTiltDown()">⬇️</button>
-                                    <div></div>
-                                </div>
-                                
-                                <div class="angle-display">
-                                    <div class="angle-info">
-                                        <span>Горизонт: <strong id="pan-angle">90°</strong></span>
-                                        <span>Вертикаль: <strong id="tilt-angle">90°</strong></span>
-                                    </div>
-                                    <div class="angle-sliders">
-                                        <div class="angle-slider-group">
-                                            <label>Pan (180° - 0°)</label>
-                                            <input type="range" class="angle-slider" id="pan-slider" 
-                                                min="0" max="180" value="90" step="5"
-                                                onchange="setCameraPan(180 - this.value)">
-                                        </div>
-                                        <div class="angle-slider-group">
-                                            <label>Tilt (50° - 150°)</label>
-                                            <input type="range" class="angle-slider" id="tilt-slider" 
-                                                min="50" max="150" value="90" step="5"
-                                                onchange="setCameraTilt(this.value)">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+        <div class="main">
+        <!-- Верх: СЛЕВА — управление, СПРАВА — камера -->
+        <div class="top-row">
+            <!-- Управление (слева) -->
+            <section class="panel">
+            <h2>🎮 Панель управления</h2>
+            <div class="panel-body">
+                <div class="controls">
+                <div>
+                    <label>Скорость движения</label>
+                    <div class="slider-container">
+                    <div class="slider-value" id="speed-value">100</div>
+                    <input type="range" class="slider" id="speed-slider" min="50" max="255" value="100" step="10" />
                     </div>
+                    <small>50 (минимум) → 255 (максимум)</small>
                 </div>
 
-                <!-- Управление справа -->
-                <div class="control-section">
-                    <div class="control-panel">
-                        <h2>🎮 Панель управления</h2>
+                <div class="movement-status" id="movement-status-display">
+                    <strong>Состояние:</strong> <span id="robot-state">Остановлен</span><br />
+                    <small id="speed-info">Установите скорость и нажмите направление</small>
+                </div>
 
-                        <div class="control-group">
-                            <label>Скорость движения</label>
-                            <div class="slider-container">
-                                <div class="slider-value" id="speed-value">100</div>
-                                <input type="range" class="slider" id="speed-slider" min="50" max="255" value="100" step="10">
-                            </div>
-                            <small>50 (минимум) → 255 (максимум)</small>
-                        </div>
-
-                        <div class="movement-status" id="movement-status-display">
-                            <strong>Состояние:</strong> <span id="robot-state">Остановлен</span><br>
-                            <small id="speed-info">Установите скорость и нажмите направление</small>
-                        </div>
-
-                        <div class="button-grid">
-                            <div></div>
-                            <button class="control-btn btn-forward" onclick="moveForward()">⬆️ Вперед</button>
-                            <div></div>
-                            <button class="control-btn btn-tank-left" onclick="tankTurnLeft()">🔄 Поворот ←</button>
-                            <button class="control-btn btn-stop" onclick="stopRobot()">⏹️ Стоп</button>
-                            <button class="control-btn btn-tank-right" onclick="tankTurnRight()">🔄 Поворот →</button>
-                            <div></div>
-                            <button class="control-btn btn-backward" onclick="moveBackward()">⬇️ Назад</button>
-                            <div></div>
-                            <button class="control-btn btn-emergency" onclick="emergencyStop()">🚨 ЭКСТРЕННАЯ ОСТАНОВКА</button>
-                        </div>
-                    </div>
+                <div class="button-grid">
+                    <div></div>
+                    <button class="control-btn btn-forward" onclick="moveForward()">⬆️ Вперед</button>
+                    <div></div>
+                    <button class="control-btn btn-tank-left" onclick="tankTurnLeft()">🔄 Поворот ←</button>
+                    <button class="control-btn btn-stop" onclick="stopRobot()">⏹️ Стоп</button>
+                    <button class="control-btn btn-tank-right" onclick="tankTurnRight()">🔄 Поворот →</button>
+                    <div></div>
+                    <button class="control-btn btn-backward" onclick="moveBackward()">⬇️ Назад</button>
+                    <div></div>
+                    <button class="control-btn btn-emergency" onclick="emergencyStop()">🚨 ЭКСТРЕННАЯ ОСТАНОВКА</button>
+                </div>
                 </div>
             </div>
+            </section>
 
-            <!-- Нижний ряд: Датчики и файлы -->
-            <div class="bottom-section">
-                <div class="sensors-section">
-                    <div class="control-panel">
-                        <h2>📊 Датчики и состояние</h2>
-
-                        <div class="current-values">
-                            <h3>Текущие значения</h3>
-                            <div class="value-row">
-                                <span>Установленная скорость:</span>
-                                <span id="current-speed">100</span>
-                            </div>
-                            <div class="value-row">
-                                <span>Состояние движения:</span>
-                                <span id="movement-direction">Остановлен</span>
-                            </div>
-                            <div class="value-row">
-                                <span>Камера FPS:</span>
-                                <span id="current-camera-fps">--</span>
-                            </div>
-                        </div>
-
-                        <div class="sensor-grid">
-                            <div class="sensor-card" id="front-sensor">
-                                <div class="sensor-value" id="front-distance">--</div>
-                                <div class="sensor-label">Передний датчик (см)</div>
-                            </div>
-                            <div class="sensor-card" id="rear-sensor">
-                                <div class="sensor-value" id="rear-distance">--</div>
-                                <div class="sensor-label">Задний датчик (см)</div>
-                            </div>
-                        </div>
-
-                        <div id="obstacle-warnings"></div>
-                    </div>
+            <!-- Камера (справа) -->
+            <section class="panel camera">
+            <h2>📹 Видеопоток</h2>
+            <div class="panel-body">
+                <div class="video-wrapper">
+                <img id="camera-stream" class="video-inner" src="/camera/stream" alt="Видеопоток камеры" onerror="this.src='/static/no-camera.png'" />
+                <div class="camera-overlay">
+                    <div class="camera-info"><span id="camera-fps">-- FPS</span> | <span id="camera-resolution">--x--</span></div>
+                    <div class="recording-indicator" id="recording-indicator" style="display:none;">⏺️ REC <span id="recording-time">00:00</span></div>
+                </div>
                 </div>
 
-                <div class="files-section">
-                    <div class="control-panel">
-                        <h2>📁 Файлы камеры</h2>
-                        
-                        <div class="file-tabs">
-                            <button class="tab-btn active" onclick="showFileTab('photos')">📸 Фото</button>
-                            <button class="tab-btn" onclick="showFileTab('videos')">🎥 Видео</button>
-                        </div>
-                        
-                        <div class="file-list" id="photos-list">
-                            <div class="file-loading">Загрузка...</div>
-                        </div>
-                        
-                        <div class="file-list" id="videos-list" style="display: none;">
-                            <div class="file-loading">Загрузка...</div>
-                        </div>
-                        
-                        <div class="file-controls">
-                            <button class="file-btn" onclick="refreshFiles()">🔄 Обновить</button>
-                            <button class="file-btn btn-danger" onclick="clearOldFiles()">🗑️ Очистить старые</button>
-                        </div>
+                <div class="camera-controls">
+                <button class="camera-btn btn-photo" onclick="takePhoto()">📸 Фото</button>
+                <button class="camera-btn btn-record" id="record-btn" onclick="toggleRecording()">🎥 Запись</button>
+                <button class="camera-btn btn-refresh" onclick="refreshCamera()">🔄 Обновить</button>
+                </div>
+
+                <div class="camera-pan-tilt-controls">
+                <h3>🎯 Управление поворотом камеры</h3>
+                <div class="pan-tilt-grid">
+                    <div></div>
+                    <button class="pan-tilt-btn btn-tilt-up" onclick="cameraTiltUp()">⬆️</button>
+                    <div></div>
+                    <button class="pan-tilt-btn btn-pan-left" onclick="cameraPanLeft()">⬅️</button>
+                    <button class="pan-tilt-btn btn-center" onclick="cameraCenter()">🎯</button>
+                    <button class="pan-tilt-btn btn-pan-right" onclick="cameraPanRight()">➡️</button>
+                    <div></div>
+                    <button class="pan-tilt-btn btn-tilt-down" onclick="cameraTiltDown()">⬇️</button>
+                    <div></div>
+                </div>
+                <div class="angle-display">
+                    <div class="angle-info">
+                    <span>Горизонт: <strong id="pan-angle">90°</strong></span>
+                    <span>Вертикаль: <strong id="tilt-angle">90°</strong></span>
                     </div>
+                </div>
                 </div>
             </div>
+            </section>
         </div>
 
-        <!-- Модальное окно для просмотра фото -->
-        <div id="photo-modal" class="modal" onclick="closePhotoModal()">
-            <div class="modal-content" onclick="event.stopPropagation()">
-                <span class="close" onclick="closePhotoModal()">&times;</span>
-                <img id="modal-photo" src="" alt="Фото">
-                <div class="modal-info">
-                    <h3 id="modal-photo-name">--</h3>
-                    <p id="modal-photo-details">--</p>
+        <!-- Низ: датчики и файлы -->
+        <div class="bottom-row">
+            <section class="panel sensors">
+            <h2>📊 Датчики и состояние</h2>
+            <div class="panel-body">
+                <div class="current-values">
+                <div style="display:grid; grid-template-columns: 1fr auto; row-gap:6px;">
+                    <span>Установленная скорость:</span><span id="current-speed">100</span>
+                    <span>Состояние движения:</span><span id="movement-direction">Остановлен</span>
+                    <span>Камера FPS:</span><span id="current-camera-fps">--</span>
+                </div>
+                </div>
+                <div class="grid">
+                <div class="sensor-card" id="front-sensor">
+                    <div class="sensor-value" id="front-distance">--</div>
+                    <div class="sensor-label">Передний датчик (см)</div>
+                </div>
+                <div class="sensor-card" id="rear-sensor">
+                    <div class="sensor-value" id="rear-distance">--</div>
+                    <div class="sensor-label">Задний датчик (см)</div>
+                </div>
+                </div>
+                <div id="obstacle-warnings" style="margin-top:10px;"></div>
+            </div>
+            </section>
+
+            <section class="panel files">
+            <h2>📁 Файлы камеры</h2>
+            <div class="panel-body">
+                <div style="display:flex; gap:8px; border-bottom: 1px solid #e9ecef; margin-bottom:8px;">
+                <button class="camera-btn btn-refresh" onclick="showFileTab('photos')">📸 Фото</button>
+                <button class="camera-btn btn-refresh" onclick="showFileTab('videos')">🎥 Видео</button>
+                </div>
+                <div class="file-list" id="photos-list"><div class="file-loading">Загрузка...</div></div>
+                <div class="file-list" id="videos-list" style="display:none;"><div class="file-loading">Загрузка...</div></div>
+                <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+                <button class="camera-btn btn-refresh" onclick="refreshFiles()">🔄 Обновить</button>
+                <button class="camera-btn btn-record" onclick="clearOldFiles()">🗑️ Очистить старые</button>
                 </div>
             </div>
+            </section>
+        </div>
         </div>
     </div>
-
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script src="{{ url_for('static', filename='camera.js') }}"></script>
     <script src="{{ url_for('static', filename='camera-control.js') }}"></script>
