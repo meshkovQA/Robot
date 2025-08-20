@@ -258,51 +258,43 @@ class RobotController:
             return self.current_pan_angle, self.current_tilt_angle
 
     # ---------- движение робота ----------
+
     def move_forward(self, speed: int) -> bool:
-        """Движение вперед с заданной скоростью"""
         speed = _clip_speed(speed)
 
-        # Проверяем препятствие спереди перед началом движения
         front_dist, _ = self.read_sensors()
         if front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM:
-            logger.warning("Движение вперед заблокировано: препятствие на %d см (порог %d см)",
+            logger.warning("Вперёд нельзя: препятствие на %d см (порог %d см)",
                            front_dist, SENSOR_FWD_STOP_CM)
             return False
 
-        with self._lock:
-            self.current_speed = speed
-            self.is_moving = True
-            self.movement_direction = 1
+        # ⬇️ отправляем, пока внутреннее состояние ещё "стоп"
+        ok = self._send_movement_command(speed, 1)
 
-        with self._lock:
-            self.current_speed = speed
-            self.is_moving = True
-            self.movement_direction = 1
-
-        return self._send_movement_command(speed, 1)
+        if ok:
+            with self._lock:
+                self.current_speed = speed
+                self.is_moving = True
+                self.movement_direction = 1
+        return ok
 
     def move_backward(self, speed: int) -> bool:
-        """Движение назад с заданной скоростью"""
         speed = _clip_speed(speed)
 
-        # Проверяем препятствие сзади перед началом движения
         _, rear_dist = self.read_sensors()
         if rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM:
-            logger.warning("Движение назад заблокировано: препятствие на %d см (порог %d см)",
+            logger.warning("Назад нельзя: препятствие на %d см (порог %d см)",
                            rear_dist, SENSOR_BWD_STOP_CM)
             return False
 
-        with self._lock:
-            self.current_speed = speed
-            self.is_moving = True
-            self.movement_direction = 2
+        ok = self._send_movement_command(speed, 2)
 
-        with self._lock:
-            self.current_speed = speed
-            self.is_moving = True
-            self.movement_direction = 2
-
-        return self._send_movement_command(speed, 2)
+        if ok:
+            with self._lock:
+                self.current_speed = speed
+                self.is_moving = True
+                self.movement_direction = 2
+        return ok
 
         # ---------- прочие методы ----------
     def update_speed(self, new_speed: int) -> bool:
