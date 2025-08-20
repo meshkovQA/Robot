@@ -12,7 +12,7 @@ from .config import (
     ARDUINO_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
     SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM,
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED, CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
-    CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE
+    CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE, KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART
 )
 from .i2c_bus import I2CBus, open_bus
 
@@ -86,6 +86,10 @@ class RobotController:
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
+        self._kickstart_timer: Optional[threading.Timer] = None
+        self._kickstart_active = False
+        self._target_speed = 0
+        self._target_direction = 0
 
     # ---------- низкоуровневые I2C ----------
     def _i2c_write(self, data: list[int], retries: int = 3, backoff: float = 0.02) -> bool:
@@ -150,6 +154,87 @@ class RobotController:
             logger.error("I2C read failed: %s", e)
             return SENSOR_ERR, SENSOR_ERR, 90, 90
 
+    def _needs_kickstart(self, speed: int, direction: int) -> bool:
+        """Определяет, нужен ли кикстарт"""
+        with self._lock:
+            direction_changed = (self.movement_direction != direction and
+                                 self.movement_direction != 0)
+            was_stopped = not self.is_moving
+            low_speed = speed < MIN_SPEED_FOR_KICKSTART
+
+        return (was_stopped or direction_changed) and low_speed
+
+    def _apply_kickstart(self, target_speed: int, direction: int):
+        """Применяет кикстарт и возвращает к целевой скорости"""
+        logger.debug("Применяем кикстарт: %d -> %d на %dмс",
+                     target_speed, KICKSTART_SPEED, int(KICKSTART_DURATION * 1000))
+
+        # Отменяем предыдущий таймер если есть
+        if self._kickstart_timer and self._kickstart_timer.is_alive():
+            self._kickstart_timer.cancel()
+
+        # Сохраняем целевые параметры
+        self._target_speed = target_speed
+        self._target_direction = direction
+        self._kickstart_active = True
+
+        # Отправляем команду кикстарта
+        cmd = RobotCommand(
+            speed=KICKSTART_SPEED,
+            direction=direction,
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
+        )
+        success = self.send_command(cmd)
+
+        if success:
+            # Устанавливаем таймер для возврата к целевой скорости
+            self._kickstart_timer = threading.Timer(
+                KICKSTART_DURATION,
+                self._return_to_target_speed
+            )
+            self._kickstart_timer.start()
+        else:
+            self._kickstart_active = False
+
+        return success
+
+    def _return_to_target_speed(self):
+        """Возвращает скорость к целевому значению после кикстарта"""
+        if not self._kickstart_active:
+            return
+
+        logger.debug("Возврат к целевой скорости: %d", self._target_speed)
+
+        cmd = RobotCommand(
+            speed=self._target_speed,
+            direction=self._target_direction,
+            pan_angle=self.current_pan_angle,
+            tilt_angle=self.current_tilt_angle
+        )
+
+        success = self.send_command(cmd)
+        self._kickstart_active = False
+
+        if not success:
+            logger.error("Не удалось вернуться к целевой скорости %d",
+                         self._target_speed)
+
+    def _send_movement_command(self, speed: int, direction: int) -> bool:
+        """Отправляет команду движения с кикстартом если нужно"""
+        # Проверяем нужен ли кикстарт
+        if self._needs_kickstart(speed, direction):
+            return self._apply_kickstart(speed, direction)
+        else:
+            # Обычная команда без кикстарта
+            cmd = RobotCommand(
+                speed=speed,
+                direction=direction,
+                pan_angle=self.current_pan_angle,
+                tilt_angle=self.current_tilt_angle
+            )
+            return self.send_command(cmd)
+
     # ---------- публичный API контроллера ----------
     def send_command(self, cmd: RobotCommand) -> bool:
         """Отправка команды роботу"""
@@ -189,13 +274,12 @@ class RobotController:
             self.is_moving = True
             self.movement_direction = 1
 
-        cmd = RobotCommand(
-            speed=speed,
-            direction=1,
-            pan_angle=self.current_pan_angle,
-            tilt_angle=self.current_tilt_angle
-        )
-        return self.send_command(cmd)
+        with self._lock:
+            self.current_speed = speed
+            self.is_moving = True
+            self.movement_direction = 1
+
+        return self._send_movement_command(speed, 1)
 
     def move_backward(self, speed: int) -> bool:
         """Движение назад с заданной скоростью"""
@@ -213,9 +297,30 @@ class RobotController:
             self.is_moving = True
             self.movement_direction = 2
 
+        with self._lock:
+            self.current_speed = speed
+            self.is_moving = True
+            self.movement_direction = 2
+
+        return self._send_movement_command(speed, 2)
+
+        # ---------- прочие методы ----------
+    def update_speed(self, new_speed: int) -> bool:
+        """Обновление скорости без изменения направления"""
+        new_speed = _clip_speed(new_speed)
+        with self._lock:
+            moving = self.is_moving
+            direction = self.movement_direction
+            self.current_speed = new_speed
+
+        if not moving or direction == 0:
+            logger.info(
+                "Скорость сохранена (%s), но движение не идёт", new_speed)
+            return True
+
         cmd = RobotCommand(
-            speed=speed,
-            direction=2,
+            speed=new_speed,
+            direction=direction,
             pan_angle=self.current_pan_angle,
             tilt_angle=self.current_tilt_angle
         )
@@ -253,6 +358,11 @@ class RobotController:
 
     def stop(self) -> bool:
         """Полная остановка"""
+        # Отменяем кикстарт если активен
+        if self._kickstart_timer and self._kickstart_timer.is_alive():
+            self._kickstart_timer.cancel()
+        self._kickstart_active = False
+
         with self._lock:
             self.current_speed = 0
             self.is_moving = False
@@ -265,6 +375,16 @@ class RobotController:
             tilt_angle=self.current_tilt_angle
         )
         return self.send_command(cmd)
+
+    def is_kickstart_active(self) -> bool:
+        """Проверяет, активен ли кикстарт"""
+        return self._kickstart_active
+
+    def get_effective_speed(self) -> int:
+        """Возвращает текущую эффективную скорость (с учетом кикстарта)"""
+        if self._kickstart_active:
+            return KICKSTART_SPEED
+        return self.current_speed
 
     # ---------- управление камерой ----------
     def set_camera_pan(self, angle: int) -> bool:
@@ -356,28 +476,6 @@ class RobotController:
             "step_size": CAMERA_STEP_SIZE
         }
 
-    # ---------- прочие методы ----------
-    def update_speed(self, new_speed: int) -> bool:
-        """Обновление скорости без изменения направления"""
-        new_speed = _clip_speed(new_speed)
-        with self._lock:
-            moving = self.is_moving
-            direction = self.movement_direction
-            self.current_speed = new_speed
-
-        if not moving or direction == 0:
-            logger.info(
-                "Скорость сохранена (%s), но движение не идёт", new_speed)
-            return True
-
-        cmd = RobotCommand(
-            speed=new_speed,
-            direction=direction,
-            pan_angle=self.current_pan_angle,
-            tilt_angle=self.current_tilt_angle
-        )
-        return self.send_command(cmd)
-
     def get_status(self) -> dict:
         """Получение полного статуса робота"""
         front_dist, rear_dist = self.read_sensors()
@@ -393,6 +491,8 @@ class RobotController:
                 },
                 "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
                 "current_speed": self.current_speed,
+                "effective_speed": self.get_effective_speed(),  # добавлено
+                "kickstart_active": self.is_kickstart_active(),  # добавлено
                 "camera": {
                     "pan_angle": pan_angle,
                     "tilt_angle": tilt_angle,
@@ -406,6 +506,12 @@ class RobotController:
     def shutdown(self):
         """Корректное завершение работы контроллера"""
         logger.info("Начало завершения работы контроллера...")
+
+        # Отменяем кикстарт
+        if self._kickstart_timer and self._kickstart_timer.is_alive():
+            self._kickstart_timer.cancel()
+        self._kickstart_active = False
+
         self._stop_event.set()
 
         # Останавливаем робота
