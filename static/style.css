@@ -103,29 +103,37 @@
   /* Основная сетка: верх (управление+камера), низ (датчики+файлы) */
   .main {
       display: grid;
-      grid-template-rows: minmax(0, 58%) minmax(0, 42%);
-      /* верх/низ в процентах окна */
+      grid-template-rows: 56vh 1fr;
+      /* верх ~56% экрана, низ – остальное */
       gap: var(--gap);
       padding: var(--gap);
       overflow: hidden;
-      /* чтобы внутренние панели прокручивались, а не вся страница */
+      /* общую прокрутку отключаем */
   }
 
   .top-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      /* слева управление, справа камера */
       gap: var(--gap);
       min-height: 0;
-      /* важно для корректного overflow внутри */
+      overflow: hidden;
+      /* никаких внутренних скроллов сверху */
   }
 
+  /* В верхних панелях запрещаем скролл внутри panel-body */
+  .panel.no-scroll .panel-body {
+      overflow: visible;
+      /* показываем всё, что внутри */
+  }
+
+  /* Низ прокручиваем отдельно */
   .bottom-row {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      /* датчики | файлы */
+      grid-template-columns: repeat(2, 1fr);
       gap: var(--gap);
       min-height: 0;
+      overflow: auto;
+      /* отдельная прокрутка для блока датчиков/файлов */
   }
 
   /* Универсальная панель */
@@ -248,25 +256,17 @@
       min-height: 0;
   }
 
+  /* Видео тянем по высоте карточки камеры */
   .video-wrapper {
-      position: relative;
-      background: #000;
-      border-radius: 10px;
-      overflow: hidden;
-      /* Держим в области: вписываем по высоте колонки */
       height: 100%;
       min-height: 0;
-      display: grid;
-      place-items: center;
   }
 
-  /* Контролируем высоту видеоблока через aspect-ratio и min(…) */
   .video-inner {
+      height: 100%;
       width: 100%;
-      height: min(46vh, 100%);
       aspect-ratio: 16/9;
       object-fit: cover;
-      display: block;
   }
 
   .camera-overlay {
@@ -402,13 +402,9 @@
       margin-bottom: 10px;
   }
 
+  /* чтобы список файлов нормально рос в своей прокрутке */
   .files .file-list {
-      min-height: 0;
-      max-height: calc(42vh - 120px);
-      overflow: auto;
-      border: 1px solid #e9ecef;
-      border-radius: 8px;
-      padding: 8px;
+      max-height: none;
   }
 
   .file-item {
@@ -424,10 +420,10 @@
       gap: 6px;
   }
 
-  /* Адаптив — на узких экранах стекаем в одну колонку */
+  /* Адаптив: на узких экранах одна колонка, верх – ~50vh */
   @media (max-width: 1024px) {
       .main {
-          grid-template-rows: auto auto;
+          grid-template-rows: 50vh 1fr;
       }
 
       .top-row,
@@ -436,6 +432,64 @@
       }
 
       .video-inner {
-          height: min(40vh, 100%);
+          height: 100%;
+      }
+  }
+
+
+  /* Уведомления: закреплены сверху, по центру */
+  #alert-container {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 9999;
+      /* поверх всего */
+      pointer-events: none;
+      /* клики проходят сквозь контейнер */
+  }
+
+  .alert {
+      pointer-events: auto;
+      /* но по самой карточке кликать можно */
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+      animation: slideDown .25s ease-out;
+      max-width: min(90vw, 520px);
+      text-align: center;
+  }
+
+  .alert.success {
+      background: #28a745;
+  }
+
+  .alert.warning {
+      background: #ffc107;
+      color: #222;
+  }
+
+  .alert.danger {
+      background: #dc3545;
+  }
+
+  .alert.info {
+      background: #007bff;
+  }
+
+  @keyframes slideDown {
+      from {
+          transform: translate(-50%, -8px);
+          opacity: .0;
+      }
+
+      to {
+          transform: translate(-50%, 0);
+          opacity: 1;
       }
   }

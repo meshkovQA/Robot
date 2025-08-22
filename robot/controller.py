@@ -93,7 +93,10 @@ class RobotController:
         self._target_speed = 0
         self._target_direction = 0
 
-    # ---------- низкоуровневые I2C ----------
+    # --------------------------------------------
+    # Низкоуровневые I2C операции
+    # -------------------------------------------
+
     def _i2c_write(self, data: list[int], retries: int = 3, backoff: float = 0.02) -> bool:
         """Отправка команды на Arduino через I2C"""
         logger.info("Попытка отправки I2C команды: %s", data)
@@ -165,6 +168,10 @@ class RobotController:
         except Exception as e:
             logger.error("I2C read failed: %s", e)
             return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
+
+    # --------------------------------------------
+    # Работа с кикстартом для старта движения
+    # --------------------------------------------
 
     def _needs_kickstart(self, speed: int, direction: int) -> bool:
         """Определяет, нужен ли кикстарт"""
@@ -247,7 +254,10 @@ class RobotController:
             )
             return self.send_command(cmd)
 
-    # ---------- публичный API контроллера ----------
+    # --------------------------------------------
+    # Отправка команды роботу на Adruino и чтение датчиков
+    # --------------------------------------------
+
     def send_command(self, cmd: RobotCommand) -> bool:
         """Отправка команды роботу"""
         data = _pack_command(cmd)
@@ -269,7 +279,76 @@ class RobotController:
         with self._lock:
             return self.current_pan_angle, self.current_tilt_angle
 
-    # ---------- движение робота ----------
+    def get_status(self) -> dict:
+        """Получение полного статуса робота"""
+        front_dist, rear_dist, temp, hum = self.read_sensors()
+        pan_angle, tilt_angle = self.get_camera_angles()
+
+        with self._lock:
+            return {
+                "front_distance": front_dist,
+                "rear_distance": rear_dist,
+                "obstacles": {
+                    "front": front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM,
+                    "rear": rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM,
+                },
+                "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
+                "temperature": temp,
+                "humidity": hum,
+                "current_speed": self.current_speed,
+                "effective_speed": self.get_effective_speed(),  # добавлено
+                "kickstart_active": self.is_kickstart_active(),  # добавлено
+                "camera": {
+                    "pan_angle": pan_angle,
+                    "tilt_angle": tilt_angle,
+                },
+                "is_moving": self.is_moving,
+                "movement_direction": self.movement_direction,
+                "last_command_time": self.last_command_time,
+                "timestamp": time.time(),
+            }
+
+    def reconnect_bus(self) -> bool:
+        """Переподключение к I2C-шине"""
+        try:
+            if self.bus:
+                try:
+                    self.bus.close()
+                except Exception:
+                    pass
+            self.bus = open_bus()
+            logger.info("♻️ I2C-шина переподключена успешно")
+            return True
+        except Exception as e:
+            logger.error("❌ Ошибка переподключения I2C: %s", e)
+            self.bus = None
+            return False
+
+    def shutdown(self):
+        """Корректное завершение работы контроллера"""
+        logger.info("Начало завершения работы контроллера...")
+
+        # Отменяем кикстарт
+        if self._kickstart_timer and self._kickstart_timer.is_alive():
+            self._kickstart_timer.cancel()
+        self._kickstart_active = False
+
+        self._stop_event.set()
+
+        # Останавливаем робота
+        self.stop()
+        time.sleep(0.1)
+
+        # Ждем завершения мониторинга
+        if self._monitor_thread.is_alive():
+            logger.info("Ожидание завершения мониторинга...")
+            self._monitor_thread.join(timeout=2.0)
+
+        logger.info("Контроллер завершил работу")
+
+    # --------------------------------------------
+    # Движение робота
+    # -------------------------------------------
 
     def move_forward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
@@ -308,7 +387,6 @@ class RobotController:
                 self.movement_direction = 2
         return ok
 
-        # ---------- прочие методы ----------
     def update_speed(self, new_speed: int) -> bool:
         """Обновление скорости без изменения направления"""
         new_speed = _clip_speed(new_speed)
@@ -390,7 +468,10 @@ class RobotController:
             return KICKSTART_SPEED
         return self.current_speed
 
-    # ---------- управление камерой ----------
+    # --------------------------------------------
+    # Управление камерой
+    # --------------------------------------------
+
     def set_camera_pan(self, angle: int) -> bool:
         """Установка угла поворота камеры по горизонтали"""
         angle = _clip_pan_angle(angle)
@@ -480,74 +561,10 @@ class RobotController:
             "step_size": CAMERA_STEP_SIZE
         }
 
-    def get_status(self) -> dict:
-        """Получение полного статуса робота"""
-        front_dist, rear_dist, temp, hum = self.read_sensors()
-        pan_angle, tilt_angle = self.get_camera_angles()
+    # --------------------------------------
+    # Мониторинг состояния робота
+    # --------------------------------------
 
-        with self._lock:
-            return {
-                "front_distance": front_dist,
-                "rear_distance": rear_dist,
-                "obstacles": {
-                    "front": front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM,
-                    "rear": rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM,
-                },
-                "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
-                "temperature": temp,
-                "humidity": hum,
-                "current_speed": self.current_speed,
-                "effective_speed": self.get_effective_speed(),  # добавлено
-                "kickstart_active": self.is_kickstart_active(),  # добавлено
-                "camera": {
-                    "pan_angle": pan_angle,
-                    "tilt_angle": tilt_angle,
-                },
-                "is_moving": self.is_moving,
-                "movement_direction": self.movement_direction,
-                "last_command_time": self.last_command_time,
-                "timestamp": time.time(),
-            }
-
-    def reconnect_bus(self) -> bool:
-        """Переподключение к I2C-шине"""
-        try:
-            if self.bus:
-                try:
-                    self.bus.close()
-                except Exception:
-                    pass
-            self.bus = open_bus()
-            logger.info("♻️ I2C-шина переподключена успешно")
-            return True
-        except Exception as e:
-            logger.error("❌ Ошибка переподключения I2C: %s", e)
-            self.bus = None
-            return False
-
-    def shutdown(self):
-        """Корректное завершение работы контроллера"""
-        logger.info("Начало завершения работы контроллера...")
-
-        # Отменяем кикстарт
-        if self._kickstart_timer and self._kickstart_timer.is_alive():
-            self._kickstart_timer.cancel()
-        self._kickstart_active = False
-
-        self._stop_event.set()
-
-        # Останавливаем робота
-        self.stop()
-        time.sleep(0.1)
-
-        # Ждем завершения мониторинга
-        if self._monitor_thread.is_alive():
-            logger.info("Ожидание завершения мониторинга...")
-            self._monitor_thread.join(timeout=2.0)
-
-        logger.info("Контроллер завершил работу")
-
-    # ---------- мониторинг препятствий + кэш сенсоров ----------
     def _monitor_loop(self):
         """Фоновый мониторинг датчиков и автостоп"""
         poll_interval = 0.2  # 200мс
