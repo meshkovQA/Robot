@@ -97,12 +97,10 @@ function updateSpeed(newSpeed) {
 function updateMovementState(moving, state) {
     robotMoving = moving;
     const statusDisplay = document.getElementById('movement-status-display');
-    const robotState = document.getElementById('robot-state');
     const speedInfo = document.getElementById('speed-info');
-    const movementDirection = document.getElementById('movement-direction');
 
-    robotState.textContent = state;
-    movementDirection.textContent = state;
+    setText('robot-state', state);
+    setText('movement-direction', state);
 
     if (moving) {
         statusDisplay.className = 'movement-status moving';
@@ -156,7 +154,7 @@ function updateSensorData() {
                 updateObstacleStatus(status.obstacles.front || status.obstacles.rear);
 
                 // Обновление текущих значений
-                document.getElementById('current-speed').textContent = status.current_speed;
+                setText('current-speed', status.current_speed);
 
                 // Обновление состояния движения
                 const directionText = getDirectionText(status.movement_direction, status.is_moving);
@@ -174,8 +172,7 @@ function updateSensorData() {
 
                 // Обновление времени
                 const now = new Date();
-                document.getElementById('last-update').textContent =
-                    `Обновлено: ${now.toLocaleTimeString()}`;
+                setText('last-update', `Обновлено: ${now.toLocaleTimeString()}`);
 
                 // Обновление углов камеры
                 if (window.cameraControl) {
