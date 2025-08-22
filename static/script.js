@@ -323,22 +323,33 @@ function updateObstacleWarnings(obstacles, sensorError) {
 }
 
 // Показ уведомлений
-function showAlert(message, type = 'success') {
-    // Удаляем существующие уведомления
-    const existingAlerts = document.querySelectorAll('.alert');
-    existingAlerts.forEach(alert => alert.remove());
+function showAlert(message, type = 'success', ttlMs = 3000) {
+    // Гарантируем контейнер сверху
+    let container = document.getElementById('alert-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'alert-container';
+        document.body.appendChild(container);
+    }
 
-    // Создаем новое уведомление
+    // Создаём карточку
     const alert = document.createElement('div');
     alert.className = `alert ${type}`;
     alert.textContent = message;
 
-    document.body.appendChild(alert);
+    // Добавляем сверху стека (чтобы последнее было первым)
+    container.prepend(alert);
 
-    // Автоматическое удаление через 3 секунды
+    // Ограничим стек из уведомлений (например, максимум 3)
+    const MAX_ALERTS = 3;
+    while (container.children.length > MAX_ALERTS) {
+        container.lastElementChild.remove();
+    }
+
+    // Автоудаление
     setTimeout(() => {
         alert.remove();
-    }, 3000);
+    }, ttlMs);
 }
 
 // Управление с клавиатуры
