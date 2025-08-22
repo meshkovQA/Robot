@@ -19,6 +19,11 @@ speedSlider.addEventListener('input', function () {
     updateSpeed(speed);
 });
 
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
 // Функции управления движением
 function moveForward() {
     const speed = parseInt(speedSlider.value);
