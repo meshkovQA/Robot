@@ -87,6 +87,10 @@
         <div class="card w-100">
           <div class="card-header fw-bold">📹 Видеопоток</div>
           <div class="card-body d-flex flex-column">
+            <div class="d-flex justify-content-between small text-muted mt-1">
+                <span id="camera-fps">-- FPS</span>
+                <span id="camera-resolution">--x--</span>
+            </div>
             <!-- Видео: занимает доступную высоту карточки -->
             <div class="ratio ratio-16x9 flex-grow-1">
               <img id="camera-stream" src="/camera/stream" alt="Видеопоток"
@@ -130,12 +134,6 @@
         <div class="card w-100">
           <div class="card-header fw-bold">📊 Датчики и состояние</div>
           <div class="card-body">
-            <div class="row g-2 small mb-2">
-              <div class="col">Установленная скорость: <strong id="current-speed">100</strong></div>
-              <div class="col">Состояние движения: <strong id="movement-direction">Остановлен</strong></div>
-              <div class="col">Камера FPS: <strong id="current-camera-fps">--</strong></div>
-            </div>
-
             <div class="row g-3">
               <!-- Передний -->
                 <div class="col-6">
