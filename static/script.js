@@ -13,16 +13,10 @@ const speedValue = document.getElementById('speed-value');
 speedSlider.addEventListener('input', function () {
     const speed = parseInt(this.value);
     speedValue.textContent = speed;
-    document.getElementById('current-speed').textContent = speed;
 
     // Отправляем новую скорость только если робот движется
     updateSpeed(speed);
 });
-
-function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-}
 
 // Функции управления движением
 function moveForward() {
@@ -102,10 +96,11 @@ function updateSpeed(newSpeed) {
 function updateMovementState(moving, state) {
     robotMoving = moving;
     const statusDisplay = document.getElementById('movement-status-display');
+    const robotState = document.getElementById('robot-state');
     const speedInfo = document.getElementById('speed-info');
 
-    setText('robot-state', state);
-    setText('movement-direction', state);
+    robotState.textContent = state;
+
 
     if (moving) {
         statusDisplay.className = 'movement-status moving';
@@ -157,9 +152,6 @@ function updateSensorData() {
                 updateConnectionStatus(true);
                 updateMovementStatusIndicator(status.is_moving);
                 updateObstacleStatus(status.obstacles.front || status.obstacles.rear);
-
-                // Обновление текущих значений
-                setText('current-speed', status.current_speed);
 
                 // Обновление состояния движения
                 const directionText = getDirectionText(status.movement_direction, status.is_moving);
