@@ -223,10 +223,11 @@ function getDirectionText(direction, isMoving) {
 function updateSensorDisplay(sensor, distance) {
     const valueElement = document.getElementById(`${sensor}-distance`);
     const cardElement = document.getElementById(`${sensor}-sensor`);
+    if (!valueElement || !cardElement) return; // защитимся от null
 
-    // Сброс классов
-    valueElement.className = 'sensor-value';
-    cardElement.className = 'sensor-card';
+    // сброс
+    valueElement.classList.remove('danger', 'warning', 'error');
+    cardElement.classList.remove('danger', 'warning');
 
     if (distance === 999) {
         valueElement.textContent = 'ERR';
@@ -276,22 +277,21 @@ function updateEnvDisplay(temp, hum) {
 
 // Обновление индикаторов состояния
 function updateConnectionStatus(connected) {
-    const indicator = document.getElementById('connection-status');
-    indicator.className = 'status-indicator' + (connected ? ' active' : '');
+    const el = document.getElementById('connection-status');
+    if (!el) return;
+    el.classList.toggle('active', !!connected);
 }
 
 function updateMovementStatusIndicator(moving) {
-    const indicator = document.getElementById('movement-status');
-    indicator.className = 'status-indicator' + (moving ? ' active' : '');
+    const el = document.getElementById('movement-status');
+    if (!el) return;
+    el.classList.toggle('active', !!moving);
 }
 
 function updateObstacleStatus(obstacles) {
-    const indicator = document.getElementById('obstacle-status');
-    if (obstacles) {
-        indicator.className = 'status-indicator warning';
-    } else {
-        indicator.className = 'status-indicator';
-    }
+    const el = document.getElementById('obstacle-status');
+    if (!el) return;
+    el.classList.toggle('warning', !!obstacles);
 }
 
 // Обновление предупреждений о препятствиях
@@ -325,13 +325,22 @@ function updateObstacleWarnings(obstacles, sensorError) {
 // Показ уведомлений
 function showAlert(message, type = 'success') {
     const wrap = document.getElementById('alert-container');
+
+    // очищаем все старые алерты
+    wrap.innerHTML = '';
+
+    // создаем новый
     const div = document.createElement('div');
-    // type: 'success' | 'warning' | 'danger' | 'info'
     div.className = `alert alert-${type} shadow`;
     div.role = 'alert';
     div.textContent = message;
+
     wrap.appendChild(div);
-    setTimeout(() => div.remove(), 3000);
+
+    // автоудаление
+    setTimeout(() => {
+        if (div.parentNode) div.remove();
+    }, 3000);
 }
 
 // Управление с клавиатуры
