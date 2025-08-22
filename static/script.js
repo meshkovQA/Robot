@@ -323,33 +323,15 @@ function updateObstacleWarnings(obstacles, sensorError) {
 }
 
 // Показ уведомлений
-function showAlert(message, type = 'success', ttlMs = 3000) {
-    // Гарантируем контейнер сверху
-    let container = document.getElementById('alert-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'alert-container';
-        document.body.appendChild(container);
-    }
-
-    // Создаём карточку
-    const alert = document.createElement('div');
-    alert.className = `alert ${type}`;
-    alert.textContent = message;
-
-    // Добавляем сверху стека (чтобы последнее было первым)
-    container.prepend(alert);
-
-    // Ограничим стек из уведомлений (например, максимум 3)
-    const MAX_ALERTS = 3;
-    while (container.children.length > MAX_ALERTS) {
-        container.lastElementChild.remove();
-    }
-
-    // Автоудаление
-    setTimeout(() => {
-        alert.remove();
-    }, ttlMs);
+function showAlert(message, type = 'success') {
+    const wrap = document.getElementById('alert-container');
+    const div = document.createElement('div');
+    // type: 'success' | 'warning' | 'danger' | 'info'
+    div.className = `alert alert-${type} shadow`;
+    div.role = 'alert';
+    div.textContent = message;
+    wrap.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
 }
 
 // Управление с клавиатуры
