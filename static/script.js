@@ -169,7 +169,7 @@ function updateSensorData() {
 
                 // Обновление времени
                 const now = new Date();
-                setText('last-update', `Обновлено: ${now.toLocaleTimeString()}`);
+                document.getElementById('last-update').textContent = `Обновлено: ${now.toLocaleTimeString()}`;
 
                 // Обновление углов камеры
                 if (window.cameraControl) {
