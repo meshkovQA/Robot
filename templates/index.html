@@ -19,18 +19,18 @@
   <div class="container-xxl py-2 vh-100 d-flex flex-column">
     <!-- Статус-бар -->
     <div class="d-flex flex-wrap align-items-center gap-2 py-2 border rounded bg-light">
-      <span class="badge text-bg-{{'success' if False else 'danger'}}">
-        <span id="connection-status" class="status-dot me-1"></span> I2C соединение
-      </span>
       <span class="badge text-bg-secondary">
-        <span id="movement-status" class="status-dot me-1"></span> Движение
-      </span>
-      <span class="badge text-bg-secondary">
-        <span id="obstacle-status" class="status-dot me-1"></span> Препятствия
-      </span>
-      <span class="badge text-bg-secondary">
-        <span id="camera-status" class="status-dot me-1"></span> Камера
-      </span>
+        <span id="connection-status" class="status-indicator me-1"></span> I2C соединение
+    </span>
+        <span class="badge text-bg-secondary">
+            <span id="movement-status" class="status-indicator me-1"></span> Движение
+        </span>
+        <span class="badge text-bg-secondary">
+            <span id="obstacle-status" class="status-indicator me-1"></span> Препятствия
+        </span>
+        <span class="badge text-bg-secondary">
+            <span id="camera-status" class="status-indicator me-1"></span> Камера
+        </span>
       <span class="ms-auto small">Обновлено: <strong id="last-update">--:--:--</strong></span>
     </div>
 
@@ -137,30 +137,37 @@
             </div>
 
             <div class="row g-3">
-              <div class="col-6">
-                <div class="border rounded p-3 text-center">
-                  <div class="fs-3 fw-bold text-success" id="front-distance">--</div>
-                  <div class="text-muted">Передний датчик (см)</div>
+              <!-- Передний -->
+                <div class="col-6">
+                <div id="front-sensor" class="sensor-card border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-success" id="front-distance">--</div>
+                    <div class="text-muted">Передний датчик (см)</div>
                 </div>
-              </div>
-              <div class="col-6">
-                <div class="border rounded p-3 text-center">
-                  <div class="fs-3 fw-bold text-success" id="rear-distance">--</div>
-                  <div class="text-muted">Задний датчик (см)</div>
                 </div>
-              </div>
-              <div class="col-6">
-                <div class="border rounded p-3 text-center">
-                  <div class="fs-3 fw-bold" id="temperature-value">--</div>
-                  <div class="text-muted">Температура (°C)</div>
+
+                <!-- Задний -->
+                <div class="col-6">
+                <div id="rear-sensor" class="sensor-card border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold text-success" id="rear-distance">--</div>
+                    <div class="text-muted">Задний датчик (см)</div>
                 </div>
-              </div>
-              <div class="col-6">
-                <div class="border rounded p-3 text-center">
-                  <div class="fs-3 fw-bold" id="humidity-value">--</div>
-                  <div class="text-muted">Влажность (%)</div>
                 </div>
-              </div>
+
+                <!-- Температура -->
+                <div class="col-6">
+                <div id="temp-sensor" class="sensor-card border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" id="temperature-value">--</div>
+                    <div class="text-muted">Температура (°C)</div>
+                </div>
+                </div>
+
+                <!-- Влажность -->
+                <div class="col-6">
+                <div id="hum-sensor" class="sensor-card border rounded p-3 text-center">
+                    <div class="fs-3 fw-bold" id="humidity-value">--</div>
+                    <div class="text-muted">Влажность (%)</div>
+                </div>
+                </div>
             </div>
 
             <div id="obstacle-warnings" class="mt-2"></div>

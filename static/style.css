@@ -46,3 +46,29 @@
 .sensor-warning {
     color: #ffc107 !important;
 }
+
+/* точки-статусы как раньше */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #dc3545;
+}
+
+.status-indicator.active {
+    background: #28a745;
+}
+
+.status-indicator.warning {
+    background: #ffc107;
+}
+
+/* подсветка карточек датчиков */
+.sensor-card.danger {
+    border-color: #dc3545 !important;
+}
+
+.sensor-card.warning {
+    border-color: #ffc107 !important;
+}
