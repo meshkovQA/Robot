@@ -83,6 +83,8 @@ class RobotController:
         self._stop_event = threading.Event()
         self._sensor_front = SENSOR_ERR
         self._sensor_rear = SENSOR_ERR
+        self._env_temp: Optional[float] = None
+        self._env_hum: Optional[float] = None
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
@@ -122,23 +124,25 @@ class RobotController:
             "I2C write полностью провалился после %d попыток", retries)
         return False
 
-    def _i2c_read_sensors(self) -> Tuple[int, int, int, int]:
+    def _i2c_read_sensors(self) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
         """Чтение данных с датчиков и углов камеры"""
         if not self.bus:
-            return 25, 30, 90, 90  # эмуляция
+            return 25, 30, 90, 90,  23.4, 45.0  # эмуляция
 
         try:
-            # Читаем расширенные данные (8 байт): датчики + углы камеры
-            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 8)
-            if len(raw) != 8:
-                logger.warning("Получено %d байт вместо 8", len(raw))
-                return SENSOR_ERR, SENSOR_ERR, 90, 90
+            # Читаем расширенные данные (12 байт): датчики + углы камеры
+            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 12)
+            if len(raw) != 12:
+                logger.warning("Получено %d байт вместо 12", len(raw))
+                return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
             # Распаковываем little-endian uint16
             front = (raw[1] << 8) | raw[0]
             rear = (raw[3] << 8) | raw[2]
             pan = (raw[5] << 8) | raw[4]
             tilt = (raw[7] << 8) | raw[6]
+            t10 = (raw[9] << 8) | raw[8]
+            h10 = (raw[11] << 8) | raw[10]
 
             # Проверка валидности датчиков
             if front > SENSOR_MAX_VALID:
@@ -146,13 +150,21 @@ class RobotController:
             if rear > SENSOR_MAX_VALID:
                 rear = SENSOR_ERR
 
-            logger.debug("Датчики: front=%d, rear=%d, pan=%d, tilt=%d",
-                         front, rear, pan, tilt)
-            return front, rear, pan, tilt
+            # sign-fix for int16
+            if t10 >= 32768:
+                t10 -= 65536
+            if h10 >= 32768:
+                h10 -= 65536
+            temp = (None if t10 == -32768 else t10/10.0)
+            hum = (None if h10 == -32768 else h10/10.0)
+
+            logger.debug("Датчики: front=%d, rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
+                         front, rear, pan, tilt, temp, hum)
+            return front, rear, pan, tilt, temp, hum
 
         except Exception as e:
             logger.error("I2C read failed: %s", e)
-            return SENSOR_ERR, SENSOR_ERR, 90, 90
+            return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
     def _needs_kickstart(self, speed: int, direction: int) -> bool:
         """Определяет, нужен ли кикстарт"""
@@ -247,10 +259,10 @@ class RobotController:
                 self.current_tilt_angle = cmd.tilt_angle
             return success
 
-    def read_sensors(self) -> Tuple[int, int]:
+    def read_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
         """Получение текущих показаний датчиков"""
         with self._lock:
-            return self._sensor_front, self._sensor_rear
+            return self._sensor_front, self._sensor_rear, self._env_temp, self._env_hum
 
     def get_camera_angles(self) -> Tuple[int, int]:
         """Получение текущих углов камеры"""
@@ -470,7 +482,7 @@ class RobotController:
 
     def get_status(self) -> dict:
         """Получение полного статуса робота"""
-        front_dist, rear_dist = self.read_sensors()
+        front_dist, rear_dist, temp, hum = self.read_sensors()
         pan_angle, tilt_angle = self.get_camera_angles()
 
         with self._lock:
@@ -482,6 +494,8 @@ class RobotController:
                     "rear": rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM,
                 },
                 "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
+                "temperature": temp,
+                "humidity": hum,
                 "current_speed": self.current_speed,
                 "effective_speed": self.get_effective_speed(),  # добавлено
                 "kickstart_active": self.is_kickstart_active(),  # добавлено
@@ -494,6 +508,22 @@ class RobotController:
                 "last_command_time": self.last_command_time,
                 "timestamp": time.time(),
             }
+
+    def reconnect_bus(self) -> bool:
+        """Переподключение к I2C-шине"""
+        try:
+            if self.bus:
+                try:
+                    self.bus.close()
+                except Exception:
+                    pass
+            self.bus = open_bus()
+            logger.info("♻️ I2C-шина переподключена успешно")
+            return True
+        except Exception as e:
+            logger.error("❌ Ошибка переподключения I2C: %s", e)
+            self.bus = None
+            return False
 
     def shutdown(self):
         """Корректное завершение работы контроллера"""
@@ -530,10 +560,11 @@ class RobotController:
                 # Ограничиваем частоту опроса датчиков
                 now = time.time()
                 if now - last_sensor_update >= poll_interval:
-                    front_dist, rear_dist, pan, tilt = self._i2c_read_sensors()
+                    front_dist, rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
 
                     with self._lock:
                         self._sensor_front, self._sensor_rear = front_dist, rear_dist
+                        self._env_temp, self._env_hum = temp, hum
                         # Обновляем углы камеры из Arduino (актуальное состояние)
                         if pan != 0 and tilt != 0:  # проверяем что получили валидные данные
                             self.current_pan_angle = pan
@@ -568,6 +599,8 @@ class RobotController:
 
             except Exception as e:
                 logger.error("Ошибка в мониторинге: %s", e)
+                # пробуем переподключиться
+                self.reconnect_bus()
                 time.sleep(1.0)  # Более долгая пауза при ошибке
 
         logger.info("Мониторинг датчиков завершен")

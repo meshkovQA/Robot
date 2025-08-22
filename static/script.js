@@ -166,6 +166,9 @@ function updateSensorData() {
                 updateSensorDisplay('front', status.front_distance);
                 updateSensorDisplay('rear', status.rear_distance);
 
+                // Обновление температуры и влажности
+                updateEnvDisplay(status.temperature, status.humidity);
+
                 // Предупреждения о препятствиях
                 updateObstacleWarnings(status.obstacles, status.sensor_error);
 
@@ -181,6 +184,11 @@ function updateSensorData() {
 
                 lastUpdateTime = Date.now();
                 obstacleDetected = status.obstacles.front || status.obstacles.rear;
+
+                if (!connectionActive) {
+                    showAlert('✅ Соединение восстановлено', 'success');
+                }
+
                 connectionActive = true;
             } else {
                 updateConnectionStatus(false);
@@ -190,6 +198,11 @@ function updateSensorData() {
         .catch(error => {
             console.error('Ошибка получения статуса:', error);
             updateConnectionStatus(false);
+
+            if (connectionActive) {
+                showAlert('Потеряно соединение с роботом. Переподключение...', 'danger');
+            }
+
             connectionActive = false;
         });
 }
@@ -228,6 +241,36 @@ function updateSensorDisplay(sensor, distance) {
             valueElement.classList.add('warning');
             cardElement.classList.add('warning');
         }
+    }
+}
+
+function updateEnvDisplay(temp, hum) {
+    const tEl = document.getElementById('temperature-value');
+    const hEl = document.getElementById('humidity-value');
+    const tCard = document.getElementById('temp-sensor');
+    const hCard = document.getElementById('hum-sensor');
+
+    // сброс классов
+    [tEl, hEl].forEach(el => el.className = 'sensor-value');
+    [tCard, hCard].forEach(el => el.className = 'sensor-card');
+
+    if (temp === null || temp === undefined) {
+        tEl.textContent = 'ERR';
+        tEl.classList.add('error');
+    } else {
+        tEl.textContent = temp.toFixed(1);
+        // лёгкая индикация по температуре (необязательно)
+        if (temp >= 35) { tEl.classList.add('danger'); tCard.classList.add('danger'); }
+        else if (temp >= 30) { tEl.classList.add('warning'); tCard.classList.add('warning'); }
+    }
+
+    if (hum === null || hum === undefined) {
+        hEl.textContent = 'ERR';
+        hEl.classList.add('error');
+    } else {
+        hEl.textContent = hum.toFixed(1);
+        // лёгкая индикация по влажности (необязательно)
+        if (hum <= 20) { hEl.classList.add('warning'); hCard.classList.add('warning'); }
     }
 }
 
