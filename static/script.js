@@ -223,25 +223,28 @@ function getDirectionText(direction, isMoving) {
 function updateSensorDisplay(sensor, distance) {
     const valueElement = document.getElementById(`${sensor}-distance`);
     const cardElement = document.getElementById(`${sensor}-sensor`);
-    if (!valueElement || !cardElement) return; // защитимся от null
 
-    // сброс
-    valueElement.classList.remove('danger', 'warning', 'error');
-    cardElement.classList.remove('danger', 'warning');
+    if (!valueElement || !cardElement) return;
+
+    // сброс только "сигнальных" классов
+    valueElement.classList.remove('text-danger', 'text-warning');
+    cardElement.classList.remove('border-danger', 'border-warning');
 
     if (distance === 999) {
         valueElement.textContent = 'ERR';
-        valueElement.classList.add('error');
-    } else {
-        valueElement.textContent = distance;
+        valueElement.classList.add('text-danger');
+        cardElement.classList.add('border-danger');
+        return;
+    }
 
-        if (distance < 10) {
-            valueElement.classList.add('danger');
-            cardElement.classList.add('danger');
-        } else if (distance < 20) {
-            valueElement.classList.add('warning');
-            cardElement.classList.add('warning');
-        }
+    valueElement.textContent = distance;
+
+    if (distance < 10) {
+        valueElement.classList.add('text-danger');
+        cardElement.classList.add('border-danger');
+    } else if (distance < 20) {
+        valueElement.classList.add('text-warning');
+        cardElement.classList.add('border-warning');
     }
 }
 
@@ -251,27 +254,31 @@ function updateEnvDisplay(temp, hum) {
     const tCard = document.getElementById('temp-sensor');
     const hCard = document.getElementById('hum-sensor');
 
-    // сброс классов
-    [tEl, hEl].forEach(el => el.className = 'sensor-value');
-    [tCard, hCard].forEach(el => el.className = 'sensor-card');
+    if (!tEl || !hEl || !tCard || !hCard) return;
 
-    if (temp === null || temp === undefined) {
+    // сброс только сигнальных классов
+    [tEl, hEl].forEach(el => el.classList.remove('text-danger', 'text-warning'));
+    [tCard, hCard].forEach(el => el.classList.remove('border-danger', 'border-warning'));
+
+    // Температура
+    if (temp == null) {
         tEl.textContent = 'ERR';
-        tEl.classList.add('error');
+        tEl.classList.add('text-danger');
+        tCard.classList.add('border-danger');
     } else {
         tEl.textContent = temp.toFixed(1);
-        // лёгкая индикация по температуре (необязательно)
-        if (temp >= 35) { tEl.classList.add('danger'); tCard.classList.add('danger'); }
-        else if (temp >= 30) { tEl.classList.add('warning'); tCard.classList.add('warning'); }
+        if (temp >= 35) { tEl.classList.add('text-danger'); tCard.classList.add('border-danger'); }
+        else if (temp >= 30) { tEl.classList.add('text-warning'); tCard.classList.add('border-warning'); }
     }
 
-    if (hum === null || hum === undefined) {
+    // Влажность
+    if (hum == null) {
         hEl.textContent = 'ERR';
-        hEl.classList.add('error');
+        hEl.classList.add('text-danger');
+        hCard.classList.add('border-danger');
     } else {
         hEl.textContent = hum.toFixed(1);
-        // лёгкая индикация по влажности (необязательно)
-        if (hum <= 20) { hEl.classList.add('warning'); hCard.classList.add('warning'); }
+        if (hum <= 20) { hEl.classList.add('text-warning'); hCard.classList.add('border-warning'); }
     }
 }
 
