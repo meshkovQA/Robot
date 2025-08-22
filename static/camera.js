@@ -405,59 +405,92 @@ function clearOldFiles() {
 // ==================== ОБНОВЛЕНИЕ СТАТУСА КАМЕРЫ ====================
 
 function updateCameraStatus(cameraData) {
+    const overlayFpsEl = document.getElementById('camera-fps');          // может не существовать
+    const overlayResEl = document.getElementById('camera-resolution');   // может не существовать
+    const summaryFpsEl = document.getElementById('current-camera-fps');  // есть в карточке «Датчики»
+    const statusDot = document.getElementById('camera-status');
+
+    // helper: безопасное обновление текста, если элемент есть
+    const setText = (el, text) => { if (el) el.textContent = text; };
+
     if (!cameraData) {
+        setText(overlayFpsEl, '-- FPS');
+        setText(overlayResEl, '--x--');
+        setText(summaryFpsEl, '--');
+        if (statusDot) statusDot.classList.remove('active');
         cameraConnected = false;
-        updateCameraStatusIndicator(false);
-        document.getElementById('camera-fps').textContent = '-- FPS';
-        document.getElementById('camera-resolution').textContent = '--x--';
-        document.getElementById('current-camera-fps').textContent = '--';
         return;
     }
 
-    cameraConnected = cameraData.connected || false;
-    updateCameraStatusIndicator(cameraConnected);
+    // -------- вытаскиваем connected ----------
+    const connected = !!(
+        cameraData.connected ||
+        cameraData.is_connected ||
+        cameraData.available
+    );
+    cameraConnected = connected;
+    if (statusDot) statusDot.classList.toggle('active', connected);
 
-    // Обновляем информацию о камере
-    if (cameraData.fps !== undefined) {
-        document.getElementById('camera-fps').textContent = `${cameraData.fps} FPS`;
-        document.getElementById('current-camera-fps').textContent = cameraData.fps;
+    // -------- вытаскиваем FPS из разных возможных мест ----------
+    let fps =
+        cameraData.fps ??
+        cameraData.stream_fps ??
+        cameraData.stats?.fps ??
+        cameraData.stream?.fps ??
+        null;
+
+    if (typeof fps === 'string') {
+        const n = Number(fps);
+        fps = Number.isFinite(n) ? n : null;
+    }
+    const fpsStr = fps == null ? '--' : (fps % 1 === 0 ? String(fps) : fps.toFixed(1));
+
+    setText(overlayFpsEl, `${fpsStr} FPS`);
+    setText(summaryFpsEl, fpsStr);
+
+    // -------- вытаскиваем разрешение ----------
+    let w, h;
+
+    // варианты полей
+    w = cameraData.width ?? cameraData.stream_width ?? cameraData.config?.width ?? cameraData.resolution?.width;
+    h = cameraData.height ?? cameraData.stream_height ?? cameraData.config?.height ?? cameraData.resolution?.height;
+
+    // если пришла строка вида "1280x720"
+    const resStr = cameraData.config?.resolution || cameraData.resolution;
+    if ((!w || !h) && typeof resStr === 'string') {
+        const m = resStr.match(/(\d+)\s*[xX×]\s*(\d+)/);
+        if (m) { w = Number(m[1]); h = Number(m[2]); }
     }
 
-    if (cameraData.config && cameraData.config.resolution) {
-        document.getElementById('camera-resolution').textContent = cameraData.config.resolution;
-    }
+    setText(overlayResEl, (w && h) ? `${w}x${h}` : '--x--');
 
-    // Обновляем состояние записи
-    if (cameraData.recording !== isRecording) {
-        isRecording = cameraData.recording;
+    // -------- состояние записи ----------
+    const recording = !!cameraData.recording;
+    if (recording !== isRecording) {
+        isRecording = recording;
 
         if (isRecording) {
             recordBtn.textContent = '⏹️ Стоп';
             recordBtn.className = 'camera-btn btn-stop-record';
             recordingIndicator.style.display = 'block';
 
-            if (!recordingTimer) {
-                recordingStartTime = Date.now() - (cameraData.recording_duration * 1000);
-                recordingTimer = setInterval(updateRecordingTime, 1000);
-            }
+            const already = Number(cameraData.recording_duration) || 0;
+            recordingStartTime = Date.now() - already * 1000;
+            if (!recordingTimer) recordingTimer = setInterval(updateRecordingTime, 1000);
         } else {
             recordBtn.textContent = '🎥 Запись';
             recordBtn.className = 'camera-btn btn-record';
             recordingIndicator.style.display = 'none';
-
-            if (recordingTimer) {
-                clearInterval(recordingTimer);
-                recordingTimer = null;
-            }
+            if (recordingTimer) { clearInterval(recordingTimer); recordingTimer = null; }
+            recordingTime.textContent = '00:00';
         }
     }
 
-    // Обновляем время записи если идет запись
-    if (isRecording && cameraData.recording_duration !== undefined) {
-        const duration = Math.floor(cameraData.recording_duration);
-        const minutes = Math.floor(duration / 60).toString().padStart(2, '0');
-        const seconds = (duration % 60).toString().padStart(2, '0');
-        recordingTime.textContent = `${minutes}:${seconds}`;
+    if (isRecording && cameraData.recording_duration != null) {
+        const duration = Math.floor(Number(cameraData.recording_duration));
+        const mm = String(Math.floor(duration / 60)).padStart(2, '0');
+        const ss = String(duration % 60).padStart(2, '0');
+        recordingTime.textContent = `${mm}:${ss}`;
     }
 }
 

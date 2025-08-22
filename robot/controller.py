@@ -353,7 +353,7 @@ class RobotController:
     def move_forward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
 
-        front_dist, _ = self.read_sensors()
+        front_dist, *_ = self.read_sensors()
         if front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM:
             logger.warning("Вперёд нельзя: препятствие на %d см (порог %d см)",
                            front_dist, SENSOR_FWD_STOP_CM)
@@ -372,7 +372,7 @@ class RobotController:
     def move_backward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
 
-        _, rear_dist = self.read_sensors()
+        _, rear_dist, *_ = self.read_sensors()
         if rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM:
             logger.warning("Назад нельзя: препятствие на %d см (порог %d см)",
                            rear_dist, SENSOR_BWD_STOP_CM)
