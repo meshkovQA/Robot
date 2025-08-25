@@ -34,6 +34,8 @@ declare -A PROJECT_FILES=(
     ["robot/controller.py"]="robot/controller.py"
     ["robot/camera.py"]="robot/camera.py"
     ["robot/api.py"]="robot/api.py"
+    ["robot/imu.py"]="robot/imu.py"
+    ["robot/heading_controller.py"]="robot/heading_controller.py"
     
     # Веб-интерфейс
     ["templates/index.html"]="templates/index.html"
@@ -746,6 +748,8 @@ declare -A FILES=(
     ["robot/controller.py"]="robot/controller.py"
     ["robot/camera.py"]="robot/camera.py"
     ["robot/api.py"]="robot/api.py"
+    ["robot/imu.py"]="robot/imu.py"
+    ["robot/heading_controller.py"]="robot/heading_controller.py"
     ["templates/index.html"]="templates/index.html"
     ["static/style.css"]="static/style.css"
     ["static/script.js"]="static/script.js"
