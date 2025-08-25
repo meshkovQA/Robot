@@ -85,13 +85,17 @@ class HeadingHoldService:
         return err
 
     def _apply_correction_pulse(self, sign: int):
-        # sign: +1 turn right, -1 turn left (depends on yaw error)
         now = time.time()
         if (now - self._last_pulse_ts) * 1000.0 < HDG_MIN_GAP_BETWEEN_PULSES_MS:
             return
         self._last_pulse_ts = now
 
-        # micro pulse
+        # save state BEFORE the pulse
+        st_before = self.robot.get_status()
+        prev_fwd = bool(st_before.get("is_moving")) and st_before.get(
+            "movement_direction") == 1
+        prev_speed = int(st_before.get("current_speed", 0))
+
         dur_s = HDG_MAX_CORR_PULSE_MS / 1000.0
         speed = HDG_CORR_SPEED
 
@@ -99,12 +103,12 @@ class HeadingHoldService:
             self.robot.tank_turn_right(speed)
         else:
             self.robot.tank_turn_left(speed)
+
         time.sleep(dur_s)
 
-        # resume forward at previous speed if it was moving
-        st = self.robot.get_status()
-        if st.get("is_moving") and st.get("movement_direction") == 1:
-            self.robot.move_forward(st.get("current_speed", 0))
+        # always resume forward if we were moving forward before the pulse
+        if prev_fwd and prev_speed > 0:
+            self.robot.move_forward(prev_speed)
 
     def _uphill_boost_logic(self, pitch_deg: float):
         if not UPHILL_BOOST_ENABLED:
@@ -178,7 +182,7 @@ class HeadingHoldService:
                         u = HDG_KP*err + HDG_KI*self._e_int + HDG_KD*d
                         # sign of u defines correction direction
                         # positive err => need to turn left (sign -1)
-                        sign = -1 if u > 0 else 1
+                        sign = 1 if u > 0 else -1
                         self._apply_correction_pulse(sign)
                 else:
                     # reset reference if not holding
