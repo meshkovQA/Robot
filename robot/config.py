@@ -33,6 +33,38 @@ KICKSTART_SPEED = 130
 KICKSTART_DURATION = 0.3  # 300ms
 MIN_SPEED_FOR_KICKSTART = 80  # Кикстарт только для скоростей ниже этого значения
 
+
+# ==================== IMU / HEADING HOLD ====================
+
+IMU_ENABLED = True
+IMU_I2C_BUS = 1
+IMU_ADDRESS = 0x68        # 0x69 if AD0=3.3V
+IMU_WHOAMI = 0x70         # for MPU-6500
+IMU_CALIBRATION_TIME = 2.0  # seconds for gyro bias averaging
+IMU_LOOP_HZ = 100          # IMU read/estimate loop frequency
+IMU_COMPLEMENTARY_ALPHA = 0.98
+
+# Heading-hold PID (works on yaw error, deg)
+HDG_HOLD_ENABLED = True
+HDG_KP = 0.9
+HDG_KI = 0.0
+HDG_KD = 0.05
+HDG_ERR_DEADZONE_DEG = 1.5    # small error ignored
+HDG_MAX_CORR_PULSE_MS = 120   # max pulse length for correction turn
+HDG_MIN_GAP_BETWEEN_PULSES_MS = 150
+HDG_CORR_SPEED = 120          # speed used during micro-corrections
+
+# Uphill auto-boost (uses pitch)
+UPHILL_BOOST_ENABLED = True
+UPHILL_PITCH_THRESHOLD_DEG = 5.0    # tilt beyond this => uphill
+UPHILL_HYSTERESIS_DEG = 2.0
+UPHILL_SPEED_MULTIPLIER = 2.0
+UPHILL_MIN_DURATION_S = 0.5         # must sustain uphill this long
+UPHILL_MAX_SPEED = 200              # clamp boost
+
+# API exposure
+EXPOSE_IMU_API = True
+
 # ==================== ПОВОРОТЫ КАМЕРЫ ====================
 
 # Ограничения углов поворота камеры
