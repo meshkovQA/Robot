@@ -11,7 +11,9 @@ from pathlib import Path
 
 from robot.controller import RobotController
 from robot.camera import USBCamera, CameraConfig, list_available_cameras
-from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT
+from robot.imu import MPU6500
+from robot.heading_controller import HeadingHoldService
+from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, IMU_ENABLED, EXPOSE_IMU_API
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +37,18 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
     robot = controller or RobotController()
+
+    imu = None
+    heading = None
+    if IMU_ENABLED:
+        imu = MPU6500()
+        if imu.start():
+            heading = HeadingHoldService(robot, imu)
+            heading.start()
+        else:
+            imu = None
+            heading = None
+            logger.warning("IMU failed to start; heading-hold disabled")
 
     camera = camera_instance
 
@@ -83,6 +97,23 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     # API Blueprint
     bp = Blueprint("api", __name__)
+
+    if EXPOSE_IMU_API:
+
+        @bp.route("/imu/status", methods=["GET"])
+        def imu_status():
+            if not imu:
+                return ok({"available": False, "error": "imu not started"})
+            s = imu.get_state()
+            return ok({
+                "available": True,
+                "whoami": f"0x{s.whoami:02X}" if s.whoami is not None else None,
+                "ok": s.ok,
+                "timestamp": s.last_update,
+                "roll": s.roll, "pitch": s.pitch, "yaw": s.yaw,
+                "gx": s.gx, "gy": s.gy, "gz": s.gz,
+                "ax": s.ax, "ay": s.ay, "az": s.az,
+            })
 
     # --------- утилиты ответов ----------
     def ok(data=None, code=200):
@@ -713,11 +744,17 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/health", methods=["GET"])
     def health():
         status = robot.get_status()
+        imu_ok = False
+        if imu:
+            s = imu.get_state()
+            imu_ok = bool(s and s.ok)
         status.update({
             "i2c_connected": robot.bus is not None,
             "controller_active": True,
             "camera_available": camera is not None,
             "camera_connected": camera.status.is_connected if camera else False,
+            "imu_available": imu is not None,
+            "imu_ok": imu_ok,
             "api_version": "2.1"
         })
         return ok(status)
@@ -746,6 +783,10 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def _graceful_shutdown(*_):
         logger.info("🔄 Завершение по сигналу...")
         try:
+            if heading:
+                heading.stop()
+            if imu:
+                imu.stop()
             robot.shutdown()
             if camera:
                 camera.stop()
