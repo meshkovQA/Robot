@@ -84,16 +84,14 @@ class HeadingHoldService:
             err += 360.0
         return err
 
-    def _apply_correction_pulse(self, sign: int):
+    def _apply_correction_pulse(self, sign: int, direction: int):
         now = time.time()
         if (now - self._last_pulse_ts) * 1000.0 < HDG_MIN_GAP_BETWEEN_PULSES_MS:
             return
         self._last_pulse_ts = now
 
-        # save state BEFORE the pulse
         st_before = self.robot.get_status()
-        prev_fwd = bool(st_before.get("is_moving")) and st_before.get(
-            "movement_direction") == 1
+        prev_moving = bool(st_before.get("is_moving"))
         prev_speed = int(st_before.get("current_speed", 0))
 
         dur_s = HDG_MAX_CORR_PULSE_MS / 1000.0
@@ -106,9 +104,12 @@ class HeadingHoldService:
 
         time.sleep(dur_s)
 
-        # always resume forward if we were moving forward before the pulse
-        if prev_fwd and prev_speed > 0:
-            self.robot.move_forward(prev_speed)
+        # возвращаемся к движению в том же направлении
+        if prev_moving and prev_speed > 0:
+            if direction == 1:
+                self.robot.move_forward(prev_speed)
+            elif direction == 2:
+                self.robot.move_backward(prev_speed)
 
     def _uphill_boost_logic(self, pitch_deg: float):
         if not UPHILL_BOOST_ENABLED:
@@ -162,30 +163,34 @@ class HeadingHoldService:
 
                 # Heading hold only when moving forward
                 st = self.robot.get_status()
-                moving_fwd = st.get("is_moving") and st.get(
-                    "movement_direction") == 1
+                # 1=fwd, 2=bwd
+                direction = st.get("movement_direction")
+                moving = st.get("is_moving") and direction in (1, 2)
 
-                if self.enabled and moving_fwd:
+                if self.enabled and moving:
                     self._maybe_set_yaw_ref(s.yaw)
                     err = self._heading_error(s.yaw)
 
-                    # deadzone
                     if abs(err) < HDG_ERR_DEADZONE_DEG:
                         self._reset_pid()
                     else:
-                        # simple PID on error (discrete)
                         dt = period
                         self._e_int += err * dt
                         d = (err - self._e_prev) / dt
                         self._e_prev = err
 
                         u = HDG_KP*err + HDG_KI*self._e_int + HDG_KD*d
-                        # sign of u defines correction direction
-                        # positive err => need to turn left (sign -1)
-                        sign = 1 if u > 0 else -1
-                        self._apply_correction_pulse(sign)
+
+                        # Направление коррекции:
+                        # при движении ВПЕРЁД: u>0 -> крутим ВПРАВО (sign=+1), u<0 -> ВЛЕВО (sign=-1)
+                        # при движении НАЗАД: зеркалим направление
+                        if direction == 1:      # forward
+                            sign = 1 if u > 0 else -1
+                        else:                   # backward
+                            sign = -1 if u > 0 else 1
+
+                        self._apply_correction_pulse(sign, direction)
                 else:
-                    # reset reference if not holding
                     self._yaw_ref = None
                     self._reset_pid()
 
