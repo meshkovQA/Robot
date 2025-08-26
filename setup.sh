@@ -479,17 +479,20 @@ Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONPATH=$PROJECT_DIR"
 
 # Gunicorn: один воркер, потоковый класс
-ExecStart=$VENV_DIR/bin/gunicorn \
-    --workers 1 \
-    --worker-class gthread \
-    --threads 4 \
-    --timeout 120 \
-    --keep-alive 5 \
-    --max-requests 500 \
-    --max-requests-jitter 50 \
+ExecStart=%h/robot_web/venv/bin/gunicorn \
+    --workers 2 \
+    --worker-class gevent \
+    --worker-connections 1000 \
+    --timeout 0 \
+    --graceful-timeout 30 \
+    --keep-alive 25 \
+    --backlog 2048 \
+    --max-requests 2000 \
+    --max-requests-jitter 200 \
+    --worker-tmp-dir /dev/shm \
     --bind 0.0.0.0:5000 \
-    --access-logfile $LOG_DIR/access.log \
-    --error-logfile $LOG_DIR/error.log \
+    --access-logfile %h/robot_web/logs/access.log \
+    --error-logfile %h/robot_web/logs/error.log \
     --log-level info \
     run:app
 
