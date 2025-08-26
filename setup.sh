@@ -506,7 +506,7 @@ else
 fi
 
 # Проверяем импорт камеры
-if python3 -c "from robot.camera import USBCamera; print('✅ Модуль камеры импортирован успешно')"; then
+if python3 -c "from robot.devices.camera import USBCamera; print('✅ Модуль камеры импортирован успешно')"; then
     ok "Модуль камеры работает"
 else
     warn "Проблемы с модулем камеры - некоторые функции могут быть недоступны"
@@ -676,7 +676,7 @@ sys.path.insert(0, '$PROJECT_DIR')
 
 try:
     from robot.config import *
-    from robot.camera import list_available_cameras
+    from robot.devices.camera import list_available_cameras
     
     print(f'✅ Конфигурация загружена')
     print(f'✅ I2C доступен: {I2C_AVAILABLE}')
@@ -760,7 +760,7 @@ import sys
 sys.path.insert(0, '.')
 
 try:
-    from robot.camera import list_available_cameras, USBCamera, OPENCV_AVAILABLE
+    from robot.devices.camera import list_available_cameras, USBCamera, OPENCV_AVAILABLE
     print(f'OpenCV доступен: {OPENCV_AVAILABLE}')
     
     if OPENCV_AVAILABLE:
@@ -954,7 +954,7 @@ info "Проверка установки..."
 
 # Проверяем Python модули
 cd "$PROJECT_DIR"
-if python3 -c "from robot.api import create_app; from robot.camera import USBCamera; print('✓ Все модули импортированы успешно')"; then
+if python3 -c "from robot.api.api import create_app; from robot.devices.camera import USBCamera; print('✓ Все модули импортированы успешно')"; then
     ok "Python модули работают корректно"
 else
     warn "Есть проблемы с Python модулями, но основная функциональность может работать"
@@ -962,7 +962,7 @@ fi
 
 
 # Проверяем импорт AI модулей
-if python3 -c "from robot.camera import USBCamera; from robot.ai_vision import AIVisionProcessor; from robot.home_ai_vision import HomeAIVision; print('✅ AI модули импортированы успешно')"; then
+if python3 -c "from robot.devices.camera import USBCamera; from robot.ai_vision.ai_vision import AIVisionProcessor; from robot.ai_vision.home_ai_vision import HomeAIVision; print('✅ AI модули импортированы успешно')"; then
     ok "AI модули работают"
 else
     warn "Проблемы с AI модулями - некоторые функции могут быть недоступны"
