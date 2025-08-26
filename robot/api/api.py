@@ -1,4 +1,4 @@
-# api.py
+# robot/api/api.py
 
 from __future__ import annotations
 import logging
@@ -10,9 +10,12 @@ from flask_cors import CORS  # ДОБАВЛЯЕМ CORS
 from pathlib import Path
 
 from robot.controller import RobotController
-from robot.camera import USBCamera, CameraConfig, list_available_cameras
-from robot.imu import MPU6500
+from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
+from robot.devices.imu import MPU6500
 from robot.heading_controller import HeadingHoldService
+from robot.ai_integration import AIRobotController
+from robot.ai_vision.home_ai_vision import HomeAIVision
+from robot.api.ai_api_extensions import add_ai_routes
 from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, IMU_ENABLED, EXPOSE_IMU_API
 from datetime import datetime
 from pathlib import Path
@@ -95,6 +98,21 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             logger.error(f"🎥 Ошибка инициализации камеры: {e}")
             camera = None
 
+    # ==================== AI ИНТЕГРАЦИЯ ====================
+
+    # Создаем AI контроллер робота
+    ai_robot = AIRobotController(robot, camera)
+
+    # Заменяем обычное AI зрение на домашнее
+    if camera and CAMERA_AVAILABLE:
+        try:
+            home_ai_vision = HomeAIVision(camera)
+            ai_robot.ai_vision = home_ai_vision
+            ai_robot._setup_ai_callbacks()  # Переустанавливаем колбэки
+            logger.info("🏠 Домашнее AI зрение установлено")
+        except Exception as e:
+            logger.error(f"Ошибка инициализации домашнего AI: {e}")
+
     # API Blueprint
     bp = Blueprint("api", __name__)
 
@@ -115,7 +133,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 "ax": s.ax, "ay": s.ay, "az": s.az,
             })
 
-    # --------- утилиты ответов ----------
+    # ==================== УТИЛИТЫ ОТВЕТОВ ====================
+
     def ok(data=None, code=200):
         response = jsonify({
             "success": True,
@@ -134,20 +153,23 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, code
 
-    # --------- простая аутентификация ----------
+    # ==================== АУТЕНТИФИКАЦИЯ ====================
+
     @app.before_request
     def _auth():
         if API_KEY and request.path.startswith("/api/"):
             if request.headers.get("X-API-Key") != API_KEY:
                 return err("unauthorized", 401)
 
-    # --------- главная страница ----------
+    # ==================== ГЛАВНАЯ СТРАНИЦА ====================
+
     @app.route("/")
     def index():
         """Главная страница с веб-интерфейсом"""
         return render_template("index.html")
 
-    # --------- API маршруты движения ----------
+    # ==================== API МАРШРУТЫ ДВИЖЕНИЯ ====================
+
     @bp.route("/move/forward", methods=["POST"])
     def move_forward():
         data = request.get_json() or {}
@@ -239,7 +261,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             **robot.get_status()
         })
 
-    # --------- API маршруты управления поворотами камеры ----------
+    # ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
     @bp.route("/camera/pan", methods=["POST"])
     def camera_pan():
@@ -472,7 +494,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                             tilt_angle == limits["tilt"]["default"])
         })
 
-    # --------- API маршруты камеры ----------
+    # ==================== КАМЕРА API ====================
 
     @bp.route("/camera/status", methods=["GET"])
     def camera_status():
@@ -576,7 +598,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         except Exception as e:
             return err(f"Ошибка сканирования камер: {e}")
 
-    # --------- Веб-стрим камеры ----------
+    # ==================== ВИДЕОПОТОК ====================
+
     @app.route("/camera/stream")
     def camera_stream():
         """MJPEG стрим камеры"""
@@ -663,8 +686,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         else:
             return err("Нет доступных кадров")
 
-    # --------- мониторинг и диагностика ----------
-
     def _collect_files(dir_path: str | Path, exts: tuple[str, ...]) -> list[dict]:
         base = Path(dir_path)
         base.mkdir(parents=True, exist_ok=True)
@@ -729,6 +750,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         except Exception as e:
             return err(f"Ошибка удаления: {e}", 500)
 
+    # ==================== СТАТУС И ДИАГНОСТИКА ====================
+
     @bp.route("/status", methods=["GET"])
     def status():
         robot_status = robot.get_status()
@@ -759,13 +782,19 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         })
         return ok(status)
 
-    # Остальные маршруты остаются такими же...
-    # (сократил для краткости, добавьте остальные из предыдущего кода)
+    # ==================== ДОБАВЛЯЕМ AI МАРШРУТЫ ====================
+
+    # Добавляем все AI API эндпоинты
+    add_ai_routes(bp, ai_robot)
 
     # Регистрируем API blueprint
     app.register_blueprint(bp, url_prefix="/api")
 
-    # --------- обработка ошибок ----------
+    # Регистрируем API blueprint
+    app.register_blueprint(bp, url_prefix="/api")
+
+    # ==================== ОБРАБОТКА ОШИБОК ====================
+
     @app.errorhandler(404)
     def not_found(error):
         if request.path.startswith("/api/"):
@@ -779,17 +808,29 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             return err("internal server error", 500)
         return render_template("index.html")
 
-    # --------- корректное завершение ----------
+    # ==================== GRACEFUL SHUTDOWN ====================
+
     def _graceful_shutdown(*_):
         logger.info("🔄 Завершение по сигналу...")
         try:
+            # Останавливаем AI системы
+            if ai_robot:
+                ai_robot.stop_ai()
+
             if heading:
                 heading.stop()
             if imu:
                 imu.stop()
-            robot.shutdown()
+
+            # Останавливаем базовый робот
+            if hasattr(ai_robot, 'robot'):
+                ai_robot.robot.shutdown()
+            else:
+                robot.shutdown()
+
             if camera:
                 camera.stop()
+
         except Exception as e:
             logger.error("Ошибка при завершении: %s", e)
         finally:
@@ -799,8 +840,9 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     signal.signal(signal.SIGTERM, _graceful_shutdown)
 
     # Сохраняем ссылки на компоненты для доступа извне
-    app.robot = robot
+    app.robot = ai_robot.robot if ai_robot else robot
+    app.ai_robot = ai_robot
     app.camera = camera
 
-    logger.info("🤖 Flask приложение создано успешно с поддержкой камеры")
+    logger.info("🤖🧠 Flask приложение создано успешно с поддержкой AI и камеры")
     return app

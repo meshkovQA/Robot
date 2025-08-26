@@ -5,7 +5,7 @@ import threading
 import logging
 from typing import Optional
 
-from .config import (
+from robot.config import (
     IMU_ENABLED, IMU_I2C_BUS, IMU_ADDRESS, IMU_WHOAMI,
     IMU_CALIBRATION_TIME, IMU_LOOP_HZ, IMU_COMPLEMENTARY_ALPHA
 )
