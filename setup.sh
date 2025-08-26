@@ -754,7 +754,7 @@ echo ""
 echo "🤖 Тест модуля робота:"
 cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || cd "$HOME/robot_web"
 
-if [[ -f "robot/camera.py" ]]; then
+if [[ -f "robot/devices/camera.py" ]]; then
     python3 -c "
 import sys
 sys.path.insert(0, '.')
@@ -778,7 +778,7 @@ except Exception as e:
     print(f'❌ Ошибка модуля камеры: {e}')
 "
 else
-    echo "❌ Файл robot/camera.py не найден"
+    echo "❌ Файл robot/devices/camera.py не найден"
 fi
 EOF
 
