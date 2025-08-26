@@ -571,24 +571,13 @@ document.addEventListener('DOMContentLoaded', function () {
 const originalUpdateSensorData = window.updateSensorData;
 if (originalUpdateSensorData) {
     window.updateSensorData = function () {
-        originalUpdateSensorData();
+        // Вызываем оригинальную функцию
+        const result = originalUpdateSensorData();
 
-        // Получаем статус камеры (тихо, без логирования ошибок)
-        fetch('/api/camera/status')
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                }
-                throw new Error(`HTTP ${response.status}`);
-            })
-            .then(data => {
-                if (data.success) {
-                    updateCameraStatus(data.data);
-                }
-            })
-            .catch(() => {
-                // Тихо игнорируем ошибки камеры
-            });
+        // Камера получает данные из общего статуса, а не отдельным запросом
+        // Это предотвращает дублирование I2C запросов
+
+        return result;
     };
 }
 
