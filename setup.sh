@@ -156,7 +156,7 @@ info "Установка Python зависимостей..."
 pip install --upgrade pip setuptools wheel
 
 # Основные зависимости
-pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 opencv-python flask-cors scipy pillow scikit-image imutils || true
+pip install flask>=2.3.0 gunicorn>=20.1.0 gevent>=1.4.0 requests python-dotenv numpy smbus2 opencv-python flask-cors scipy pillow scikit-image imutils || true
 
 # Проверяем доступность OpenCV
 python3 -c "import cv2; print(f'✅ OpenCV {cv2.__version__} успешно импортирован')" || warn "OpenCV недоступен"
