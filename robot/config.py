@@ -112,19 +112,19 @@ except ImportError:
 
 # Основные настройки камеры
 CAMERA_DEVICE_ID = 0  # /dev/video0
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
+CAMERA_WIDTH = 1280
+CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
 
 # Качество изображения
-CAMERA_QUALITY = 80  # JPEG качество (1-100)
-CAMERA_STREAM_QUALITY = 60  # Для веб-стрима
+CAMERA_QUALITY = 100  # JPEG качество (1-100)
+CAMERA_STREAM_QUALITY = 80  # Для веб-стрима
 CAMERA_STREAM_FPS = 15  # FPS веб-стрима
 
 # Настройки изображения
-CAMERA_BRIGHTNESS = 50  # 0-100
-CAMERA_CONTRAST = 50      # 0-100
-CAMERA_SATURATION = 65  # 0-100
+CAMERA_BRIGHTNESS = 40  # 0-100
+CAMERA_CONTRAST = 60      # 0-100
+CAMERA_SATURATION = 55  # 0-100
 
 # Пути сохранения
 CAMERA_SAVE_PATH = str(STATIC_DIR / "photos")
