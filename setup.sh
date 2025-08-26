@@ -288,7 +288,7 @@ for remote_path in "${!PROJECT_FILES[@]}"; do
 done
 
 # Проверяем критические файлы
-critical_files=("run.py" "robot/api.py" "robot/controller.py" "robot/camera.py" "robot/config.py")
+critical_files=("run.py" "robot/api/api.py" "robot/controller.py" "robot/devices/camera.py" "robot/config.py")
 missing_critical=()
 
 for file in "${critical_files[@]}"; do
