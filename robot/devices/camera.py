@@ -8,7 +8,7 @@ import base64
 from typing import Optional, Tuple, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from robot.config import CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH
+from robot import config as C
 
 logger = logging.getLogger(__name__)
 
@@ -25,23 +25,23 @@ except ImportError:
 @dataclass
 class CameraConfig:
     """Конфигурация камеры"""
-    device_id: int = 0  # /dev/video0
-    width: int = 640
-    height: int = 480
-    fps: int = 30
-    quality: int = 80  # JPEG качество (1-100)
+    device_id: int = C.CAMERA_DEVICE_ID  # /dev/video0
+    width: int = C.CAMERA_WIDTH
+    height: int = C.CAMERA_HEIGHT
+    fps: int = C.CAMERA_FPS
+    quality: int = C.CAMERA_QUALITY  # JPEG качество (1-100)
     auto_start: bool = True
-    save_path: str = CAMERA_SAVE_PATH
-    video_path: str = CAMERA_VIDEO_PATH
+    save_path: str = C.CAMERA_SAVE_PATH
+    video_path: str = C.CAMERA_VIDEO_PATH
 
     # Настройки камеры
-    brightness: int = 50  # 0-100
-    contrast: int = 50    # 0-100
-    saturation: int = 50  # 0-100
+    brightness: int = C.CAMERA_BRIGHTNESS  # 0-100
+    contrast: int = C.CAMERA_CONTRAST    # 0-100
+    saturation: int = C.CAMERA_SATURATION  # 0-100
 
     # Настройки стрима
-    stream_quality: int = 60  # Качество для веб-стрима
-    stream_fps: int = 15      # FPS для веб-стрима
+    stream_quality: int = C.CAMERA_STREAM_QUALITY  # Качество для веб-стрима
+    stream_fps: int = C.CAMERA_STREAM_FPS      # FPS для веб-стрима
 
 
 @dataclass
@@ -172,40 +172,54 @@ class USBCamera:
             return
 
         try:
-            # Базовые параметры
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+            # базовые параметры
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.config.width)
             self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
-            self._cap.set(cv2.CAP_PROP_FPS, self.config.fps)
+            self._cap.set(cv2.CAP_PROP_FPS,          self.config.fps)
 
-            # Пытаемся MJPG для стабильности
+            # пробуем MJPG → fallback YUYV
             try:
                 self._cap.set(cv2.CAP_PROP_FOURCC,
                               cv2.VideoWriter_fourcc(*'MJPG'))
                 time.sleep(0.1)
-                # Проверяем что формат применился
-                ret, _ = self._cap.read()
-                if not ret:
-                    logger.warning("MJPG не работает, переключаемся на YUYV")
+                ok, _ = self._cap.read()
+                if not ok:
+                    logger.warning("MJPG не применился, пробуем YUYV")
                     self._cap.set(cv2.CAP_PROP_FOURCC,
                                   cv2.VideoWriter_fourcc(*'YUYV'))
                     time.sleep(0.1)
             except Exception as e:
-                logger.warning(f"Ошибка установки FOURCC: {e}")
+                logger.warning(f"FOURCC установка не удалась: {e}")
 
-            # Минимальный буфер для уменьшения задержки
-            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-            # Настройки изображения (если поддерживаются)
+            # минимальный буфер
             try:
-                self._cap.set(cv2.CAP_PROP_SATURATION, 128)
-                self._cap.set(cv2.CAP_PROP_BRIGHTNESS, 128)
-                self._cap.set(cv2.CAP_PROP_CONTRAST, 128)
+                self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+
+            # параметры изображения — ИЗ КОНФИГА
+            try:
+                self._cap.set(cv2.CAP_PROP_BRIGHTNESS, self.config.brightness)
+                self._cap.set(cv2.CAP_PROP_CONTRAST,   self.config.contrast)
+                self._cap.set(cv2.CAP_PROP_SATURATION, self.config.saturation)
             except Exception as e:
                 logger.warning(
-                    f"Не удалось установить параметры изображения: {e}")
+                    f"Не удалось применить яркость/контраст/насыщенность: {e}")
+
+            # лог актуальных значений (на что согласилась камера)
+            try:
+                br = self._cap.get(cv2.CAP_PROP_BRIGHTNESS)
+                ct = self._cap.get(cv2.CAP_PROP_CONTRAST)
+                st = self._cap.get(cv2.CAP_PROP_SATURATION)
+                fw = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                fh = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                ff = self._cap.get(cv2.CAP_PROP_FPS)
+                logger.info(
+                    f"Камера: {fw}x{fh}@{ff:.1f} | B:{br} C:{ct} S:{st}")
+            except Exception:
+                pass
 
             logger.info("Параметры камеры настроены")
-
         except Exception as e:
             logger.error(f"Ошибка настройки камеры: {e}")
 
@@ -552,19 +566,26 @@ class USBCamera:
 
 
 # Удобные функции для быстрого использования
-def create_camera(device_id: int = 0, width: int = 640, height: int = 480) -> Optional[USBCamera]:
-    """Создание камеры с базовыми настройками"""
+def create_camera(
+    device_id: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    fps: Optional[int] = None
+) -> Optional['USBCamera']:
+    """Создание камеры с параметрами из config, с опциональным переопределением."""
     if not OPENCV_AVAILABLE:
         logger.error("OpenCV недоступен")
         return None
 
-    config = CameraConfig(
-        device_id=device_id,
-        width=width,
-        height=height,
+    cfg = CameraConfig(
+        device_id=C.CAMERA_DEVICE_ID if device_id is None else device_id,
+        width=C.CAMERA_WIDTH if width is None else width,
+        height=C.CAMERA_HEIGHT if height is None else height,
+        fps=C.CAMERA_FPS if fps is None else fps,
+        # остальное подтянется из дефолтов CameraConfig
         auto_start=False
     )
-    return USBCamera(config)
+    return USBCamera(cfg)
 
 
 def list_available_cameras() -> list[int]:

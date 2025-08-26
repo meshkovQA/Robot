@@ -1,7 +1,8 @@
-# robot/home_ai_vision.py
+# robot/ai_vision/home_ai_vision.py
 """
-Home AI Vision - Специализированное компьютерное зрение для домашнего робота
-Оптимизировано для домашних объектов и ситуаций
+Home AI Vision - специализированное компьютерное зрение для домашнего робота.
+Оптимизировано под домашние объекты и ситуации. Использует ТОЛЬКО
+robot/ai_vision/home_mapping.py без локальных переопределений.
 """
 
 from __future__ import annotations
@@ -10,376 +11,401 @@ import time
 import logging
 import numpy as np
 import cv2
-from robot.ai_vision.ai_vision import AIVisionProcessor, DetectedObject, VisionState
-import sys
-from pathlib import Path
 
-# Добавляем путь к маппингу
-sys.path.insert(0, str(Path(__file__).parent.parent / "models" / "yolo"))
+from robot.ai_vision.ai_vision import (
+    AIVisionProcessor, DetectedObject, VisionState
+)
 
+# импортируем ТОЛЬКО из твоего маппинга
 try:
-    from robot.home_mapping import (
-        HOME_OBJECT_MAPPING,
-        SIMPLIFIED_NAMES,
-        RUSSIAN_NAMES,
+    from robot.ai_vision.home_mapping import (
         get_home_object_name,
-        is_important_for_home
+        is_important_for_home,
+        map_to_russian,
+        RUSSIAN_NAMES,           # можно не использовать, но пусть будет доступен
+        guess_room_by_object_id  # пригодится для room_context (опционально)
     )
     MAPPING_AVAILABLE = True
-except ImportError:
+except Exception as e:
+    # если файла нет — работаем без домашней логики
     MAPPING_AVAILABLE = False
-
 
 logger = logging.getLogger(__name__)
 
 
 class HomeAIVision(AIVisionProcessor):
-    """Домашнее AI зрение, оптимизированное для дома"""
+    """Домашнее AI-зрение, оптимизированное для квартиры/дома."""
 
     def __init__(self, camera=None):
         super().__init__(camera)
 
-        # Домашние настройки
-        self.home_mode = True
-        self.use_russian_names = True
+        # Настройки режима
+        self.home_mode = MAPPING_AVAILABLE
+        # EN подписи на оверлеях безопаснее (без ????)
+        self.use_russian_names = False
 
-        # Статистика домашних объектов
-        self.home_object_history = {}
-        self.room_context = "unknown"
-
-        # Специальная логика для дома
+        # Состояние/статистика
+        self.home_object_history: Dict[str, List[Dict]] = {}
+        self.room_context: str = "unknown"
         self.pet_detected = False
         self.owner_present = False
 
-        logger.info("🏠 Домашнее AI зрение инициализировано")
+        logger.info("🏠 HomeAIVision initialized (mapping=%s)",
+                    MAPPING_AVAILABLE)
 
+    # ---- ЗАГРУЗКА ДЕТЕКТОРОВ (родитель делает основную инициализацию) ----
     def _init_detectors(self):
-        """Инициализация детекторов для домашнего использования"""
         super()._init_detectors()
-
         if not MAPPING_AVAILABLE:
             logger.warning(
-                "Маппинг домашних объектов недоступен - используем стандартный COCO")
+                "Home mapping not available — using generic detectors only")
             self.home_mode = False
 
-    def _detect_with_yolo(self, frame) -> List[DetectedObject]:
-        """Детекция с фильтрацией домашних объектов"""
-        if not self.yolo_net:
-            return []
-
-        try:
-            height, width = frame.shape[:2]
-
-            # Подготовка блоба для YOLO
-            blob = cv2.dnn.blobFromImage(
-                frame, 1/255.0, (416, 416),
-                swapRB=True, crop=False
-            )
-            self.yolo_net.setInput(blob)
-
-            # Получение детекций
-            layer_outputs = self.yolo_net.forward(
-                self.yolo_net.getUnconnectedOutLayersNames()
-            )
-
-            home_objects = []
-
-            for output in layer_outputs:
-                for detection in output:
-                    scores = detection[5:]
-                    class_id = int(np.argmax(scores))
-                    confidence = float(scores[class_id])
-
-                    # Фильтруем только важные для дома объекты
-                    # Снижаем порог для дома
-                    if confidence > 0.4 and self._is_home_relevant(class_id):
-                        center_x = int(detection[0] * width)
-                        center_y = int(detection[1] * height)
-                        w = int(detection[2] * width)
-                        h = int(detection[3] * height)
-
-                        x = int(center_x - w/2)
-                        y = int(center_y - h/2)
-
-                        # Получаем домашнее название объекта
-                        home_name = self._get_home_object_name(class_id)
-
-                        if home_name:
-                            obj = DetectedObject(
-                                class_name=home_name,
-                                confidence=confidence,
-                                bbox=(x, y, w, h),
-                                center=(center_x, center_y),
-                                area=w * h,
-                                timestamp=time.time()
-                            )
-                            home_objects.append(obj)
-
-                            # Обновляем домашний контекст
-                            self._update_home_context(home_name, confidence)
-
-            return home_objects
-
-        except Exception as e:
-            logger.error(f"Ошибка домашней YOLO детекции: {e}")
-            return []
-
+    # ---- ВСПОМОГАТЕЛЬНЫЕ: ИСПОЛЬЗУЕМ ТОЛЬКО home_mapping ----
     def _is_home_relevant(self, coco_class_id: int) -> bool:
-        """Проверяет релевантность объекта для дома"""
+        """Релевантность объекта для дома — только через home_mapping."""
         if not MAPPING_AVAILABLE:
-            # Без маппинга используем базовую логику
-            HOME_CLASSES = [0, 15, 16, 39, 41, 46, 56, 57,
-                            58, 59, 60, 61, 62, 63, 67, 72, 73, 74]
-            return coco_class_id in HOME_CLASSES
-
+            return False
         return is_important_for_home(coco_class_id)
 
     def _get_home_object_name(self, coco_class_id: int) -> Optional[str]:
-        """Получает домашнее название объекта"""
+        """Нормализованное EN-имя для объекта — только через home_mapping."""
         if not MAPPING_AVAILABLE:
-            # Базовая логика без маппинга
-            basic_mapping = {
-                0: "person", 15: "cat", 16: "dog", 39: "bottle",
-                41: "cup", 46: "bowl", 56: "chair", 57: "sofa",
-                59: "bed", 62: "tv", 63: "laptop", 67: "phone"
-            }
-            return basic_mapping.get(coco_class_id)
-
+            return None
         return get_home_object_name(coco_class_id, "")
 
-    def _update_home_context(self, object_name: str, confidence: float):
-        """Обновляет контекст домашней обстановки"""
-        # Отслеживаем животных
-        if object_name in ["cat", "dog"]:
+    # Улучшенная детекция с мульти-моделью, NMS и «домашним» фильтром
+    def _detect_with_yolo(self, frame) -> List[DetectedObject]:
+        """
+        Мульти-модельная детекция:
+        – прогон нескольких YOLO-сетей, склейка детекций
+        – NMS
+        – фильтр "домашней" релевантности (если доступен mapping)
+        – нормализация имён через home_mapping (если доступен)
+        """
+        if not getattr(self, "yolo_nets", None) or not self.yolo_nets:
+            self._load_multimodel_detectors()
+
+        if not self.yolo_nets:
+            return []
+
+        h, w = frame.shape[:2]
+        blob = cv2.dnn.blobFromImage(
+            frame,
+            scalefactor=1 / 255.0,
+            size=self.yolo_input_size,
+            swapRB=True,
+            crop=False
+        )
+
+        boxes, confidences, class_ids = [], [], []
+
+        for model_name, net in self.yolo_nets:
+            try:
+                net.setInput(blob)
+                out_names = net.getUnconnectedOutLayersNames()
+                layer_outputs = net.forward(out_names)
+            except Exception as e:
+                logger.warning(f"{model_name}: ошибка forward: {e}")
+                continue
+
+            for output in layer_outputs:
+                for det in output:
+                    scores = det[5:]
+                    cid = int(np.argmax(scores))
+                    cls_conf = float(scores[cid])
+                    obj_conf = float(det[4]) if det.shape[0] >= 5 else 1.0
+                    conf = cls_conf * obj_conf
+
+                    if conf < self.yolo_conf_th:
+                        continue
+
+                    # если mapping есть — фильтруем по домашней релевантности
+                    if MAPPING_AVAILABLE and not is_important_for_home(cid):
+                        continue
+
+                    bx = int(det[0] * w)
+                    by = int(det[1] * h)
+                    bw = int(det[2] * w)
+                    bh = int(det[3] * h)
+                    x = int(bx - bw / 2)
+                    y = int(by - bh / 2)
+
+                    boxes.append([x, y, bw, bh])
+                    confidences.append(conf)
+                    class_ids.append(cid)
+
+        if not boxes:
+            return []
+
+        idxs = cv2.dnn.NMSBoxes(
+            boxes, confidences, self.yolo_conf_th, self.yolo_nms_th)
+        if isinstance(idxs, tuple) or isinstance(idxs, list):
+            idxs = np.array(idxs).reshape(-1) if len(idxs) else np.array([])
+        elif hasattr(idxs, "flatten"):
+            idxs = idxs.flatten()
+        else:
+            idxs = np.array([])
+
+        results: List[DetectedObject] = []
+        now_ts = time.time()
+
+        for i in idxs:
+            cid = class_ids[i]
+
+            # имя класса: из home_mapping, если доступен; иначе — из self.yolo_classes
+            if MAPPING_AVAILABLE:
+                name_en = get_home_object_name(cid, "") or (
+                    self.yolo_classes[cid] if cid < len(
+                        self.yolo_classes) else f"class_{cid}"
+                )
+            else:
+                name_en = self.yolo_classes[cid] if cid < len(
+                    self.yolo_classes) else f"class_{cid}"
+
+            x, y, bw, bh = boxes[i]
+            cx = x + bw // 2
+            cy = y + bh // 2
+
+            obj = DetectedObject(
+                class_name=name_en,
+                confidence=float(confidences[i]),
+                bbox=(x, y, bw, bh),
+                center=(cx, cy),
+                area=float(bw * bh),
+                timestamp=now_ts
+            )
+            results.append(obj)
+
+            # обновим домашний контекст (безопасно: если mapping нет, часть шагов пропустится)
+            self._update_home_context(name_en, cid, float(confidences[i]))
+
+        return results
+
+    def _load_multimodel_detectors(self):
+        """
+        Загружает несколько YOLO-моделей, если они есть на диске.
+        Используем базовый self.yolo_net из super()._init_detectors(),
+        плюс пытаемся добавить yolov3-tiny как вторую модель.
+        """
+        from pathlib import Path
+
+        self.yolo_nets = []
+        self.yolo_input_size = (416, 416)
+        self.yolo_conf_th = 0.35   # чуть ниже базового порога — отфильтруем NMS
+        self.yolo_nms_th = 0.45
+
+        models_dir = Path("models/yolo")
+        coco_path = models_dir / "coco.names"
+
+        # классы COCO (если в базовом не подхватились)
+        if not getattr(self, "yolo_classes", None):
+            if coco_path.exists():
+                with open(coco_path, "r", encoding="utf-8") as f:
+                    self.yolo_classes = [ln.strip() for ln in f if ln.strip()]
+            else:
+                self.yolo_classes = []
+
+        # 1) уже загруженный super()._init_yolo() — добавим как первую модель
+        if getattr(self, "yolo_net", None) is not None:
+            self.yolo_nets.append(("yolov4-tiny", self.yolo_net))
+
+        # 2) попробовать yolov3-tiny (если есть)
+        v3w = models_dir / "yolov3-tiny.weights"
+        v3c = models_dir / "yolov3-tiny.cfg"
+        try:
+            if v3w.exists() and v3c.exists():
+                net_v3 = cv2.dnn.readNet(str(v3w), str(v3c))
+                self.yolo_nets.append(("yolov3-tiny", net_v3))
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить yolov3-tiny: {e}")
+
+        if not self.yolo_nets:
+            logger.info(
+                "YOLO-модели не найдены — детекция будет ограниченной (Haar и пр.).")
+        else:
+            logger.info("Загружены YOLO-модели: " +
+                        ", ".join(name for name, _ in self.yolo_nets))
+
+    # ---- КОНТЕКСТ ДОМА ----
+    def _update_home_context(self, name_en: str, coco_class_id: int, confidence: float):
+        """Обновляем признаки: питомцы, человек, комната и краткую историю."""
+        # питомцы
+        if name_en in ("cat", "dog"):
             self.pet_detected = True
 
-        # Отслеживаем присутствие человека
-        if object_name == "person" and confidence > 0.7:
+        # присутствие человека
+        if name_en == "person" and confidence > 0.7:
             self.owner_present = True
 
-        # Определяем комнату по объектам
-        room_indicators = {
-            "kitchen": ["microwave", "fridge", "sink", "oven", "toaster"],
-            "bedroom": ["bed"],
-            "living_room": ["sofa", "tv", "remote"],
-            "bathroom": ["toilet", "sink"],
-            "office": ["laptop", "keyboard", "mouse"]
-        }
-
-        for room, indicators in room_indicators.items():
-            if object_name in indicators:
+        # догадка по комнате (если импортировали утилиту)
+        if MAPPING_AVAILABLE:
+            room = guess_room_by_object_id(coco_class_id)
+            if room:
                 self.room_context = room
-                break
 
-        # Сохраняем историю объектов
-        if object_name not in self.home_object_history:
-            self.home_object_history[object_name] = []
-        self.home_object_history[object_name].append({
+        # история
+        self.home_object_history.setdefault(name_en, []).append({
             "timestamp": time.time(),
             "confidence": confidence
         })
+        if len(self.home_object_history[name_en]) > 100:
+            self.home_object_history[name_en] = self.home_object_history[name_en][-100:]
 
-        # Ограничиваем историю последними 100 записями
-        if len(self.home_object_history[object_name]) > 100:
-            self.home_object_history[object_name] = self.home_object_history[object_name][-100:]
-
+    # ---- ТЕКСТ ОПИСАНИЯ СЦЕНЫ ----
     def _generate_scene_description(self) -> str:
-        """Генерирует описание домашней сцены"""
-        description_parts = []
+        parts: List[str] = []
 
-        # Используем русские названия если включено
-        name_map = RUSSIAN_NAMES if (
-            self.use_russian_names and MAPPING_AVAILABLE) else {}
-
-        # Люди (высший приоритет)
-        people_count = len([f for f in self.state.faces])
-        if people_count > 0:
+        # люди по каскаду лиц (быстро и стабильно)
+        faces_cnt = len(self.state.faces)
+        if faces_cnt > 0:
             if self.use_russian_names:
-                if people_count == 1:
-                    description_parts.append("человек")
-                else:
-                    description_parts.append(f"{people_count} человека")
+                parts.append("человек" if faces_cnt ==
+                             1 else f"{faces_cnt} человека")
             else:
-                description_parts.append(
-                    f"{people_count} person{'s' if people_count > 1 else ''}")
+                parts.append("person" if faces_cnt ==
+                             1 else f"{faces_cnt} persons")
 
-        # Домашние животные
-        pets = [obj for obj in self.state.objects if obj.class_name in ["cat", "dog"]]
-        if pets:
-            for pet in pets:
-                pet_name = name_map.get(pet.class_name, pet.class_name)
-                description_parts.append(pet_name)
+        # домашние животные
+        pets = [
+            o for o in self.state.objects if o.class_name in ("cat", "dog")]
+        for p in pets:
+            parts.append(map_to_russian(p.class_name)
+                         if self.use_russian_names else p.class_name)
 
-        # Мебель и важные объекты
-        important_objects = [obj for obj in self.state.objects
-                             if obj.class_name not in ["cat", "dog", "person"]
-                             and obj.confidence > 0.6]
+        # важные прочие объекты (чтобы не засорять список)
+        important = [o for o in self.state.objects if o.class_name not in (
+            "cat", "dog", "person") and o.confidence > 0.6]
+        if important:
+            counts: Dict[str, int] = {}
+            for o in important:
+                key = map_to_russian(
+                    o.class_name) if self.use_russian_names else o.class_name
+                counts[key] = counts.get(key, 0) + 1
+            for name, cnt in counts.items():
+                parts.append(name if cnt == 1 else f"{cnt} {name}")
 
-        if important_objects:
-            object_counts = {}
-            for obj in important_objects:
-                display_name = name_map.get(obj.class_name, obj.class_name)
-                object_counts[display_name] = object_counts.get(
-                    display_name, 0) + 1
-
-            for obj_name, count in object_counts.items():
-                if count == 1:
-                    description_parts.append(obj_name)
-                else:
-                    description_parts.append(f"{count} {obj_name}")
-
-        # Контекст комнаты
-        room_prefix = ""
-        if self.room_context != "unknown":
-            room_names = {
+        # префикс комнаты
+        prefix = ""
+        if self.room_context and self.room_context != "unknown":
+            room_map_ru = {
                 "kitchen": "кухня",
                 "bedroom": "спальня",
                 "living_room": "гостиная",
                 "bathroom": "ванная",
                 "office": "кабинет"
             }
-            if self.use_russian_names and self.room_context in room_names:
-                room_prefix = f"[{room_names[self.room_context]}] "
+            if self.use_russian_names:
+                prefix = f"[{room_map_ru.get(self.room_context, self.room_context)}] "
             else:
-                room_prefix = f"[{self.room_context}] "
+                prefix = f"[{self.room_context}] "
 
-        # Движение
+        # движение
         if self.state.motion_detected:
-            motion_text = "движение" if self.use_russian_names else "movement"
-            description_parts.append(motion_text)
+            parts.append("движение" if self.use_russian_names else "movement")
 
-        if not description_parts:
-            empty_text = "пустая комната" if self.use_russian_names else "empty room"
-            return room_prefix + empty_text
+        if not parts:
+            return prefix + ("пустая комната" if self.use_russian_names else "empty room")
 
-        see_text = "Вижу: " if self.use_russian_names else "I see: "
-        return room_prefix + see_text + ", ".join(description_parts)
+        return prefix + ("Вижу: " if self.use_russian_names else "I see: ") + ", ".join(parts)
 
-    # ==================== ДОМАШНИЕ СПЕЦИАЛЬНЫЕ МЕТОДЫ ====================
-
+    # ---- ПУБЛИЧНЫЕ УТИЛИТЫ ----
     def is_pet_present(self) -> bool:
-        """Проверка наличия домашних животных"""
         with self._lock:
-            pets = [
-                obj for obj in self.state.objects if obj.class_name in ["cat", "dog"]]
-            return len(pets) > 0
+            return any(o.class_name in ("cat", "dog") for o in self.state.objects)
 
     def get_pets_info(self) -> List[Dict]:
-        """Информация о домашних животных"""
         with self._lock:
-            pets_info = []
-            for obj in self.state.objects:
-                if obj.class_name in ["cat", "dog"]:
-                    pet_info = {
-                        "type": obj.class_name,
-                        "confidence": obj.confidence,
-                        "position": obj.center,
-                        "size": "large" if obj.area > 5000 else "medium" if obj.area > 1000 else "small"
-                    }
-                    pets_info.append(pet_info)
-            return pets_info
+            info = []
+            for o in self.state.objects:
+                if o.class_name in ("cat", "dog"):
+                    info.append({
+                        "type": o.class_name,
+                        "confidence": o.confidence,
+                        "position": o.center,
+                        "size": "large" if o.area > 5000 else "medium" if o.area > 1000 else "small"
+                    })
+            return info
 
     def is_person_sitting(self) -> bool:
-        """Определение сидит ли человек (по наличию стула/дивана рядом)"""
         with self._lock:
-            people = [
-                obj for obj in self.state.objects if obj.class_name == "person"]
-            furniture = [
-                obj for obj in self.state.objects if obj.class_name in ["chair", "sofa"]]
-
-            for person in people:
-                for chair in furniture:
-                    # Проверяем близость человека к мебели
-                    distance = ((person.center[0] - chair.center[0]) ** 2 +
-                                (person.center[1] - chair.center[1]) ** 2) ** 0.5
-                    if distance < 100:  # Человек рядом с мебелью
+            people = [o for o in self.state.objects if o.class_name == "person"]
+            furn = [o for o in self.state.objects if o.class_name in (
+                "chair", "sofa")]
+            for p in people:
+                for f in furn:
+                    dx = p.center[0] - f.center[0]
+                    dy = p.center[1] - f.center[1]
+                    if (dx*dx + dy*dy) ** 0.5 < 100:
                         return True
             return False
 
     def get_room_context(self) -> str:
-        """Получить текущий контекст комнаты"""
         return self.room_context
 
     def get_home_objects_stats(self) -> Dict:
-        """Статистика домашних объектов"""
-        stats = {}
-        current_time = time.time()
-
-        for obj_name, history in self.home_object_history.items():
-            # Фильтруем последние 5 минут
-            recent_detections = [
-                h for h in history
-                if current_time - h["timestamp"] < 300  # 5 минут
-            ]
-
-            if recent_detections:
-                avg_confidence = sum(
-                    h["confidence"] for h in recent_detections) / len(recent_detections)
-                stats[obj_name] = {
-                    "detections_count": len(recent_detections),
-                    "avg_confidence": round(avg_confidence, 2),
-                    "last_seen": max(h["timestamp"] for h in recent_detections)
+        stats: Dict[str, Dict] = {}
+        now = time.time()
+        for name, hist in self.home_object_history.items():
+            recent = [h for h in hist if now - h["timestamp"] < 300]
+            if recent:
+                avg = sum(h["confidence"] for h in recent) / len(recent)
+                stats[name] = {
+                    "detections_count": len(recent),
+                    "avg_confidence": round(avg, 2),
+                    "last_seen": max(h["timestamp"] for h in recent)
                 }
-
         return stats
 
     def is_safe_for_movement(self) -> Dict[str, bool]:
-        """Проверка безопасности движения с учетом домашней обстановки"""
-        safety = {
-            "pets_clear": not self.is_pet_present(),
-            "person_not_in_path": not self.is_person_in_front(),
-            "furniture_clear": True,  # Базовая логика
-            "overall_safe": True
-        }
+        with self._lock:
+            pets_clear = not any(o.class_name in ("cat", "dog")
+                                 for o in self.state.objects)
+            person_not_in_path = True
+            furniture_clear = True
 
-        # Проверяем мебель на пути
-        furniture_ahead = []
-        for obj in self.state.objects:
-            # Центральная зона
-            if obj.class_name in ["chair", "table"] and obj.center[0] > 200 and obj.center[0] < 440:
-                furniture_ahead.append(obj)
+            # человек в центральной зоне
+            for o in self.state.objects:
+                if o.class_name == "person":
+                    if 200 <= o.center[0] <= 440:
+                        person_not_in_path = False
+                        break
 
-        safety["furniture_clear"] = len(furniture_ahead) == 0
+            # мебель по центру (простая эвристика)
+            for o in self.state.objects:
+                if o.class_name in ("chair", "table"):
+                    if 200 <= o.center[0] <= 440:
+                        furniture_clear = False
+                        break
 
-        # Общая безопасность
-        safety["overall_safe"] = all([
-            safety["pets_clear"],
-            safety["person_not_in_path"],
-            safety["furniture_clear"]
-        ])
-
-        return safety
+            overall = pets_clear and person_not_in_path and furniture_clear
+            return {
+                "pets_clear": pets_clear,
+                "person_not_in_path": person_not_in_path,
+                "furniture_clear": furniture_clear,
+                "overall_safe": overall
+            }
 
     def get_navigation_hints(self) -> List[str]:
-        """Подсказки для навигации в доме"""
-        hints = []
+        hints: List[str] = []
 
-        # Подсказки по домашним животным
         if self.is_pet_present():
-            pets = self.get_pets_info()
-            for pet in pets:
+            for pet in self.get_pets_info():
                 if pet["type"] == "cat":
                     hints.append(
-                        "Осторожно: кот в зоне видимости - двигайтесь медленно")
+                        "Осторожно: кот в зоне видимости — двигайтесь медленно")
                 elif pet["type"] == "dog":
                     hints.append(
-                        "Внимание: собака рядом - возможна реакция на движение")
+                        "Внимание: собака рядом — возможна реакция на движение")
 
-        # Подсказки по комнате
         if self.room_context == "kitchen":
-            hints.append(
-                "Кухня: осторожно с техникой и возможными жидкостями на полу")
+            hints.append("Кухня: осторожно с техникой и жидкостями на полу")
         elif self.room_context == "bedroom":
             hints.append("Спальня: двигайтесь тихо, возможно кто-то спит")
         elif self.room_context == "living_room":
-            hints.append(
-                "Гостиная: много мебели - планируйте маршрут осторожно")
+            hints.append("Гостиная: много мебели — планируйте маршрут")
 
-        # Подсказки по людям
         if self.owner_present:
-            if self.is_person_sitting():
-                hints.append("Человек сидит - можно двигаться, но не мешайте")
-            else:
-                hints.append("Человек стоит - дождитесь освобождения прохода")
+            hints.append("Рядом человек — дайте дорогу")
 
         return hints

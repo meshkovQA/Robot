@@ -82,12 +82,10 @@ class AIVisionProcessor:
         logger.info("🧠 Инициализация AI детекторов...")
 
         try:
-            # Детектор лиц Haar Cascade
             cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
             self.face_cascade = cv2.CascadeClassifier(cascade_path)
             logger.info("✅ Haar Cascade детектор лиц загружен")
 
-            # Детектор тела
             body_cascade_path = cv2.data.haarcascades + 'haarcascade_fullbody.xml'
             self.body_cascade = cv2.CascadeClassifier(body_cascade_path)
             logger.info("✅ Haar Cascade детектор тела загружен")
@@ -97,10 +95,19 @@ class AIVisionProcessor:
             self.face_cascade = None
             self.body_cascade = None
 
-        # Пытаемся загрузить YOLO (опционально)
+        # Базовая YOLO (v4-tiny) — читает классы из coco.names
         self._init_yolo()
 
-        # Инициализация дополнительных детекторов
+        # Заглушки для мульти-модели — чтобы базовый класс не падал,
+        # а наследники (HomeAIVision) могли переопределить.
+        self.yolo_nets = []
+        if self.yolo_net is not None:
+            self.yolo_nets.append(("yolov4-tiny", self.yolo_net))
+        self.yolo_input_size = (416, 416)
+        self.yolo_conf_th = 0.5
+        self.yolo_nms_th = 0.45
+
+        # Доп. детекторы
         self._init_advanced_detectors()
 
     def _init_yolo(self):
