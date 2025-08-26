@@ -790,9 +790,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # Регистрируем API blueprint
     app.register_blueprint(bp, url_prefix="/api")
 
-    # Регистрируем API blueprint
-    app.register_blueprint(bp, url_prefix="/api")
-
     # ==================== ОБРАБОТКА ОШИБОК ====================
 
     @app.errorhandler(404)
