@@ -1,4 +1,4 @@
-from robot.api import create_app
+from robot.api.api import create_app
 
 app = create_app()
 

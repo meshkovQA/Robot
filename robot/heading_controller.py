@@ -4,9 +4,9 @@ import threading
 import logging
 from typing import Optional
 
-from .imu import MPU6500
-from .controller import RobotController
-from .config import (
+from robot.devices.imu import MPU6500
+from robot.controller import RobotController
+from robot.config import (
     HDG_HOLD_ENABLED, HDG_KP, HDG_KI, HDG_KD,
     HDG_ERR_DEADZONE_DEG, HDG_MAX_CORR_PULSE_MS, HDG_MIN_GAP_BETWEEN_PULSES_MS,
     HDG_CORR_SPEED,

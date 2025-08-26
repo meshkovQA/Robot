@@ -29,14 +29,21 @@ declare -A PROJECT_FILES=(
     # Python модули
     ["run.py"]="run.py"
     ["robot/__init__.py"]="robot/__init__.py"
+    ["robot/api/__init__.py"]="robot/api/__init__.py"
+    ["robot/ai_vision/__init__.py"]="robot/ai_vision/__init__.py"
+    ["robot/devices/__init__.py"]="robot/devices/__init__.py"
     ["robot/config.py"]="robot/config.py"
     ["robot/i2c_bus.py"]="robot/i2c_bus.py"
     ["robot/controller.py"]="robot/controller.py"
-    ["robot/camera.py"]="robot/camera.py"
-    ["robot/api.py"]="robot/api.py"
-    ["robot/imu.py"]="robot/imu.py"
+    ["robot/devices/camera.py"]="robot/devices/camera.py"
+    ["robot/api/api.py"]="robot/api/api.py"
+    ["robot/devices/imu.py"]="robot/devices/imu.py"
     ["robot/heading_controller.py"]="robot/heading_controller.py"
-    
+    ["robot/ai_vision/ai_vision.py"]="robot/ai_vision/ai_vision.py"
+    ["robot/ai_vision/home_ai_vision.py"]="robot/ai_vision/home_ai_vision.py"
+    ["robot/ai_integration.py"]="robot/ai_integration.py"
+    ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
+
     # Веб-интерфейс
     ["templates/index.html"]="templates/index.html"
     ["static/style.css"]="static/style.css"
@@ -49,9 +56,9 @@ declare -A PROJECT_FILES=(
 )
 
 echo "=============================================="
-info "🤖📹 Установка веб-интерфейса робота с USB камерой v2.1"
+info "🤖🧠 Установка AI робота с USB камерой v5.0"
 info "📁 Репозиторий: https://github.com/meshkovQA/Robot"
-info "⚙️ Конфигурация через robot/config.py (без .env)"
+info "🏠 Оптимизирован для домашнего использования"
 echo "=============================================="
 
 # --- включение SSH ---
@@ -144,7 +151,7 @@ info "Установка Python зависимостей..."
 pip install --upgrade pip setuptools wheel
 
 # Основные зависимости
-pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 opencv-python flask-cors || true
+pip install flask>=2.3.0 gunicorn>=20.1.0 requests python-dotenv numpy smbus2 opencv-python flask-cors scipy pillow scikit-image imutils || true
 
 # Проверяем доступность OpenCV
 python3 -c "import cv2; print(f'✅ OpenCV {cv2.__version__} успешно импортирован')" || warn "OpenCV недоступен"
@@ -168,6 +175,104 @@ download_file() {
         return 1
     fi
 }
+
+# --- загрузка AI моделей ---
+info "🧠 Загрузка AI моделей для домашнего робота..."
+
+mkdir -p "$PROJECT_DIR/models/yolo"
+cd "$PROJECT_DIR/models/yolo"
+
+# YOLOv4-tiny конфигурация
+if [[ ! -f "yolov4-tiny.cfg" ]]; then
+    info "Загрузка YOLOv4-tiny конфигурации..."
+    curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4-tiny.cfg" -o "yolov4-tiny.cfg"
+    ok "✅ yolov4-tiny.cfg загружен"
+fi
+
+# YOLOv4-tiny веса (23MB)
+if [[ ! -f "yolov4-tiny.weights" ]]; then
+    info "Загрузка YOLOv4-tiny весов (23MB)..."
+    curl -L "https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4-tiny.weights" -o "yolov4-tiny.weights"
+    ok "✅ yolov4-tiny.weights загружен"
+fi
+
+# Домашние классы объектов
+cat > "home.names" << 'HOME_CLASSES'
+person
+cat
+dog
+chair
+sofa
+bed
+diningtable
+bottle
+cup
+bowl
+laptop
+mouse
+remote
+keyboard
+cell phone
+microwave
+oven
+toaster
+sink
+refrigerator
+book
+clock
+vase
+scissors
+backpack
+handbag
+umbrella
+bicycle
+car
+plant
+tv
+toilet
+HOME_CLASSES
+
+# Домашний маппинг COCO -> домашние объекты
+cat > "home_mapping.py" << 'MAPPING_CODE'
+"""Маппинг COCO классов на домашние объекты"""
+
+HOME_OBJECT_MAPPING = {
+    0: "person", 15: "cat", 16: "dog", 39: "bottle", 41: "cup", 46: "bowl",
+    56: "chair", 57: "sofa", 58: "plant", 59: "bed", 60: "diningtable", 
+    61: "toilet", 62: "tv", 63: "laptop", 64: "mouse", 65: "remote", 
+    66: "keyboard", 67: "cell phone", 68: "microwave", 69: "oven", 
+    70: "toaster", 71: "sink", 72: "refrigerator", 73: "book", 
+    74: "clock", 75: "vase", 76: "scissors", 24: "backpack", 
+    26: "handbag", 25: "umbrella", 1: "bicycle", 2: "car"
+}
+
+SIMPLIFIED_NAMES = {
+    "wine glass": "glass", "cell phone": "phone", 
+    "pottedplant": "plant", "tvmonitor": "tv",
+    "diningtable": "table", "refrigerator": "fridge"
+}
+
+RUSSIAN_NAMES = {
+    "person": "человек", "cat": "кот", "dog": "собака",
+    "chair": "стул", "sofa": "диван", "plant": "растение", 
+    "bed": "кровать", "table": "стол", "toilet": "туалет",
+    "tv": "телевизор", "laptop": "ноутбук", "phone": "телефон",
+    "fridge": "холодильник", "book": "книга", "cup": "чашка",
+    "bottle": "бутылка", "remote": "пульт"
+}
+
+def get_home_object_name(coco_class_id: int, coco_name: str) -> str:
+    if coco_class_id in HOME_OBJECT_MAPPING:
+        name = HOME_OBJECT_MAPPING[coco_class_id]
+        return SIMPLIFIED_NAMES.get(name, name)
+    return None
+
+def is_important_for_home(coco_class_id: int) -> bool:
+    return coco_class_id in HOME_OBJECT_MAPPING
+MAPPING_CODE
+
+ok "🧠 AI модели и маппинг загружены"
+cd "$PROJECT_DIR"
 
 # --- загрузка файлов проекта ---
 info "Загрузка файлов проекта из GitHub..."
@@ -743,13 +848,20 @@ GITHUB_RAW="https://raw.githubusercontent.com/meshkovQA/Robot/main"
 declare -A FILES=(
     ["run.py"]="run.py"
     ["robot/__init__.py"]="robot/__init__.py"
+    ["robot/api/__init__.py"]="robot/api/__init__.py"
+    ["robot/ai_vision/__init__.py"]="robot/ai_vision/__init__.py"
+    ["robot/devices/__init__.py"]="robot/devices/__init__.py"
     ["robot/config.py"]="robot/config.py"
     ["robot/i2c_bus.py"]="robot/i2c_bus.py"
     ["robot/controller.py"]="robot/controller.py"
-    ["robot/camera.py"]="robot/camera.py"
-    ["robot/api.py"]="robot/api.py"
-    ["robot/imu.py"]="robot/imu.py"
+    ["robot/devices/camera.py"]="robot/devices/camera.py"
+    ["robot/api/api.py"]="robot/api/api.py"
+    ["robot/devices/imu.py"]="robot/devices/imu.py"
     ["robot/heading_controller.py"]="robot/heading_controller.py"
+    ["robot/ai_vision/ai_vision.py"]="robot/ai_vision/ai_vision.py"
+    ["robot/ai_vision/home_ai_vision.py"]="robot/ai_vision/home_ai_vision.py"
+    ["robot/ai_integration.py"]="robot/ai_integration.py"
+    ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
     ["templates/index.html"]="templates/index.html"
     ["static/style.css"]="static/style.css"
     ["static/script.js"]="static/script.js"
@@ -843,6 +955,15 @@ if python3 -c "from robot.api import create_app; from robot.camera import USBCam
 else
     warn "Есть проблемы с Python модулями, но основная функциональность может работать"
 fi
+
+
+# Проверяем импорт AI модулей
+if python3 -c "from robot.camera import USBCamera; from robot.ai_vision import AIVisionProcessor; from robot.home_ai_vision import HomeAIVision; print('✅ AI модули импортированы успешно')"; then
+    ok "AI модули работают"
+else
+    warn "Проблемы с AI модулями - некоторые функции могут быть недоступны"
+fi
+
 
 info "Тестирование запуска приложения..."
 cd "$PROJECT_DIR"

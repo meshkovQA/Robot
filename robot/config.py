@@ -387,7 +387,7 @@ def load_preset(preset_name: str):
 
 def create_camera_config_dict():
     """Создать словарь конфигурации для передачи в камеру"""
-    from .camera import CameraConfig
+    from .devices.camera import CameraConfig
 
     return CameraConfig(
         device_id=CAMERA_DEVICE_ID,

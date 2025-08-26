@@ -8,13 +8,13 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .config import (
+from robot.config import (
     ARDUINO_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
     SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM,
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED, CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
     CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE, KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART
 )
-from .i2c_bus import I2CBus, open_bus
+from robot.i2c_bus import I2CBus, open_bus
 
 logger = logging.getLogger(__name__)
 
