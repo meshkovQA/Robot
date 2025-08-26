@@ -44,6 +44,8 @@ declare -A PROJECT_FILES=(
     ["robot/ai_vision/home_mapping.py"]="robot/ai_vision/home_mapping.py"
     ["robot/ai_integration.py"]="robot/ai_integration.py"
     ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
+    ["dataset.sh"]="dataset.sh"
+    ["robot/tools/collect_dataset_api.py"]="robot/tools/collect_dataset_api.py"
 
     # Веб-интерфейс
     ["templates/index.html"]="templates/index.html"
@@ -811,6 +813,8 @@ declare -A FILES=(
     ["robot/ai_vision/home_mapping.py"]="robot/ai_vision/home_mapping.py"
     ["robot/ai_integration.py"]="robot/ai_integration.py"
     ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
+    ["dataset.sh"]="dataset.sh"
+    ["robot/tools/collect_dataset_api.py"]="robot/tools/collect_dataset_api.py"
     ["templates/index.html"]="templates/index.html"
     ["static/style.css"]="static/style.css"
     ["static/script.js"]="static/script.js"
