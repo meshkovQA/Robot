@@ -480,20 +480,18 @@ Environment="PYTHONPATH=$PROJECT_DIR"
 
 # Gunicorn: один воркер, потоковый класс
 ExecStart=$VENV_DIR/bin/gunicorn \
-    --workers 2 \
-    --worker-class gevent \
-    --worker-connections 1000 \
-    --timeout 0 \
-    --graceful-timeout 30 \
-    --keep-alive 25 \
-    --backlog 2048 \
-    --max-requests 2000 \
-    --max-requests-jitter 200 \
-    --worker-tmp-dir /dev/shm \
+    --workers 1 \
+    --worker-class gthread \
+    --threads 8 \
+    --timeout 30 \
+    --graceful-timeout 15 \
+    --keep-alive 2 \
+    --max-requests 200 \
+    --max-requests-jitter 20 \
+    --preload \
     --bind 0.0.0.0:5000 \
     --access-logfile $LOG_DIR/access.log \
     --error-logfile $LOG_DIR/error.log \
-    --log-level info \
     run:app
 
 # Перезапуск при сбоях
