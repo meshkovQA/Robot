@@ -16,7 +16,7 @@ from robot.heading_controller import HeadingHoldService
 from robot.ai_integration import AIRobotController
 from robot.ai_vision.home_ai_vision import HomeAIVision
 from robot.api.ai_api_extensions import add_ai_routes
-from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, IMU_ENABLED, EXPOSE_IMU_API
+from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, IMU_ENABLED, EXPOSE_IMU_API, STATIC_DIR, TEMPLATES_DIR
 from datetime import datetime
 from pathlib import Path
 
@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 def create_app(controller: RobotController | None = None, camera_instance: USBCamera | None = None) -> Flask:
     app = Flask(__name__,
-                template_folder='../templates',
-                static_folder='../static')
+                template_folder=TEMPLATES_DIR,
+                static_folder=STATIC_DIR)
 
     STATIC_ROOT = Path(app.static_folder).resolve()
 
