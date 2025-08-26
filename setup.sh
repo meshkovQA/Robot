@@ -41,6 +41,7 @@ declare -A PROJECT_FILES=(
     ["robot/heading_controller.py"]="robot/heading_controller.py"
     ["robot/ai_vision/ai_vision.py"]="robot/ai_vision/ai_vision.py"
     ["robot/ai_vision/home_ai_vision.py"]="robot/ai_vision/home_ai_vision.py"
+    ["robot/ai_vision/home_mapping.py"]="robot/ai_vision/home_mapping.py"
     ["robot/ai_integration.py"]="robot/ai_integration.py"
     ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
 
@@ -191,6 +192,14 @@ if [[ ! -f "yolov4-tiny.cfg" ]]; then
     ok "✅ yolov4-tiny.cfg загружен"
 fi
 
+# COCO классы (нужны базовому ai_vision.py)
+if [[ ! -f "coco.names" ]]; then
+    info "Загрузка COCO классов (coco.names)..."
+    curl -L "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names" -o "coco.names" \
+      || curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names" -o "coco.names"
+    ok "✅ coco.names загружен"
+fi
+
 # YOLOv4-tiny веса (23MB)
 if [[ ! -f "yolov4-tiny.weights" ]]; then
     info "Загрузка YOLOv4-tiny весов (23MB)..."
@@ -198,80 +207,17 @@ if [[ ! -f "yolov4-tiny.weights" ]]; then
     ok "✅ yolov4-tiny.weights загружен"
 fi
 
-# Домашние классы объектов
-cat > "home.names" << 'HOME_CLASSES'
-person
-cat
-dog
-chair
-sofa
-bed
-diningtable
-bottle
-cup
-bowl
-laptop
-mouse
-remote
-keyboard
-cell phone
-microwave
-oven
-toaster
-sink
-refrigerator
-book
-clock
-vase
-scissors
-backpack
-handbag
-umbrella
-bicycle
-car
-plant
-tv
-toilet
-HOME_CLASSES
+# YOLOv3-tiny (опционально, для мульти-модели в HomeAIVision)
+if [[ ! -f "yolov3-tiny.cfg" ]]; then
+    info "Загрузка YOLOv3-tiny конфигурации (опционально)..."
+    curl -L "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3-tiny.cfg" -o "yolov3-tiny.cfg" \
+      || curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov3-tiny.cfg" -o "yolov3-tiny.cfg" || true
+fi
+if [[ ! -f "yolov3-tiny.weights" ]]; then
+    info "Загрузка YOLOv3-tiny весов (опционально, ~33MB)..."
+    curl -L "https://pjreddie.com/media/files/yolov3-tiny.weights" -o "yolov3-tiny.weights" || true
+fi
 
-# Домашний маппинг COCO -> домашние объекты
-cat > "home_mapping.py" << 'MAPPING_CODE'
-"""Маппинг COCO классов на домашние объекты"""
-
-HOME_OBJECT_MAPPING = {
-    0: "person", 15: "cat", 16: "dog", 39: "bottle", 41: "cup", 46: "bowl",
-    56: "chair", 57: "sofa", 58: "plant", 59: "bed", 60: "diningtable", 
-    61: "toilet", 62: "tv", 63: "laptop", 64: "mouse", 65: "remote", 
-    66: "keyboard", 67: "cell phone", 68: "microwave", 69: "oven", 
-    70: "toaster", 71: "sink", 72: "refrigerator", 73: "book", 
-    74: "clock", 75: "vase", 76: "scissors", 24: "backpack", 
-    26: "handbag", 25: "umbrella", 1: "bicycle", 2: "car"
-}
-
-SIMPLIFIED_NAMES = {
-    "wine glass": "glass", "cell phone": "phone", 
-    "pottedplant": "plant", "tvmonitor": "tv",
-    "diningtable": "table", "refrigerator": "fridge"
-}
-
-RUSSIAN_NAMES = {
-    "person": "человек", "cat": "кот", "dog": "собака",
-    "chair": "стул", "sofa": "диван", "plant": "растение", 
-    "bed": "кровать", "table": "стол", "toilet": "туалет",
-    "tv": "телевизор", "laptop": "ноутбук", "phone": "телефон",
-    "fridge": "холодильник", "book": "книга", "cup": "чашка",
-    "bottle": "бутылка", "remote": "пульт"
-}
-
-def get_home_object_name(coco_class_id: int, coco_name: str) -> str:
-    if coco_class_id in HOME_OBJECT_MAPPING:
-        name = HOME_OBJECT_MAPPING[coco_class_id]
-        return SIMPLIFIED_NAMES.get(name, name)
-    return None
-
-def is_important_for_home(coco_class_id: int) -> bool:
-    return coco_class_id in HOME_OBJECT_MAPPING
-MAPPING_CODE
 
 ok "🧠 AI модели и маппинг загружены"
 cd "$PROJECT_DIR"
@@ -862,6 +808,7 @@ declare -A FILES=(
     ["robot/heading_controller.py"]="robot/heading_controller.py"
     ["robot/ai_vision/ai_vision.py"]="robot/ai_vision/ai_vision.py"
     ["robot/ai_vision/home_ai_vision.py"]="robot/ai_vision/home_ai_vision.py"
+    ["robot/ai_vision/home_mapping.py"]="robot/ai_vision/home_mapping.py"
     ["robot/ai_integration.py"]="robot/ai_integration.py"
     ["robot/api/ai_api_extensions.py"]="robot/api/ai_api_extensions.py"
     ["templates/index.html"]="templates/index.html"
