@@ -1,3 +1,5 @@
+//script.js
+
 // Глобальные переменные
 let lastUpdateTime = 0;
 let obstacleDetected = false;

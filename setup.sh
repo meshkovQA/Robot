@@ -482,16 +482,17 @@ Environment="PYTHONPATH=$PROJECT_DIR"
 ExecStart=$VENV_DIR/bin/gunicorn \
     --workers 1 \
     --worker-class gthread \
-    --threads 8 \
-    --timeout 30 \
-    --graceful-timeout 15 \
+    --threads 4 \
+    --timeout 60 \
+    --graceful-timeout 10 \
     --keep-alive 2 \
-    --max-requests 200 \
-    --max-requests-jitter 20 \
-    --preload \
+    --max-requests 500 \
+    --max-requests-jitter 50 \
+    --worker-tmp-dir /dev/shm \
     --bind 0.0.0.0:5000 \
     --access-logfile $LOG_DIR/access.log \
     --error-logfile $LOG_DIR/error.log \
+    --log-level info \
     run:app
 
 # Перезапуск при сбоях
