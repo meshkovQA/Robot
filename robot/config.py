@@ -216,56 +216,6 @@ def validate_camera_config():
 
     return errors
 
-# ==================== ПРЕДУСТАНОВКИ ====================
-
-
-# Предустановки качества камеры
-CAMERA_PRESETS = {
-    "low": {
-        "width": 320,
-        "height": 240,
-        "fps": 15,
-        "quality": 50,
-        "stream_quality": 40,
-        "stream_fps": 10
-    },
-    "medium": {
-        "width": 640,
-        "height": 480,
-        "fps": 30,
-        "quality": 70,
-        "stream_quality": 60,
-        "stream_fps": 15
-    },
-    "high": {
-        "width": 1280,
-        "height": 720,
-        "fps": 30,
-        "quality": 90,
-        "stream_quality": 75,
-        "stream_fps": 20
-    },
-    "ultra": {
-        "width": 1920,
-        "height": 1080,
-        "fps": 30,
-        "quality": 95,
-        "stream_quality": 80,
-        "stream_fps": 25
-    }
-}
-
-# Текущая предустановка
-CAMERA_PRESET = "medium"
-
-
-def get_camera_preset(preset_name: str = None) -> dict:
-    """Получить настройки камеры по предустановке"""
-    preset = preset_name or CAMERA_PRESET
-    if preset in CAMERA_PRESETS:
-        return CAMERA_PRESETS[preset].copy()
-    return CAMERA_PRESETS["medium"].copy()
-
 # ==================== ИНТЕГРАЦИЯ С РОБОТОМ ====================
 
 
