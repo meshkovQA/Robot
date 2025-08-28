@@ -315,46 +315,6 @@ CAMERA_CONFIG = {
     "save_frame_on_emergency": SAVE_FRAME_ON_EMERGENCY
 }
 
-# ==================== УТИЛИТЫ КОНФИГУРАЦИИ ====================
-
-
-def load_preset(preset_name: str):
-    """Загрузить предустановку камеры"""
-    preset = get_camera_preset(preset_name)
-
-    global CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
-    global CAMERA_QUALITY, CAMERA_STREAM_QUALITY, CAMERA_STREAM_FPS
-
-    CAMERA_WIDTH = preset["width"]
-    CAMERA_HEIGHT = preset["height"]
-    CAMERA_FPS = preset["fps"]
-    CAMERA_QUALITY = preset["quality"]
-    CAMERA_STREAM_QUALITY = preset["stream_quality"]
-    CAMERA_STREAM_FPS = preset["stream_fps"]
-
-    # Обновляем словарь конфигурации
-    CAMERA_CONFIG.update(preset)
-
-
-def create_camera_config_dict():
-    """Создать словарь конфигурации для передачи в камеру"""
-    from .devices.camera import CameraConfig
-
-    return CameraConfig(
-        device_id=CAMERA_DEVICE_ID,
-        width=CAMERA_WIDTH,
-        height=CAMERA_HEIGHT,
-        fps=CAMERA_FPS,
-        quality=CAMERA_QUALITY,
-        stream_quality=CAMERA_STREAM_QUALITY,
-        stream_fps=CAMERA_STREAM_FPS,
-        brightness=CAMERA_BRIGHTNESS,
-        contrast=CAMERA_CONTRAST,
-        saturation=CAMERA_SATURATION,
-        save_path=CAMERA_SAVE_PATH,
-        video_path=CAMERA_VIDEO_PATH,
-        auto_start=CAMERA_AUTO_START
-    )
 
 # ==================== ОТЛАДКА ====================
 

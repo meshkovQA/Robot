@@ -79,7 +79,7 @@ class USBCamera:
 
         # Синхронизация
         self._frame_lock = threading.RLock()
-        self._current_frame: Optional = None
+        self._current_frame: Optional = None  # type: ignore
         self._stream_frame: Optional[bytes] = None
 
         # Статистика
