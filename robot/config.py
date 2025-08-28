@@ -118,8 +118,8 @@ CAMERA_FPS = 30
 
 # Качество изображения
 CAMERA_QUALITY = 100  # JPEG качество (1-100)
-CAMERA_STREAM_QUALITY = 80  # Для веб-стрима
-CAMERA_STREAM_FPS = 15  # FPS веб-стрима
+CAMERA_STREAM_QUALITY = 100  # Для веб-стрима
+CAMERA_STREAM_FPS = 30  # FPS веб-стрима
 
 # Настройки изображения
 CAMERA_BRIGHTNESS = 40  # 0-100
