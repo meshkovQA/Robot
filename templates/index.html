@@ -509,45 +509,12 @@
   <!-- Bootstrap Bundle (JS + Popper) -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-  <script>
-    // Заглушки для функций (замените на ваши существующие)
-    function setViewMode(mode) {
-      if (mode === 'full') {
-        // Переключиться на полный режим
-        document.getElementById('sidebar-column').classList.remove('col-xl-3', 'col-lg-4');
-        document.getElementById('sidebar-column').classList.add('col-12');
-        document.getElementById('main-column').classList.remove('col-xl-9', 'col-lg-8');
-        document.getElementById('main-column').classList.add('col-12');
-      } else {
-        // Вернуться к компактному режиму
-        document.getElementById('sidebar-column').classList.remove('col-12');
-        document.getElementById('sidebar-column').classList.add('col-xl-3', 'col-lg-4');
-        document.getElementById('main-column').classList.remove('col-12');
-        document.getElementById('main-column').classList.add('col-xl-9', 'col-lg-8');
-      }
-    }
-
-    // Базовые функции управления (добавьте свою логику)
-    function moveForward() { console.log('Move Forward'); }
-    function moveBackward() { console.log('Move Backward'); }
-    function tankTurnLeft() { console.log('Turn Left'); }
-    function tankTurnRight() { console.log('Turn Right'); }
-    function stopRobot() { console.log('Stop'); }
-    function emergencyStop() { console.log('Emergency Stop'); }
-    function cameraPanLeft() { console.log('Pan Left'); }
-    function cameraPanRight() { console.log('Pan Right'); }
-    function cameraTiltUp() { console.log('Tilt Up'); }
-    function cameraTiltDown() { console.log('Tilt Down'); }
-    function cameraCenter() { console.log('Camera Center'); }
-
-    // Обновление данных датчиков (адаптируйте под свой API)
-    function updateSensorData() {
-      // Ваша логика обновления датчиков
-    }
-
-    // Запуск обновления
-    setInterval(updateSensorData, 500);
-  </script>
+  <!-- Твои скрипты -->
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <script src="{{ url_for('static', filename='camera.js') }}"></script>
+  <script src="{{ url_for('static', filename='camera-control.js') }}"></script>
+  <script src="{{ url_for('static', filename='ai-control.js') }}"></script>
+  <script src="{{ url_for('static', filename='imu-control.js') }}"></script>
 
 </body>
 </html>
