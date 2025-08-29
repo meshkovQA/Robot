@@ -134,7 +134,7 @@ class RobotController:
         logger.debug("I2C quiet window until %.6f", self._bus_quiet_until)
         return True
 
-    def _i2c_read_sensors(self, retries: int = 3) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
+    def _i2c_read_sensors(self, retries: int = None) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
         """Чтение данных с датчиков и углов камеры"""
         if retries is None:
             retries = I2C_READ_RETRIES
@@ -147,6 +147,7 @@ class RobotController:
         if now < self._bus_quiet_until:
             raise RuntimeError("I2C read skipped due to quiet window")
 
+        raw = None
         for attempt in range(retries):
             try:
                 with self._i2c_lock:  # 🔒
@@ -155,19 +156,20 @@ class RobotController:
                 break
             except Exception as e:
                 if attempt == retries - 1:  # последняя попытка
-                    raise e
+                    logger.error("Все попытки чтения UNO провалились: %s", e)
+                    return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
                 logger.debug("I2C read attempt %d failed: %s", attempt + 1, e)
                 time.sleep(0.01 * (2 ** attempt))  # экспоненциальная задержка
 
-        if len(raw) != 12:
-            logger.warning("Получено %d байт вместо 12", len(raw))
+        if not raw or len(raw) != 12:
+            logger.warning("Получено %d байт вместо 12",
+                           len(raw) if raw else 0)
             return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
-    def _i2c_read_mega_sensors(self, retries: int = 3) -> Tuple[int, int, int]:
+    def _i2c_read_mega_sensors(self, retries: int = None) -> Tuple[int, int, int]:
         """Чтение данных с датчиков Arduino Mega"""
-
         if retries is None:
-            retries = I2C_READ_RETRIE
+            retries = I2C_READ_RETRIES
 
         if not self.bus:
             return 25, 30, 35  # эмуляция
@@ -176,6 +178,7 @@ class RobotController:
         if now < self._bus_quiet_until:
             raise RuntimeError("I2C read skipped due to quiet window")
 
+        raw = None
         for attempt in range(retries):
             try:
                 with self._i2c_lock:  # 🔒
@@ -184,13 +187,15 @@ class RobotController:
                 break
             except Exception as e:
                 if attempt == retries - 1:  # последняя попытка
-                    raise e
+                    logger.error("Все попытки чтения MEGA провалились: %s", e)
+                    return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
                 logger.debug(
                     "Mega I2C read attempt %d failed: %s", attempt + 1, e)
                 time.sleep(0.01 * (2 ** attempt))  # экспоненциальная задержка
 
-        if len(raw) != 6:
-            logger.warning("Mega: получено %d байт вместо 6", len(raw))
+        if not raw or len(raw) != 6:
+            logger.warning("Mega: получено %d байт вместо 6",
+                           len(raw) if raw else 0)
             return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
 
     # --------------------------------------------
@@ -669,10 +674,19 @@ class RobotController:
 
                     try:
                         # Добавляем паузу между чтением с разных Arduino
-                        center_front_dist, right_rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
+                        uno_result = self._i2c_read_sensors()
+                        if uno_result is None:
+                            raise RuntimeError("UNO sensors returned None")
+                        center_front_dist, right_rear_dist, pan, tilt, temp, hum = uno_result
+
                         time.sleep(I2C_INTER_DEVICE_DELAY_MS /
                                    1000.0)  # пауза между чтениями
-                        left_front_dist, right_front_dist, left_rear_dist = self._i2c_read_mega_sensors()
+
+                        mega_result = self._i2c_read_mega_sensors()
+                        if mega_result is None:
+                            raise RuntimeError("MEGA sensors returned None")
+                        left_front_dist, right_front_dist, left_rear_dist = mega_result
+
                         consecutive_errors = 0  # сброс счетчика ошибок при успешном чтении
                     except RuntimeError as e:
                         # чтение пропустили из-за тихого окна — ок
