@@ -96,6 +96,10 @@ class RobotController:
         self._target_speed = 0
         self._target_direction = 0
 
+        self._i2c_lock = threading.RLock()      # общий лок для любых операций по I²C
+        # до какого момента не читать после записи
+        self._bus_quiet_until = 0.0
+
     # --------------------------------------------
     # Низкоуровневые I2C операции
     # -------------------------------------------
@@ -108,102 +112,97 @@ class RobotController:
             logger.warning("[I2C] эмуляция записи: %s", data)
             return True
 
-        for i in range(retries):
+        with self._i2c_lock:  # 🔒
             try:
-                # Отправляем все данные как block data с первым байтом как регистром
                 if len(data) > 1:
-                    logger.info("Отправка I2C block data: addr=0x%02X, reg=0x%02X, data=%s",
+                    logger.info("I2C block: addr=0x%02X reg=0x%02X data=%s",
                                 ARDUINO_ADDRESS, data[0], data[1:])
                     self.bus.write_i2c_block_data(
                         ARDUINO_ADDRESS, data[0], data[1:])
                 else:
-                    logger.info("Отправка I2C byte: addr=0x%02X, data=0x%02X",
+                    logger.info("I2C byte: addr=0x%02X data=0x%02X",
                                 ARDUINO_ADDRESS, data[0])
                     self.bus.write_byte(ARDUINO_ADDRESS, data[0])
-                logger.info("I2C write успешно: %s", data)
-                return True
             except Exception as e:
-                logger.error("I2C write fail %d/%d: %s", i+1, retries, e)
-                time.sleep(backoff * (i + 1))
+                logger.error("I2C write failed: %s", e)
+                return False
 
-        logger.error(
-            "I2C write полностью провалился после %d попыток", retries)
-        return False
+        # после удачной записи даём шине «успокоиться» — запретим чтения на короткое время
+        self._bus_quiet_until = time.time() + 0.03   # 30 мс тишины после записи
+        logger.debug("I2C quiet window until %.6f", self._bus_quiet_until)
+        return True
 
     def _i2c_read_sensors(self) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
         """Чтение данных с датчиков и углов камеры"""
         if not self.bus:
             return 25, 30, 90, 90,  23.4, 45.0  # эмуляция
 
-        try:
-            # Читаем расширенные данные (12 байт): датчики + углы камеры
+        # Читаем расширенные данные (12 байт): датчики + углы камеры
+        now = time.time()
+        if now < self._bus_quiet_until:
+            raise RuntimeError("I2C read skipped due to quiet window")
+
+        with self._i2c_lock:  # 🔒
             raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 12)
-            if len(raw) != 12:
-                logger.warning("Получено %d байт вместо 12", len(raw))
-                return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
-            # Распаковываем little-endian uint16
-            center_front = (raw[1] << 8) | raw[0]
-            right_rear = (raw[3] << 8) | raw[2]
-            pan = (raw[5] << 8) | raw[4]
-            tilt = (raw[7] << 8) | raw[6]
-            t10 = (raw[9] << 8) | raw[8]
-            h10 = (raw[11] << 8) | raw[10]
-
-            # Проверка валидности датчиков
-            if center_front > SENSOR_MAX_VALID:
-                center_front = SENSOR_ERR
-            if right_rear > SENSOR_MAX_VALID:
-                right_rear = SENSOR_ERR
-
-            # sign-fix for int16
-            if t10 >= 32768:
-                t10 -= 65536
-            if h10 >= 32768:
-                h10 -= 65536
-            temp = (None if t10 == -32768 else t10/10.0)
-            hum = (None if h10 == -32768 else h10/10.0)
-
-            logger.debug("Датчики: center_front=%d, right_rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
-                         center_front, right_rear, pan, tilt, temp, hum)
-            return center_front, right_rear, pan, tilt, temp, hum
-
-        except Exception as e:
-            logger.error("I2C read failed: %s", e)
+        if len(raw) != 12:
+            logger.warning("Получено %d байт вместо 12", len(raw))
             return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
+
+        # распаковка ...
+        center_front = (raw[1] << 8) | raw[0]
+        right_rear = (raw[3] << 8) | raw[2]
+        pan = (raw[5] << 8) | raw[4]
+        tilt = (raw[7] << 8) | raw[6]
+        t10 = (raw[9] << 8) | raw[8]
+        h10 = (raw[11] << 8) | raw[10]
+
+        if center_front > SENSOR_MAX_VALID:
+            center_front = SENSOR_ERR
+        if right_rear > SENSOR_MAX_VALID:
+            right_rear = SENSOR_ERR
+
+        if t10 >= 32768:
+            t10 -= 65536
+        if h10 >= 32768:
+            h10 -= 65536
+        temp = (None if t10 == -32768 else t10/10.0)
+        hum = (None if h10 == -32768 else h10/10.0)
+
+        logger.debug("Датчики: center_front=%d, right_rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
+                     center_front, right_rear, pan, tilt, temp, hum)
+        return center_front, right_rear, pan, tilt, temp, hum
 
     def _i2c_read_mega_sensors(self) -> Tuple[int, int, int]:
         """Чтение данных с датчиков Arduino Mega"""
         if not self.bus:
             return 25, 30, 35  # эмуляция
 
-        try:
-            # Читаем данные с Mega (6 байт): 3 датчика расстояния
+        now = time.time()
+        if now < self._bus_quiet_until:
+            raise RuntimeError("I2C read skipped due to quiet window")
+
+        with self._i2c_lock:  # 🔒
             raw = self.bus.read_i2c_block_data(ARDUINO_MEGA_ADDRESS, 0x10, 6)
-            if len(raw) != 6:
-                logger.warning("Mega: получено %d байт вместо 6", len(raw))
-                return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
 
-            # Распаковываем little-endian uint16
-            left_front = (raw[1] << 8) | raw[0]
-            right_front = (raw[3] << 8) | raw[2]
-            left_rear = (raw[5] << 8) | raw[4]
-
-            # Проверка валидности датчиков
-            if left_front > SENSOR_MAX_VALID:
-                left_front = SENSOR_ERR
-            if right_front > SENSOR_MAX_VALID:
-                right_front = SENSOR_ERR
-            if left_rear > SENSOR_MAX_VALID:
-                left_rear = SENSOR_ERR
-
-            logger.debug("Mega датчики: left_front=%d, right_front=%d, left_rear=%d",
-                         left_front, right_front, left_rear)
-            return left_front, right_front, left_rear
-
-        except Exception as e:
-            logger.error("I2C read Mega failed: %s", e)
+        if len(raw) != 6:
+            logger.warning("Mega: получено %d байт вместо 6", len(raw))
             return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
+
+        left_front = (raw[1] << 8) | raw[0]
+        right_front = (raw[3] << 8) | raw[2]
+        left_rear = (raw[5] << 8) | raw[4]
+
+        if left_front > SENSOR_MAX_VALID:
+            left_front = SENSOR_ERR
+        if right_front > SENSOR_MAX_VALID:
+            right_front = SENSOR_ERR
+        if left_rear > SENSOR_MAX_VALID:
+            left_rear = SENSOR_ERR
+
+        logger.debug("Mega датчики: left_front=%d, right_front=%d, left_rear=%d",
+                     left_front, right_front, left_rear)
+        return left_front, right_front, left_rear
 
     # --------------------------------------------
     # Работа с кикстартом для старта движения
@@ -663,19 +662,46 @@ class RobotController:
     # --------------------------------------
 
     def _monitor_loop(self):
-        """Фоновый мониторинг датчиков и автостоп"""
-        poll_interval = 0.1  # 100мс
-        last_sensor_update = 0
-
+        poll_interval = 0.1  # 10 Гц опрос
+        last_sensor_update = 0.0
         logger.info("Запущен мониторинг датчиков")
 
         while not self._stop_event.is_set():
             try:
-                # Ограничиваем частоту опроса датчиков
                 now = time.time()
                 if now - last_sensor_update >= poll_interval:
-                    center_front_dist, right_rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
-                    left_front_dist, right_front_dist, left_rear_dist = self._i2c_read_mega_sensors()
+                    # уважаем «тихое окно» после записи
+                    if now < self._bus_quiet_until:
+                        time.sleep(0.01)
+                        continue
+
+                    try:
+                        center_front_dist, right_rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
+                        left_front_dist, right_front_dist, left_rear_dist = self._i2c_read_mega_sensors()
+                    except RuntimeError as e:
+                        # чтение пропустили из-за тихого окна — ок
+                        logger.debug(str(e))
+                        time.sleep(0.01)
+                        continue
+                    except Exception as e:
+                        logger.error("I2C read exception: %s", e)
+                        time.sleep(0.02)
+                        continue
+
+                    all_err = (
+                        center_front_dist == SENSOR_ERR and
+                        right_rear_dist == SENSOR_ERR and
+                        left_front_dist == SENSOR_ERR and
+                        right_front_dist == SENSOR_ERR and
+                        left_rear_dist == SENSOR_ERR
+                    )
+
+                    if all_err:
+                        logger.warning(
+                            "All distance sensors = SENSOR_ERR; keeping previous cache (no auto-stop this cycle)")
+                        last_sensor_update = now
+                        time.sleep(0.02)
+                        continue
 
                     with self._lock:
                         self._sensor_center_front = center_front_dist
@@ -684,8 +710,8 @@ class RobotController:
                         self._sensor_left_rear = left_rear_dist
                         self._sensor_right_rear = right_rear_dist
                         self._env_temp, self._env_hum = temp, hum
-                        # Обновляем углы камеры из Arduino (актуальное состояние)
-                        if pan != 0 and tilt != 0:  # проверяем что получили валидные данные
+
+                        if pan != 0 and tilt != 0:
                             self.current_pan_angle = pan
                             self.current_tilt_angle = tilt
 
@@ -694,62 +720,31 @@ class RobotController:
 
                     last_sensor_update = now
 
-                    # Проверка автостопа при движении
+                    # автостоп — как у тебя, только на свежих валидных данных
                     if moving and direction in (1, 2):
-                        # Проверка препятствий при движении вперед
                         if direction == 1:
                             should_stop = False
-
-                            # Центральный передний
-                            if (center_front_dist != SENSOR_ERR and
-                                    center_front_dist < SENSOR_FWD_STOP_CM):
-                                logger.warning("АВТОСТОП: препятствие по центру спереди %d см",
-                                               center_front_dist)
+                            if (center_front_dist != SENSOR_ERR and center_front_dist < SENSOR_FWD_STOP_CM):
                                 should_stop = True
-
-                            # Левый передний
-                            if (left_front_dist != SENSOR_ERR and
-                                    left_front_dist < SENSOR_SIDE_STOP_CM):
-                                logger.warning("АВТОСТОП: препятствие слева спереди %d см",
-                                               left_front_dist)
+                            if (left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_SIDE_STOP_CM):
                                 should_stop = True
-
-                            # Правый передний
-                            if (right_front_dist != SENSOR_ERR and
-                                    right_front_dist < SENSOR_SIDE_STOP_CM):
-                                logger.warning("АВТОСТОП: препятствие справа спереди %d см",
-                                               right_front_dist)
+                            if (right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_SIDE_STOP_CM):
                                 should_stop = True
-
                             if should_stop:
                                 self.stop()
-
-                        # Проверка препятствий при движении назад
-                        elif direction == 2:
+                        else:
                             should_stop = False
-
-                            # Правый задний
-                            if (right_rear_dist != SENSOR_ERR and
-                                    right_rear_dist < SENSOR_BWD_STOP_CM):
-                                logger.warning("АВТОСТОП: препятствие справа сзади %d см",
-                                               right_rear_dist)
+                            if (right_rear_dist != SENSOR_ERR and right_rear_dist < SENSOR_BWD_STOP_CM):
                                 should_stop = True
-
-                            # Левый задний
-                            if (left_rear_dist != SENSOR_ERR and
-                                    left_rear_dist < SENSOR_BWD_STOP_CM):
-                                logger.warning("АВТОСТОП: препятствие слева сзади %d см",
-                                               left_rear_dist)
+                            if (left_rear_dist != SENSOR_ERR and left_rear_dist < SENSOR_BWD_STOP_CM):
                                 should_stop = True
-
                             if should_stop:
                                 self.stop()
 
-                time.sleep(0.03)  # Короткий сон между итерациями
+                time.sleep(0.02)
 
             except Exception as e:
                 logger.error("Ошибка в мониторинге: %s", e)
-                # пробуем переподключиться
                 self.reconnect_bus()
                 time.sleep(0.2)
 
