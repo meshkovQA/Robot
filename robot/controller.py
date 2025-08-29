@@ -664,7 +664,7 @@ class RobotController:
 
     def _monitor_loop(self):
         """Фоновый мониторинг датчиков и автостоп"""
-        poll_interval = 1.0  # 1000мс
+        poll_interval = 0.1  # 100мс
         last_sensor_update = 0
 
         logger.info("Запущен мониторинг датчиков")
@@ -745,12 +745,12 @@ class RobotController:
                             if should_stop:
                                 self.stop()
 
-                time.sleep(0.2)  # Короткий сон между итерациями
+                time.sleep(0.03)  # Короткий сон между итерациями
 
             except Exception as e:
                 logger.error("Ошибка в мониторинге: %s", e)
                 # пробуем переподключиться
                 self.reconnect_bus()
-                time.sleep(1.0)  # Более долгая пауза при ошибке
+                time.sleep(0.2)
 
         logger.info("Мониторинг датчиков завершен")
