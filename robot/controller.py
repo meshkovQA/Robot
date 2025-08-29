@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from robot.config import (
-    ARDUINO_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
-    SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM,
+    ARDUINO_ADDRESS, ARDUINO_MEGA_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
+    SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM, SENSOR_SIDE_STOP_CM,
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED, CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
     CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE, KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART
 )
@@ -81,8 +81,11 @@ class RobotController:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._sensor_front = SENSOR_ERR
-        self._sensor_rear = SENSOR_ERR
+        self._sensor_center_front = SENSOR_ERR
+        self._sensor_left_front = SENSOR_ERR
+        self._sensor_right_front = SENSOR_ERR
+        self._sensor_right_rear = SENSOR_ERR
+        self._sensor_left_rear = SENSOR_ERR
         self._env_temp: Optional[float] = None
         self._env_hum: Optional[float] = None
         self._monitor_thread = threading.Thread(
@@ -140,18 +143,18 @@ class RobotController:
                 return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
             # Распаковываем little-endian uint16
-            front = (raw[1] << 8) | raw[0]
-            rear = (raw[3] << 8) | raw[2]
+            center_front = (raw[1] << 8) | raw[0]
+            right_rear = (raw[3] << 8) | raw[2]
             pan = (raw[5] << 8) | raw[4]
             tilt = (raw[7] << 8) | raw[6]
             t10 = (raw[9] << 8) | raw[8]
             h10 = (raw[11] << 8) | raw[10]
 
             # Проверка валидности датчиков
-            if front > SENSOR_MAX_VALID:
-                front = SENSOR_ERR
-            if rear > SENSOR_MAX_VALID:
-                rear = SENSOR_ERR
+            if center_front > SENSOR_MAX_VALID:
+                center_front = SENSOR_ERR
+            if right_rear > SENSOR_MAX_VALID:
+                right_rear = SENSOR_ERR
 
             # sign-fix for int16
             if t10 >= 32768:
@@ -161,13 +164,46 @@ class RobotController:
             temp = (None if t10 == -32768 else t10/10.0)
             hum = (None if h10 == -32768 else h10/10.0)
 
-            logger.debug("Датчики: front=%d, rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
-                         front, rear, pan, tilt, temp, hum)
-            return front, rear, pan, tilt, temp, hum
+            logger.debug("Датчики: center_front=%d, right_rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
+                         center_front, right_rear, pan, tilt, temp, hum)
+            return center_front, right_rear, pan, tilt, temp, hum
 
         except Exception as e:
             logger.error("I2C read failed: %s", e)
             return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
+
+    def _i2c_read_mega_sensors(self) -> Tuple[int, int, int]:
+        """Чтение данных с датчиков Arduino Mega"""
+        if not self.bus:
+            return 25, 30, 35  # эмуляция
+
+        try:
+            # Читаем данные с Mega (6 байт): 3 датчика расстояния
+            raw = self.bus.read_i2c_block_data(ARDUINO_MEGA_ADDRESS, 0x10, 6)
+            if len(raw) != 6:
+                logger.warning("Mega: получено %d байт вместо 6", len(raw))
+                return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
+
+            # Распаковываем little-endian uint16
+            left_front = (raw[1] << 8) | raw[0]
+            right_front = (raw[3] << 8) | raw[2]
+            left_rear = (raw[5] << 8) | raw[4]
+
+            # Проверка валидности датчиков
+            if left_front > SENSOR_MAX_VALID:
+                left_front = SENSOR_ERR
+            if right_front > SENSOR_MAX_VALID:
+                right_front = SENSOR_ERR
+            if left_rear > SENSOR_MAX_VALID:
+                left_rear = SENSOR_ERR
+
+            logger.debug("Mega датчики: left_front=%d, right_front=%d, left_rear=%d",
+                         left_front, right_front, left_rear)
+            return left_front, right_front, left_rear
+
+        except Exception as e:
+            logger.error("I2C read Mega failed: %s", e)
+            return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
 
     # --------------------------------------------
     # Работа с кикстартом для старта движения
@@ -269,10 +305,19 @@ class RobotController:
                 self.current_tilt_angle = cmd.tilt_angle
             return success
 
-    def read_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
-        """Получение текущих показаний датчиков"""
+    def read_uno_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
+        """Получение показаний датчиков Arduino Uno"""
         with self._lock:
-            return self._sensor_front, self._sensor_rear, self._env_temp, self._env_hum
+            return self._sensor_center_front, self._sensor_right_rear, self._env_temp, self._env_hum
+
+    def read_mega_sensors(self) -> Tuple[int, int, int]:
+        """Получение показаний датчиков Arduino Mega"""
+        with self._lock:
+            return self._sensor_left_front, self._sensor_right_front, self._sensor_left_rear
+
+    def read_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
+        """Обратная совместимость - возвращает основные датчики Uno"""
+        return self.read_uno_sensors()
 
     def get_camera_angles(self) -> Tuple[int, int]:
         """Получение текущих углов камеры"""
@@ -281,18 +326,24 @@ class RobotController:
 
     def get_status(self) -> dict:
         """Получение полного статуса робота"""
-        front_dist, rear_dist, temp, hum = self.read_sensors()
+        center_front_dist, right_rear_dist, temp, hum = self.read_uno_sensors()
+        left_front_dist, right_front_dist, left_rear_dist = self.read_mega_sensors()
         pan_angle, tilt_angle = self.get_camera_angles()
 
         with self._lock:
             return {
-                "front_distance": front_dist,
-                "rear_distance": rear_dist,
+                "center_front_distance": center_front_dist,
+                "left_front_distance": left_front_dist,
+                "right_front_distance": right_front_dist,
+                "right_rear_distance": right_rear_dist,
+                "left_rear_distance": left_rear_dist,
                 "obstacles": {
-                    "front": front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM,
-                    "rear": rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM,
+                    "center_front": center_front_dist != SENSOR_ERR and center_front_dist < SENSOR_FWD_STOP_CM,
+                    "right_rear": right_rear_dist != SENSOR_ERR and right_rear_dist < SENSOR_BWD_STOP_CM,
+                    "left_front": left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_FWD_STOP_CM,
+                    "right_front": right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_FWD_STOP_CM,
+                    "left_rear": left_rear_dist != SENSOR_ERR and left_rear_dist < SENSOR_BWD_STOP_CM,
                 },
-                "sensor_error": front_dist == SENSOR_ERR or rear_dist == SENSOR_ERR,
                 "temperature": temp,
                 "humidity": hum,
                 "current_speed": self.current_speed,
@@ -353,10 +404,26 @@ class RobotController:
     def move_forward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
 
-        front_dist, *_ = self.read_sensors()
-        if front_dist != SENSOR_ERR and front_dist < SENSOR_FWD_STOP_CM:
-            logger.warning("Вперёд нельзя: препятствие на %d см (порог %d см)",
-                           front_dist, SENSOR_FWD_STOP_CM)
+        # Читаем все передние датчики
+        center_front_dist, *_ = self.read_uno_sensors()
+        left_front_dist, right_front_dist, _ = self.read_mega_sensors()
+
+        # Проверяем центральный передний датчик
+        if center_front_dist != SENSOR_ERR and center_front_dist < SENSOR_FWD_STOP_CM:
+            logger.warning("Вперёд нельзя: препятствие по центру на %d см (порог %d см)",
+                           center_front_dist, SENSOR_FWD_STOP_CM)
+            return False
+
+        # Проверяем левый передний датчик
+        if left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_SIDE_STOP_CM:
+            logger.warning("Вперёд нельзя: препятствие слева на %d см (порог %d см)",
+                           left_front_dist, SENSOR_SIDE_STOP_CM)
+            return False
+
+        # Проверяем правый передний датчик
+        if right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_SIDE_STOP_CM:
+            logger.warning("Вперёд нельзя: препятствие справа на %d см (порог %d см)",
+                           right_front_dist, SENSOR_SIDE_STOP_CM)
             return False
 
         # ⬇️ отправляем, пока внутреннее состояние ещё "стоп"
@@ -372,10 +439,20 @@ class RobotController:
     def move_backward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
 
-        _, rear_dist, *_ = self.read_sensors()
-        if rear_dist != SENSOR_ERR and rear_dist < SENSOR_BWD_STOP_CM:
-            logger.warning("Назад нельзя: препятствие на %d см (порог %d см)",
-                           rear_dist, SENSOR_BWD_STOP_CM)
+        # Читаем задние датчики
+        _, right_rear_dist, *_ = self.read_uno_sensors()
+        _, _, left_rear_dist = self.read_mega_sensors()
+
+        # Проверяем правый задний датчик
+        if right_rear_dist != SENSOR_ERR and right_rear_dist < SENSOR_BWD_STOP_CM:
+            logger.warning("Назад нельзя: препятствие справа сзади на %d см (порог %d см)",
+                           right_rear_dist, SENSOR_BWD_STOP_CM)
+            return False
+
+        # Проверяем левый задний датчик
+        if left_rear_dist != SENSOR_ERR and left_rear_dist < SENSOR_BWD_STOP_CM:
+            logger.warning("Назад нельзя: препятствие слева сзади на %d см (порог %d см)",
+                           left_rear_dist, SENSOR_BWD_STOP_CM)
             return False
 
         ok = self._send_movement_command(speed, 2)
@@ -411,6 +488,16 @@ class RobotController:
     def tank_turn_left(self, speed: int) -> bool:
         """Танковый поворот влево"""
         speed = _clip_speed(speed)
+
+        # Читаем боковые датчики
+        left_front_dist, right_front_dist, _ = self.read_mega_sensors()
+
+        # При повороте влево правая сторона движется вперед - проверяем правый датчик
+        if right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_SIDE_STOP_CM:
+            logger.warning("Поворот влево нельзя: препятствие справа на %d см (порог %d см)",
+                           right_front_dist, SENSOR_SIDE_STOP_CM)
+            return False
+
         with self._lock:
             self.is_moving = False  # поворот на месте
             self.movement_direction = 3
@@ -426,6 +513,16 @@ class RobotController:
     def tank_turn_right(self, speed: int) -> bool:
         """Танковый поворот вправо"""
         speed = _clip_speed(speed)
+
+        # Читаем боковые датчики
+        left_front_dist, right_front_dist, _ = self.read_mega_sensors()
+
+        # При повороте вправо левая сторона движется вперед - проверяем левый датчик
+        if left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_SIDE_STOP_CM:
+            logger.warning("Поворот вправо нельзя: препятствие слева на %d см (порог %d см)",
+                           left_front_dist, SENSOR_SIDE_STOP_CM)
+            return False
+
         with self._lock:
             self.is_moving = False
             self.movement_direction = 4
@@ -577,10 +674,15 @@ class RobotController:
                 # Ограничиваем частоту опроса датчиков
                 now = time.time()
                 if now - last_sensor_update >= poll_interval:
-                    front_dist, rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
+                    center_front_dist, right_rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
+                    left_front_dist, right_front_dist, left_rear_dist = self._i2c_read_mega_sensors()
 
                     with self._lock:
-                        self._sensor_front, self._sensor_rear = front_dist, rear_dist
+                        self._sensor_center_front = center_front_dist
+                        self._sensor_left_front = left_front_dist
+                        self._sensor_right_front = right_front_dist
+                        self._sensor_left_rear = left_rear_dist
+                        self._sensor_right_rear = right_rear_dist
                         self._env_temp, self._env_hum = temp, hum
                         # Обновляем углы камеры из Arduino (актуальное состояние)
                         if pan != 0 and tilt != 0:  # проверяем что получили валидные данные
@@ -594,23 +696,54 @@ class RobotController:
 
                     # Проверка автостопа при движении
                     if moving and direction in (1, 2):
-                        # Проверка препятствия спереди при движении вперед
-                        if (direction == 1 and
-                            front_dist != SENSOR_ERR and
-                                front_dist < SENSOR_FWD_STOP_CM):
-                            logger.warning(
-                                "АВТОСТОП: препятствие спереди %d см (порог %d см)",
-                                front_dist, SENSOR_FWD_STOP_CM)
-                            self.stop()
+                        # Проверка препятствий при движении вперед
+                        if direction == 1:
+                            should_stop = False
 
-                        # Проверка препятствия сзади при движении назад
-                        elif (direction == 2 and
-                              rear_dist != SENSOR_ERR and
-                              rear_dist < SENSOR_BWD_STOP_CM):
-                            logger.warning(
-                                "АВТОСТОП: препятствие сзади %d см (порог %d см)",
-                                rear_dist, SENSOR_BWD_STOP_CM)
-                            self.stop()
+                            # Центральный передний
+                            if (center_front_dist != SENSOR_ERR and
+                                    center_front_dist < SENSOR_FWD_STOP_CM):
+                                logger.warning("АВТОСТОП: препятствие по центру спереди %d см",
+                                               center_front_dist)
+                                should_stop = True
+
+                            # Левый передний
+                            if (left_front_dist != SENSOR_ERR and
+                                    left_front_dist < SENSOR_SIDE_STOP_CM):
+                                logger.warning("АВТОСТОП: препятствие слева спереди %d см",
+                                               left_front_dist)
+                                should_stop = True
+
+                            # Правый передний
+                            if (right_front_dist != SENSOR_ERR and
+                                    right_front_dist < SENSOR_SIDE_STOP_CM):
+                                logger.warning("АВТОСТОП: препятствие справа спереди %d см",
+                                               right_front_dist)
+                                should_stop = True
+
+                            if should_stop:
+                                self.stop()
+
+                        # Проверка препятствий при движении назад
+                        elif direction == 2:
+                            should_stop = False
+
+                            # Правый задний
+                            if (right_rear_dist != SENSOR_ERR and
+                                    right_rear_dist < SENSOR_BWD_STOP_CM):
+                                logger.warning("АВТОСТОП: препятствие справа сзади %d см",
+                                               right_rear_dist)
+                                should_stop = True
+
+                            # Левый задний
+                            if (left_rear_dist != SENSOR_ERR and
+                                    left_rear_dist < SENSOR_BWD_STOP_CM):
+                                logger.warning("АВТОСТОП: препятствие слева сзади %d см",
+                                               left_rear_dist)
+                                should_stop = True
+
+                            if should_stop:
+                                self.stop()
 
                 time.sleep(0.2)  # Короткий сон между итерациями
 
