@@ -17,11 +17,13 @@ except ImportError:
 
 I2C_BUS = 1
 ARDUINO_ADDRESS = 0x08
+ARDUINO_MEGA_ADDRESS = 0x09
 
 # ==================== СЕНСОРЫ/ПОРОГИ ====================
 SENSOR_ERR = 999
 SENSOR_FWD_STOP_CM = 30
 SENSOR_BWD_STOP_CM = 30
+SENSOR_SIDE_STOP_CM = 15
 SENSOR_MAX_VALID = 500
 
 # ==================== СКОРОСТЬ (0..255) ====================

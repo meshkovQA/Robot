@@ -160,14 +160,17 @@ function updateSensorData() {
                 updateMovementState(status.is_moving, directionText);
 
                 // Обновление датчиков расстояния
-                updateSensorDisplay('front', status.front_distance);
-                updateSensorDisplay('rear', status.rear_distance);
+                updateSensorDisplay('center-front', status.center_front_distance);
+                updateSensorDisplay('left-front', status.left_front_distance);
+                updateSensorDisplay('right-front', status.right_front_distance);
+                updateSensorDisplay('right-rear', status.right_rear_distance);
+                updateSensorDisplay('left-rear', status.left_rear_distance);
 
                 // Обновление температуры и влажности
                 updateEnvDisplay(status.temperature, status.humidity);
 
-                // Предупреждения о препятствиях
-                updateObstacleWarnings(status.obstacles, status.sensor_error);
+                // Предупреждения о препятствиях - обновить для всех датчиков
+                updateObstacleWarnings(status.obstacles);
 
                 // Обновление времени
                 const now = new Date();
@@ -298,30 +301,40 @@ function updateObstacleStatus(obstacles) {
 }
 
 // Обновление предупреждений о препятствиях
-function updateObstacleWarnings(obstacles, sensorError) {
+function updateObstacleWarnings(obstacles) {
     const warningsContainer = document.getElementById('obstacle-warnings');
     warningsContainer.innerHTML = '';
 
-    if (sensorError) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'obstacle-warning danger';
-        errorDiv.textContent = '⚠️ ОШИБКА ДАТЧИКОВ! Проверьте подключение.';
-        warningsContainer.appendChild(errorDiv);
-        return;
+    const warnings = [];
+
+    if (obstacles.center_front) {
+        warnings.push('🚫 ПРЕПЯТСТВИЕ ПО ЦЕНТРУ СПЕРЕДИ');
+    }
+    if (obstacles.left_front) {
+        warnings.push('🚫 ПРЕПЯТСТВИЕ СЛЕВА СПЕРЕДИ');
+    }
+    if (obstacles.right_front) {
+        warnings.push('🚫 ПРЕПЯТСТВИЕ СПРАВА СПЕРЕДИ');
+    }
+    if (obstacles.left_rear) {
+        warnings.push('🚫 ПРЕПЯТСТВИЕ СЛЕВА СЗАДИ');
+    }
+    if (obstacles.right_rear) {
+        warnings.push('🚫 ПРЕПЯТСТВИЕ СПРАВА СЗАДИ');
     }
 
-    if (obstacles.front) {
-        const frontWarning = document.createElement('div');
-        frontWarning.className = 'obstacle-warning danger';
-        frontWarning.textContent = '🚫 ПРЕПЯТСТВИЕ СПЕРЕДИ! Движение вперед заблокировано.';
-        warningsContainer.appendChild(frontWarning);
-    }
+    warnings.forEach(warning => {
+        const warningDiv = document.createElement('div');
+        warningDiv.className = 'alert alert-danger py-1 mb-1';
+        warningDiv.textContent = warning;
+        warningsContainer.appendChild(warningDiv);
+    });
 
-    if (obstacles.rear) {
-        const rearWarning = document.createElement('div');
-        rearWarning.className = 'obstacle-warning danger';
-        rearWarning.textContent = '🚫 ПРЕПЯТСТВИЕ СЗАДИ! Движение назад заблокировано.';
-        warningsContainer.appendChild(rearWarning);
+    if (warnings.length === 0) {
+        const clearDiv = document.createElement('div');
+        clearDiv.className = 'alert alert-success py-1 mb-0';
+        clearDiv.textContent = '✅ Путь свободен';
+        warningsContainer.appendChild(clearDiv);
     }
 }
 
