@@ -7,438 +7,547 @@
 
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Твой минимальный CSS поверх Bootstrap -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body class="bg-gradient">
 
   <!-- Контейнер для алертов -->
   <div id="alert-container" class="position-fixed top-0 start-50 translate-middle-x mt-2 d-flex flex-column gap-2" style="z-index:9999;"></div>
 
-  <!-- ШИРОКИЙ КОНТЕЙНЕР НА ВСЮ ШИРИНУ -->
-  <div class="container-fluid py-2 d-flex flex-column gap-3">
-
-    <!-- Статус-бар -->
-    <div class="d-flex flex-wrap align-items-center gap-2 py-2 border rounded bg-light">
-      <span class="badge text-bg-secondary">
-        <span id="connection-status" class="status-indicator me-1"></span> I2C соединение
-      </span>
-      <span class="badge text-bg-secondary">
-        <span id="movement-status" class="status-indicator me-1"></span> Движение
-      </span>
-      <span class="badge text-bg-secondary">
-        <span id="obstacle-status" class="status-indicator me-1"></span> Препятствия
-      </span>
-      <span class="badge text-bg-secondary">
-        <span id="camera-status" class="status-indicator me-1"></span> Камера
-      </span>
-      <span class="badge text-bg-primary">
-        <span id="ai-vision-status" class="status-indicator me-1"></span> AI Зрение
-      </span>
-      <span class="badge text-bg-success">
-        <span id="ai-objects-count" class="me-1">0</span> объектов
-      </span>
-      <span class="badge text-bg-info">
-        <span id="ai-room-context">неизвестно</span>
-      </span>
-      <span class="ms-auto small">Обновлено: <strong id="last-update">--:--:--</strong></span>
+  <!-- Переключатель режима отображения -->
+  <div class="view-toggle">
+    <div class="btn-group btn-group-sm">
+      <button class="btn btn-light active" onclick="setViewMode('compact')">
+        <i class="bi bi-layout-sidebar"></i> Компактно
+      </button>
+      <button class="btn btn-light" onclick="setViewMode('full')">
+        <i class="bi bi-layout-three-columns"></i> Полный
+      </button>
     </div>
+  </div>
 
-    <!-- 1) КАМЕРА -->
-    <div class="card">
-      <div class="card-header d-flex align-items-center">
-        📹 Камера / AI Зрение
-        <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-info" onclick="toggleAIStream()" id="ai-stream-btn">🔮 AI Аннотации</button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="refreshCamera()">🔄</button>
-        </div>
-      </div>
-      <div class="card-body d-flex flex-column p-2">
-        <div class="d-flex justify-content-between small text-muted mb-1">
-          <span id="camera-fps">-- FPS</span>
-          <span id="camera-resolution">--x--</span>
-          <span id="ai-processing-fps">AI: -- FPS</span>
-        </div>
-
-        <!-- Переключаемые видеопотоки (ширина на весь экран) -->
-        <div class="ratio ratio-16x9 w-100 position-relative">
-          <!-- Обычный стрим -->
-          <img id="camera-stream" src="/camera/stream" alt="Видеопоток"
-               class="w-100 h-100 object-fit-contain rounded position-absolute">
-          <!-- AI стрим -->
-          <img id="ai-stream" src="/api/ai/annotated_stream" alt="AI Видеопоток"
-               class="w-100 h-100 object-fit-contain rounded position-absolute" style="display: none;">
-        </div>
-
-        <!-- Управление поворотом камеры -->
-        <div class="bg-dark-subtle rounded p-2 mt-2">
-          <div class="text-center fw-semibold mb-2">🎯 Поворот камеры</div>
-          <div class="d-grid gap-1" style="max-width:160px;margin:0 auto;">
-            <div class="d-flex justify-content-center">
-              <button class="btn btn-sm btn-outline-primary" onclick="cameraTiltUp()">⬆️</button>
+  <div class="container-fluid p-2">
+    <div class="row g-2">
+      
+      <!-- БОКОВАЯ ПАНЕЛЬ УПРАВЛЕНИЯ -->
+      <div class="col-xl-3 col-lg-4" id="sidebar-column">
+        <div class="sidebar p-3 position-sticky" style="top: 10px;">
+          
+          <!-- Статус-бар компактный -->
+          <div class="mb-3">
+            <div class="d-flex flex-wrap gap-1">
+              <span class="badge text-bg-secondary">
+                <span id="connection-status" class="status-indicator me-1"></span> I2C
+              </span>
+              <span class="badge text-bg-secondary">
+                <span id="movement-status" class="status-indicator me-1"></span> Движение
+              </span>
+              <span class="badge text-bg-secondary">
+                <span id="obstacle-status" class="status-indicator me-1"></span> Препятствия
+              </span>
+              <span class="badge text-bg-secondary">
+                <span id="camera-status" class="status-indicator me-1"></span> Камера
+              </span>
             </div>
-            <div class="d-flex justify-content-between">
-              <button class="btn btn-sm btn-outline-danger" onclick="cameraPanLeft()">⬅️</button>
-              <button class="btn btn-sm btn-outline-success" onclick="cameraCenter()">🎯</button>
-              <button class="btn btn-sm btn-outline-danger" onclick="cameraPanRight()">➡️</button>
-            </div>
-            <div class="d-flex justify-content-center">
-              <button class="btn btn-sm btn-outline-primary" onclick="cameraTiltDown()">⬇️</button>
+            <div class="small text-muted mt-1">
+              Обновлено: <strong id="last-update">--:--:--</strong>
             </div>
           </div>
-          <div class="text-center mt-1 small">
-            <span id="pan-angle">90°</span> | <span id="tilt-angle">90°</span>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- 2) УПРАВЛЕНИЕ РОБОТОМ -->
-    <div class="card">
-      <div class="card-header text-center fw-bold">🎮 Управление роботом</div>
-      <div class="card-body">
-        <label class="form-label">Скорость движения <span class="badge text-bg-dark ms-2" id="speed-value">100</span></label>
-        <input type="range" class="form-range" id="speed-slider" min="50" max="255" value="100" step="10">
-
-        <div id="movement-status-display" class="alert alert-primary py-2 mt-2" role="alert">
-          <strong>Состояние:</strong> <span id="robot-state">Остановлен</span><br>
-          <small id="speed-info">Установите скорость и нажмите направление</small>
-        </div>
-
-        <div class="row g-2 mt-1">
-          <div class="col-4"></div>
-          <div class="col-4 d-grid">
-            <button class="btn btn-success" onclick="moveForward()">⬆️ Вперед</button>
-          </div>
-          <div class="col-4"></div>
-
-          <div class="col-4 d-grid">
-            <button class="btn btn-warning" onclick="tankTurnLeft()">🔄 Поворот ←</button>
-          </div>
-          <div class="col-4 d-grid">
-            <button class="btn btn-danger" onclick="stopRobot()">⏹️ Стоп</button>
-          </div>
-          <div class="col-4 d-grid">
-            <button class="btn btn-warning" onclick="tankTurnRight()">🔄 Поворот →</button>
-          </div>
-
-          <div class="col-4"></div>
-          <div class="col-4 d-grid">
-            <button class="btn btn-secondary" onclick="moveBackward()">⬇️ Назад</button>
-          </div>
-          <div class="col-4"></div>
-
-          <div class="col-12 d-grid mt-2">
-            <button class="btn btn-danger btn-lg" onclick="emergencyStop()">🚨 ЭКСТРЕННАЯ ОСТАНОВКА</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3) AI УПРАВЛЕНИЕ -->
-    <div class="card">
-      <div class="card-header fw-bold d-flex align-items-center">
-        🧠 AI Управление
-        <button class="btn btn-sm btn-outline-primary ms-auto" onclick="toggleAI()" id="ai-toggle-btn">🚀 Запустить AI</button>
-      </div>
-      <div class="card-body">
-        <div class="row g-2 mb-3">
-          <div class="col-6">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="follow-person-mode" onchange="toggleFollowPerson(this.checked)">
-              <label class="form-check-label" for="follow-person-mode">👤 Следовать за человеком</label>
+          <!-- Управление роботом -->
+          <div class="card mb-3">
+            <div class="card-header py-2">
+              <strong>🎮 Управление</strong>
             </div>
-          </div>
-          <div class="col-6">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="avoid-people-mode" checked onchange="toggleAvoidPeople(this.checked)">
-              <label class="form-check-label" for="avoid-people-mode">🚶 Избегать людей</label>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="smart-navigation-mode" onchange="toggleSmartNavigation(this.checked)">
-              <label class="form-check-label" for="smart-navigation-mode">🧭 Умная навигация</label>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="pet-awareness-mode" checked>
-              <label class="form-check-label" for="pet-awareness-mode">🐕 Внимание к питомцам</label>
-            </div>
-          </div>
-        </div>
+            <div class="card-body">
+              <!-- Скорость -->
+              <label class="form-label small mb-1">
+                Скорость <span class="badge text-bg-dark" id="speed-value">100</span>
+              </label>
+              <input type="range" class="form-range mb-3" id="speed-slider" min="50" max="255" value="100" step="10">
 
-        <div class="d-grid gap-2">
-          <button class="btn btn-primary" onclick="aiSmartMoveForward()">🧠 Умное движение вперед</button>
-          <div class="input-group">
-            <input type="text" class="form-control" id="ai-navigation-target" placeholder="Например: кухня, диван, человек">
-            <button class="btn btn-outline-success" onclick="aiNavigateTo()">🎯 Навигация к цели</button>
-          </div>
-        </div>
-
-        <div class="mt-3 p-2 bg-light rounded">
-          <small class="text-muted">AI видит:</small><br>
-          <strong id="ai-scene-description">AI не активен</strong>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4) AI ДЕТЕКЦИЯ -->
-    <div class="card">
-      <div class="card-header fw-bold d-flex align-items-center">
-        🔍 AI Детекция
-        <button class="btn btn-sm btn-outline-info ms-auto" onclick="refreshAIDetection()">🔄</button>
-      </div>
-      <div class="card-body">
-        <div class="mb-3">
-          <h6 class="text-muted mb-2">Домашние объекты:</h6>
-          <div id="detected-objects" class="d-flex flex-wrap gap-1">
-            <span class="badge text-bg-secondary">Нет данных</span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <h6 class="text-muted mb-2">Обитатели:</h6>
-          <div class="row g-2">
-            <div class="col-6">
-              <div class="p-2 border rounded text-center">
-                <div class="fw-bold" id="people-count">0</div>
-                <small class="text-muted">👤 Люди</small>
-              </div>
-            </div>
-            <div class="col-6">
-              <div class="p-2 border rounded text-center">
-                <div class="fw-bold" id="pets-count">0</div>
-                <small class="text-muted">🐕 Питомцы</small>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <h6 class="text-muted mb-2">Безопасность:</h6>
-          <div class="d-flex gap-2 flex-wrap">
-            <span class="badge" id="path-safety-pets">🐕 Питомцы: ?</span>
-            <span class="badge" id="path-safety-people">👤 Люди: ?</span>
-            <span class="badge" id="path-safety-furniture">🪑 Мебель: ?</span>
-          </div>
-        </div>
-
-        <div>
-          <h6 class="text-muted mb-2">💡 Подсказки:</h6>
-          <div id="navigation-hints" class="small">
-            <div class="text-muted">AI подсказки появятся здесь</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 5) ДАТЧИКИ И СОСТОЯНИЕ -->
-    <div class="card">
-      <div class="card-header fw-bold">📊 Датчики расстояния</div>
-      <div class="card-body">
-        <!-- Передние датчики -->
-        <h6 class="text-muted mb-2">Передние датчики</h6>
-        <div class="row g-2 mb-3">
-          <div class="col-4">
-            <div id="left-front-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-success" id="left-front-distance">--</div>
-              <div class="text-muted small">Левый передний (см)</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div id="center-front-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-success" id="center-front-distance">--</div>
-              <div class="text-muted small">Центральный передний (см)</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div id="right-front-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-success" id="right-front-distance">--</div>
-              <div class="text-muted small">Правый передний (см)</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Задние датчики -->
-        <h6 class="text-muted mb-2">Задние датчики</h6>
-        <div class="row g-2 mb-3">
-          <div class="col-6">
-            <div id="left-rear-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-success" id="left-rear-distance">--</div>
-              <div class="text-muted small">Левый задний (см)</div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div id="right-rear-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-success" id="right-rear-distance">--</div>
-              <div class="text-muted small">Правый задний (см)</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Температура и влажность -->
-        <h6 class="text-muted mb-2">Окружающая среда</h6>
-        <div class="row g-2">
-          <div class="col-6">
-            <div id="temp-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-4 fw-bold" id="temperature-value">--</div>
-              <div class="text-muted small">Температура (°C)</div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div id="hum-sensor" class="sensor-card border rounded p-2 text-center">
-              <div class="fs-4 fw-bold" id="humidity-value">--</div>
-              <div class="text-muted small">Влажность (%)</div>
-            </div>
-          </div>
-        </div>
-
-        <div id="obstacle-warnings" class="mt-3"></div>
-      </div>
-    </div>
-
-    <!-- 6) СИСТЕМА ОРИЕНТАЦИИ (IMU) -->
-    <div class="card">
-      <div class="card-header fw-bold d-flex align-items-center">
-        🧭 IMU - Система ориентации
-        <span id="imu-status-indicator" class="status-indicator ms-2"></span>
-        <span id="imu-device-id" class="badge text-bg-secondary ms-auto">N/A</span>
-      </div>
-      <div class="card-body">
-        <div class="row g-3 mb-3">
-          <div class="col-md-4">
-            <div class="border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-primary" id="imu-roll">--°</div>
-              <div class="progress mb-1" style="height: 6px;">
-                <div id="imu-roll-bar" class="progress-bar bg-success" style="width: 0%"></div>
-              </div>
-              <small class="text-muted">📐 Крен (Roll)</small>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="border rounded p-2 text-center">
-              <div class="fs-5 fw-bold text-info" id="imu-pitch">--°</div>
-              <div class="progress mb-1" style="height: 6px;">
-                <div id="imu-pitch-bar" class="progress-bar bg-success" style="width: 0%"></div>
-              </div>
-              <small class="text-muted">📏 Тангаж (Pitch)</small>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="border rounded p-2 text-center position-relative">
-              <div class="fs-5 fw-bold text-warning" id="imu-yaw">--°</div>
-              <div class="d-flex justify-content-center align-items-center mb-1">
-                <div style="width: 20px; height: 20px; position: relative;">
-                  <div id="imu-yaw-compass" style="
-                    width: 0; height: 0;
-                    border-left: 5px solid transparent;
-                    border-right: 5px solid transparent;
-                    border-bottom: 15px solid #ffc107;
-                    position: absolute;
-                    top: 2px; left: 50%;
-                    transform-origin: 50% 13px;
-                    transform: translateX(-50%);
-                    transition: transform 0.3s ease;
-                  "></div>
+              <!-- Состояние движения -->
+              <div class="alert alert-primary py-2 mb-3" role="alert">
+                <div class="small">
+                  <strong>Состояние:</strong> <span id="robot-state">Остановлен</span><br>
+                  <span id="speed-info">Готов к движению</span>
                 </div>
-                <span id="imu-yaw-direction" class="badge text-bg-warning ms-2">-</span>
               </div>
-              <small class="text-muted">🧭 Рыскание (Yaw)</small>
-            </div>
-          </div>
-        </div>
 
-        <div class="row g-2">
-          <div class="col-md-6">
-            <div class="bg-light rounded p-2">
-              <h6 class="mb-2 text-muted">🌀 Гироскоп (°/с)</h6>
-              <div class="row g-1">
-                <div class="col-4 text-center">
-                  <div class="fw-bold small" id="imu-gx">--</div>
-                  <small class="text-muted">X</small>
-                </div>
-                <div class="col-4 text-center">
-                  <div class="fw-bold small" id="imu-gy">--</div>
-                  <small class="text-muted">Y</small>
-                </div>
-                <div class="col-4 text-center">
-                  <div class="fw-bold small" id="imu-gz">--</div>
-                  <small class="text-muted">Z</small>
+              <!-- Кнопки управления в сетке -->
+              <div class="control-grid">
+                <div class="row g-1">
+                  <div class="col-4"></div>
+                  <div class="col-4">
+                    <button class="btn btn-success w-100" onclick="moveForward()">
+                      <i class="bi bi-arrow-up"></i>
+                    </button>
+                  </div>
+                  <div class="col-4"></div>
+
+                  <div class="col-4">
+                    <button class="btn btn-warning w-100" onclick="tankTurnLeft()">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                  </div>
+                  <div class="col-4">
+                    <button class="btn btn-danger w-100" onclick="stopRobot()">
+                      <i class="bi bi-stop-fill"></i>
+                    </button>
+                  </div>
+                  <div class="col-4">
+                    <button class="btn btn-warning w-100" onclick="tankTurnRight()">
+                      <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                  </div>
+
+                  <div class="col-4"></div>
+                  <div class="col-4">
+                    <button class="btn btn-secondary w-100" onclick="moveBackward()">
+                      <i class="bi bi-arrow-down"></i>
+                    </button>
+                  </div>
+                  <div class="col-4"></div>
+
+                  <div class="col-12 mt-2">
+                    <button class="btn btn-danger w-100" onclick="emergencyStop()">
+                      🚨 ЭКСТРЕННАЯ ОСТАНОВКА
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          <div class="col-md-6">
-            <div class="bg-light rounded p-2">
-              <h6 class="mb-2 text-muted">⚡ Акселерометр (g)</h6>
-              <div class="row g-1">
-                <div class="col-3 text-center">
-                  <div class="fw-bold small" id="imu-ax">--</div>
-                  <small class="text-muted">X</small>
+
+          <!-- Датчики компактно -->
+          <div class="card mb-3">
+            <div class="card-header py-2">
+              <strong>📊 Датчики</strong>
+            </div>
+            <div class="card-body">
+              <div class="row g-1 text-center mb-2">
+                <div class="col-4">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="left-front-distance">--</div>
+                    <small class="text-muted">ЛП</small>
+                  </div>
                 </div>
-                <div class="col-3 text-center">
-                  <div class="fw-bold small" id="imu-ay">--</div>
-                  <small class="text-muted">Y</small>
+                <div class="col-4">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="center-front-distance">--</div>
+                    <small class="text-muted">ЦП</small>
+                  </div>
                 </div>
-                <div class="col-3 text-center">
-                  <div class="fw-bold small" id="imu-az">--</div>
-                  <small class="text-muted">Z</small>
+                <div class="col-4">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="right-front-distance">--</div>
+                    <small class="text-muted">ПП</small>
+                  </div>
                 </div>
-                <div class="col-3 text-center">
-                  <div id="imu-total-accel" class="fw-bold small">--</div>
-                  <small class="text-muted">Σ</small>
+              </div>
+              <div class="row g-1 text-center mb-2">
+                <div class="col-6">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="left-rear-distance">--</div>
+                    <small class="text-muted">ЛЗ</small>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="right-rear-distance">--</div>
+                    <small class="text-muted">ПЗ</small>
+                  </div>
+                </div>
+              </div>
+              <div class="row g-1 text-center">
+                <div class="col-6">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="temperature-value">--°</div>
+                    <small class="text-muted">Темп</small>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="compact-sensor border rounded p-1">
+                    <div class="fw-bold" id="humidity-value">--%</div>
+                    <small class="text-muted">Влаж</small>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="row g-2 mt-2">
-          <div class="col-md-8">
-            <div class="d-flex align-items-center">
-              <small class="text-muted me-2">Статус:</small>
-              <div id="imu-movement-analysis">
-                <span class="text-muted">Загрузка...</span>
+          <!-- Управление камерой -->
+          <div class="card">
+            <div class="card-header py-2">
+              <strong>🎯 Камера</strong>
+            </div>
+            <div class="card-body">
+              <div class="control-grid">
+                <div class="row g-1">
+                  <div class="col-4"></div>
+                  <div class="col-4">
+                    <button class="btn btn-outline-primary w-100" onclick="cameraTiltUp()">
+                      <i class="bi bi-chevron-up"></i>
+                    </button>
+                  </div>
+                  <div class="col-4"></div>
+
+                  <div class="col-4">
+                    <button class="btn btn-outline-primary w-100" onclick="cameraPanLeft()">
+                      <i class="bi bi-chevron-left"></i>
+                    </button>
+                  </div>
+                  <div class="col-4">
+                    <button class="btn btn-outline-success w-100" onclick="cameraCenter()">
+                      <i class="bi bi-bullseye"></i>
+                    </button>
+                  </div>
+                  <div class="col-4">
+                    <button class="btn btn-outline-primary w-100" onclick="cameraPanRight()">
+                      <i class="bi bi-chevron-right"></i>
+                    </button>
+                  </div>
+
+                  <div class="col-4"></div>
+                  <div class="col-4">
+                    <button class="btn btn-outline-primary w-100" onclick="cameraTiltDown()">
+                      <i class="bi bi-chevron-down"></i>
+                    </button>
+                  </div>
+                  <div class="col-4"></div>
+                </div>
+              </div>
+              <div class="text-center mt-2 small">
+                <span id="pan-angle">90°</span> | <span id="tilt-angle">90°</span>
               </div>
             </div>
           </div>
-          <div class="col-md-4 text-end">
-            <div id="imu-timestamp" class="small text-muted">недоступно</div>
+
+        </div>
+      </div>
+
+      <!-- ОСНОВНОЙ КОНТЕНТ -->
+      <div class="col-xl-9 col-lg-8" id="main-column">
+        
+        <!-- Камера -->
+        <div class="card mb-3">
+          <div class="card-header d-flex align-items-center py-2">
+            📹 Видеопоток
+            <div class="ms-auto d-flex gap-2">
+              <span class="small text-muted" id="camera-fps">-- FPS</span>
+              <button class="btn btn-sm btn-outline-info" onclick="toggleAIStream()" id="ai-stream-btn">
+                🔮 AI
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="refreshCamera()">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-2">
+            <div class="ratio ratio-16x9 position-relative">
+              <img id="camera-stream" src="/camera/stream" alt="Видеопоток"
+                   class="w-100 h-100 object-fit-contain rounded position-absolute">
+              <img id="ai-stream" src="/api/ai/annotated_stream" alt="AI Видеопоток"
+                   class="w-100 h-100 object-fit-contain rounded position-absolute" style="display: none;">
+            </div>
           </div>
         </div>
+
+        <!-- Табы для дополнительных функций -->
+        <ul class="nav nav-tabs" id="main-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ai-tab" data-bs-toggle="tab" data-bs-target="#ai-pane" type="button" role="tab">
+              🧠 AI Управление
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="detection-tab" data-bs-toggle="tab" data-bs-target="#detection-pane" type="button" role="tab">
+              🔍 AI Детекция
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="imu-tab" data-bs-toggle="tab" data-bs-target="#imu-pane" type="button" role="tab">
+              🧭 IMU
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#files-pane" type="button" role="tab">
+              📁 Файлы
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="main-tab-content">
+          
+          <!-- AI Управление -->
+          <div class="tab-pane fade show active" id="ai-pane" role="tabpanel">
+            <div class="card">
+              <div class="card-header d-flex align-items-center py-2">
+                🧠 AI Управление
+                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="toggleAI()" id="ai-toggle-btn">
+                  🚀 Запустить AI
+                </button>
+              </div>
+              <div class="card-body">
+                <div class="row g-2 mb-3">
+                  <div class="col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="follow-person-mode">
+                      <label class="form-check-label" for="follow-person-mode">👤 Следовать за человеком</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="avoid-people-mode" checked>
+                      <label class="form-check-label" for="avoid-people-mode">🚶 Избегать людей</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="smart-navigation-mode">
+                      <label class="form-check-label" for="smart-navigation-mode">🧭 Умная навигация</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="pet-awareness-mode" checked>
+                      <label class="form-check-label" for="pet-awareness-mode">🐕 Внимание к питомцам</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="d-grid gap-2">
+                  <button class="btn btn-primary" onclick="aiSmartMoveForward()">🧠 Умное движение вперед</button>
+                  <div class="input-group">
+                    <input type="text" class="form-control" id="ai-navigation-target" placeholder="Например: кухня, диван, человек">
+                    <button class="btn btn-outline-success" onclick="aiNavigateTo()">🎯 Навигация к цели</button>
+                  </div>
+                </div>
+
+                <div class="mt-3 p-2 bg-light rounded">
+                  <small class="text-muted">AI видит:</small><br>
+                  <strong id="ai-scene-description">AI не активен</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Детекция -->
+          <div class="tab-pane fade" id="detection-pane" role="tabpanel">
+            <div class="card">
+              <div class="card-header d-flex align-items-center py-2">
+                🔍 AI Детекция
+                <button class="btn btn-sm btn-outline-info ms-auto" onclick="refreshAIDetection()">
+                  <i class="bi bi-arrow-clockwise"></i>
+                </button>
+              </div>
+              <div class="card-body">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Домашние объекты:</h6>
+                    <div id="detected-objects" class="d-flex flex-wrap gap-1">
+                      <span class="badge text-bg-secondary">Нет данных</span>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Обитатели:</h6>
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <div class="p-2 border rounded text-center">
+                          <div class="fw-bold" id="people-count">0</div>
+                          <small class="text-muted">👤 Люди</small>
+                        </div>
+                      </div>
+                      <div class="col-6">
+                        <div class="p-2 border rounded text-center">
+                          <div class="fw-bold" id="pets-count">0</div>
+                          <small class="text-muted">🐕 Питомцы</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-3">
+                  <h6 class="text-muted mb-2">Безопасность:</h6>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <span class="badge" id="path-safety-pets">🐕 Питомцы: ?</span>
+                    <span class="badge" id="path-safety-people">👤 Люди: ?</span>
+                    <span class="badge" id="path-safety-furniture">🪑 Мебель: ?</span>
+                  </div>
+                </div>
+
+                <div class="mt-3">
+                  <h6 class="text-muted mb-2">💡 Подсказки:</h6>
+                  <div id="navigation-hints" class="small">
+                    <div class="text-muted">AI подсказки появятся здесь</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- IMU -->
+          <div class="tab-pane fade" id="imu-pane" role="tabpanel">
+            <div class="card">
+              <div class="card-header d-flex align-items-center py-2">
+                🧭 IMU - Система ориентации
+                <span id="imu-status-indicator" class="status-indicator ms-2"></span>
+                <span id="imu-device-id" class="badge text-bg-secondary ms-auto">N/A</span>
+              </div>
+              <div class="card-body">
+                <div class="row g-3 mb-3">
+                  <div class="col-md-4">
+                    <div class="border rounded p-2 text-center">
+                      <div class="fs-5 fw-bold text-primary" id="imu-roll">--°</div>
+                      <div class="progress mb-1" style="height: 6px;">
+                        <div id="imu-roll-bar" class="progress-bar bg-success" style="width: 0%"></div>
+                      </div>
+                      <small class="text-muted">📐 Крен (Roll)</small>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2 text-center">
+                      <div class="fs-5 fw-bold text-info" id="imu-pitch">--°</div>
+                      <div class="progress mb-1" style="height: 6px;">
+                        <div id="imu-pitch-bar" class="progress-bar bg-success" style="width: 0%"></div>
+                      </div>
+                      <small class="text-muted">📏 Тангаж (Pitch)</small>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2 text-center">
+                      <div class="fs-5 fw-bold text-warning" id="imu-yaw">--°</div>
+                      <div class="d-flex justify-content-center mb-1">
+                        <span id="imu-yaw-direction" class="badge text-bg-warning">-</span>
+                      </div>
+                      <small class="text-muted">🧭 Рыскание (Yaw)</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <div class="bg-light rounded p-2">
+                      <h6 class="mb-2 text-muted">🌀 Гироскоп (°/с)</h6>
+                      <div class="row g-1">
+                        <div class="col-4 text-center">
+                          <div class="fw-bold small" id="imu-gx">--</div>
+                          <small class="text-muted">X</small>
+                        </div>
+                        <div class="col-4 text-center">
+                          <div class="fw-bold small" id="imu-gy">--</div>
+                          <small class="text-muted">Y</small>
+                        </div>
+                        <div class="col-4 text-center">
+                          <div class="fw-bold small" id="imu-gz">--</div>
+                          <small class="text-muted">Z</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="bg-light rounded p-2">
+                      <h6 class="mb-2 text-muted">⚡ Акселерометр (g)</h6>
+                      <div class="row g-1">
+                        <div class="col-3 text-center">
+                          <div class="fw-bold small" id="imu-ax">--</div>
+                          <small class="text-muted">X</small>
+                        </div>
+                        <div class="col-3 text-center">
+                          <div class="fw-bold small" id="imu-ay">--</div>
+                          <small class="text-muted">Y</small>
+                        </div>
+                        <div class="col-3 text-center">
+                          <div class="fw-bold small" id="imu-az">--</div>
+                          <small class="text-muted">Z</small>
+                        </div>
+                        <div class="col-3 text-center">
+                          <div id="imu-total-accel" class="fw-bold small">--</div>
+                          <small class="text-muted">Σ</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Файлы -->
+          <div class="tab-pane fade" id="files-pane" role="tabpanel">
+            <div class="card">
+              <div class="card-header py-2">📁 Файлы камеры</div>
+              <div class="card-body">
+                <div class="d-flex gap-2 mb-2 border-bottom pb-2">
+                  <button class="btn btn-primary" onclick="showFileTab('photos')">📸 Фото</button>
+                  <button class="btn btn-primary" onclick="showFileTab('videos')">🎥 Видео</button>
+                </div>
+                <div id="photos-list" class="file-list">Загрузка...</div>
+                <div id="videos-list" class="file-list d-none">Загрузка...</div>
+                <div class="d-flex gap-2 justify-content-center mt-2">
+                  <button class="btn btn-primary" onclick="refreshFiles()">🔄 Обновить</button>
+                  <button class="btn btn-danger" onclick="clearOldFiles()">🗑️ Очистить старые</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
       </div>
     </div>
+  </div>
 
-    <!-- 7) ФАЙЛЫ КАМЕРЫ -->
-    <div class="card">
-      <div class="card-header fw-bold">📁 Файлы камеры</div>
-      <div class="card-body">
-        <div class="d-flex gap-2 mb-2 border-bottom pb-2">
-          <button class="btn btn-primary" onclick="showFileTab('photos')">📸 Фото</button>
-          <button class="btn btn-primary" onclick="showFileTab('videos')">🎥 Видео</button>
-        </div>
-        <div id="photos-list" class="file-list">Загрузка...</div>
-        <div id="videos-list" class="file-list d-none">Загрузка...</div>
-        <div class="d-flex gap-2 justify-content-center mt-2">
-          <button class="btn btn-primary" onclick="refreshFiles()">🔄 Обновить</button>
-          <button class="btn btn-danger" onclick="clearOldFiles()">🗑️ Очистить старые</button>
-        </div>
-      </div>
+  <!-- Плавающая панель с предупреждениями -->
+  <div class="position-fixed bottom-0 end-0 m-3" style="z-index: 1000;">
+    <div id="obstacle-warnings" class="floating-panel rounded shadow p-2" style="min-width: 250px;">
+      <div class="alert alert-success py-1 mb-0">✅ Путь свободен</div>
     </div>
-
-  </div><!-- /container-fluid -->
+  </div>
 
   <!-- Bootstrap Bundle (JS + Popper) -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-  <!-- Твои скрипты -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <script src="{{ url_for('static', filename='camera.js') }}"></script>
-  <script src="{{ url_for('static', filename='camera-control.js') }}"></script>
-  <script src="{{ url_for('static', filename='ai-control.js') }}"></script>
-  <script src="{{ url_for('static', filename='imu-control.js') }}"></script>
+  <script>
+    // Заглушки для функций (замените на ваши существующие)
+    function setViewMode(mode) {
+      if (mode === 'full') {
+        // Переключиться на полный режим
+        document.getElementById('sidebar-column').classList.remove('col-xl-3', 'col-lg-4');
+        document.getElementById('sidebar-column').classList.add('col-12');
+        document.getElementById('main-column').classList.remove('col-xl-9', 'col-lg-8');
+        document.getElementById('main-column').classList.add('col-12');
+      } else {
+        // Вернуться к компактному режиму
+        document.getElementById('sidebar-column').classList.remove('col-12');
+        document.getElementById('sidebar-column').classList.add('col-xl-3', 'col-lg-4');
+        document.getElementById('main-column').classList.remove('col-12');
+        document.getElementById('main-column').classList.add('col-xl-9', 'col-lg-8');
+      }
+    }
+
+    // Базовые функции управления (добавьте свою логику)
+    function moveForward() { console.log('Move Forward'); }
+    function moveBackward() { console.log('Move Backward'); }
+    function tankTurnLeft() { console.log('Turn Left'); }
+    function tankTurnRight() { console.log('Turn Right'); }
+    function stopRobot() { console.log('Stop'); }
+    function emergencyStop() { console.log('Emergency Stop'); }
+    function cameraPanLeft() { console.log('Pan Left'); }
+    function cameraPanRight() { console.log('Pan Right'); }
+    function cameraTiltUp() { console.log('Tilt Up'); }
+    function cameraTiltDown() { console.log('Tilt Down'); }
+    function cameraCenter() { console.log('Camera Center'); }
+
+    // Обновление данных датчиков (адаптируйте под свой API)
+    function updateSensorData() {
+      // Ваша логика обновления датчиков
+    }
+
+    // Запуск обновления
+    setInterval(updateSensorData, 500);
+  </script>
+
 </body>
 </html>
