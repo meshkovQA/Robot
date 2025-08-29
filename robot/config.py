@@ -19,6 +19,12 @@ I2C_BUS = 1
 ARDUINO_ADDRESS = 0x08
 ARDUINO_MEGA_ADDRESS = 0x09
 
+# Настройки таймингов I2C для устранения ошибок
+I2C_READ_RETRIES = 3              # количество повторов чтения при ошибке
+I2C_QUIET_WINDOW_MS = 50          # пауза после записи перед чтением (мс)
+I2C_MONITOR_POLL_INTERVAL = 0.15  # интервал опроса датчиков (сек)
+I2C_INTER_DEVICE_DELAY_MS = 10    # пауза между чтением разных Arduino (мс)
+
 # ==================== СЕНСОРЫ/ПОРОГИ ====================
 SENSOR_ERR = 999
 SENSOR_FWD_STOP_CM = 30

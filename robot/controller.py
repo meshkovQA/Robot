@@ -12,7 +12,8 @@ from robot.config import (
     ARDUINO_ADDRESS, ARDUINO_MEGA_ADDRESS, SENSOR_ERR, SENSOR_MAX_VALID,
     SENSOR_FWD_STOP_CM, SENSOR_BWD_STOP_CM, SENSOR_SIDE_STOP_CM,
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED, CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
-    CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE, KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART
+    CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE, KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART,
+    I2C_READ_RETRIES, I2C_QUIET_WINDOW_MS, I2C_MONITOR_POLL_INTERVAL, I2C_INTER_DEVICE_DELAY_MS
 )
 from robot.i2c_bus import I2CBus, open_bus
 
@@ -128,12 +129,16 @@ class RobotController:
                 return False
 
         # после удачной записи даём шине «успокоиться» — запретим чтения на короткое время
-        self._bus_quiet_until = time.time() + 0.03   # 30 мс тишины после записи
+        self._bus_quiet_until = time.time() + (I2C_QUIET_WINDOW_MS /
+                                               1000.0)  # 50 мс тишины после записи
         logger.debug("I2C quiet window until %.6f", self._bus_quiet_until)
         return True
 
-    def _i2c_read_sensors(self) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
+    def _i2c_read_sensors(self, retries: int = 3) -> Tuple[int, int, int, int, Optional[float], Optional[float]]:
         """Чтение данных с датчиков и углов камеры"""
+        if retries is None:
+            retries = I2C_READ_RETRIES
+
         if not self.bus:
             return 25, 30, 90, 90,  23.4, 45.0  # эмуляция
 
@@ -142,39 +147,28 @@ class RobotController:
         if now < self._bus_quiet_until:
             raise RuntimeError("I2C read skipped due to quiet window")
 
-        with self._i2c_lock:  # 🔒
-            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 12)
+        for attempt in range(retries):
+            try:
+                with self._i2c_lock:  # 🔒
+                    raw = self.bus.read_i2c_block_data(
+                        ARDUINO_ADDRESS, 0x10, 12)
+                break
+            except Exception as e:
+                if attempt == retries - 1:  # последняя попытка
+                    raise e
+                logger.debug("I2C read attempt %d failed: %s", attempt + 1, e)
+                time.sleep(0.01 * (2 ** attempt))  # экспоненциальная задержка
 
         if len(raw) != 12:
             logger.warning("Получено %d байт вместо 12", len(raw))
             return SENSOR_ERR, SENSOR_ERR, self.current_pan_angle, self.current_tilt_angle, None, None
 
-        # распаковка ...
-        center_front = (raw[1] << 8) | raw[0]
-        right_rear = (raw[3] << 8) | raw[2]
-        pan = (raw[5] << 8) | raw[4]
-        tilt = (raw[7] << 8) | raw[6]
-        t10 = (raw[9] << 8) | raw[8]
-        h10 = (raw[11] << 8) | raw[10]
-
-        if center_front > SENSOR_MAX_VALID:
-            center_front = SENSOR_ERR
-        if right_rear > SENSOR_MAX_VALID:
-            right_rear = SENSOR_ERR
-
-        if t10 >= 32768:
-            t10 -= 65536
-        if h10 >= 32768:
-            h10 -= 65536
-        temp = (None if t10 == -32768 else t10/10.0)
-        hum = (None if h10 == -32768 else h10/10.0)
-
-        logger.debug("Датчики: center_front=%d, right_rear=%d, pan=%d, tilt=%d, temp=%s, hum=%s",
-                     center_front, right_rear, pan, tilt, temp, hum)
-        return center_front, right_rear, pan, tilt, temp, hum
-
-    def _i2c_read_mega_sensors(self) -> Tuple[int, int, int]:
+    def _i2c_read_mega_sensors(self, retries: int = 3) -> Tuple[int, int, int]:
         """Чтение данных с датчиков Arduino Mega"""
+
+        if retries is None:
+            retries = I2C_READ_RETRIE
+
         if not self.bus:
             return 25, 30, 35  # эмуляция
 
@@ -182,27 +176,22 @@ class RobotController:
         if now < self._bus_quiet_until:
             raise RuntimeError("I2C read skipped due to quiet window")
 
-        with self._i2c_lock:  # 🔒
-            raw = self.bus.read_i2c_block_data(ARDUINO_MEGA_ADDRESS, 0x10, 6)
+        for attempt in range(retries):
+            try:
+                with self._i2c_lock:  # 🔒
+                    raw = self.bus.read_i2c_block_data(
+                        ARDUINO_MEGA_ADDRESS, 0x10, 6)
+                break
+            except Exception as e:
+                if attempt == retries - 1:  # последняя попытка
+                    raise e
+                logger.debug(
+                    "Mega I2C read attempt %d failed: %s", attempt + 1, e)
+                time.sleep(0.01 * (2 ** attempt))  # экспоненциальная задержка
 
         if len(raw) != 6:
             logger.warning("Mega: получено %d байт вместо 6", len(raw))
             return SENSOR_ERR, SENSOR_ERR, SENSOR_ERR
-
-        left_front = (raw[1] << 8) | raw[0]
-        right_front = (raw[3] << 8) | raw[2]
-        left_rear = (raw[5] << 8) | raw[4]
-
-        if left_front > SENSOR_MAX_VALID:
-            left_front = SENSOR_ERR
-        if right_front > SENSOR_MAX_VALID:
-            right_front = SENSOR_ERR
-        if left_rear > SENSOR_MAX_VALID:
-            left_rear = SENSOR_ERR
-
-        logger.debug("Mega датчики: left_front=%d, right_front=%d, left_rear=%d",
-                     left_front, right_front, left_rear)
-        return left_front, right_front, left_rear
 
     # --------------------------------------------
     # Работа с кикстартом для старта движения
@@ -662,8 +651,11 @@ class RobotController:
     # --------------------------------------
 
     def _monitor_loop(self):
-        poll_interval = 0.1  # 10 Гц опрос
+        # снижен до ~6.7 Гц для уменьшения нагрузки на I2C
+        poll_interval = I2C_MONITOR_POLL_INTERVAL
         last_sensor_update = 0.0
+        consecutive_errors = 0
+        max_errors_before_reconnect = 10
         logger.info("Запущен мониторинг датчиков")
 
         while not self._stop_event.is_set():
@@ -676,16 +668,36 @@ class RobotController:
                         continue
 
                     try:
+                        # Добавляем паузу между чтением с разных Arduino
                         center_front_dist, right_rear_dist, pan, tilt, temp, hum = self._i2c_read_sensors()
+                        time.sleep(I2C_INTER_DEVICE_DELAY_MS /
+                                   1000.0)  # пауза между чтениями
                         left_front_dist, right_front_dist, left_rear_dist = self._i2c_read_mega_sensors()
+                        consecutive_errors = 0  # сброс счетчика ошибок при успешном чтении
                     except RuntimeError as e:
                         # чтение пропустили из-за тихого окна — ок
                         logger.debug(str(e))
-                        time.sleep(0.01)
+                        time.sleep(I2C_INTER_DEVICE_DELAY_MS / 1000.0)
                         continue
                     except Exception as e:
-                        logger.error("I2C read exception: %s", e)
-                        time.sleep(0.02)
+                        consecutive_errors += 1
+                        if consecutive_errors <= 3:  # первые несколько ошибок логируем как WARNING
+                            logger.warning(
+                                "I2C read exception (attempt %d): %s", consecutive_errors, e)
+                        else:
+                            logger.debug(
+                                "I2C read exception (attempt %d): %s", consecutive_errors, e)
+
+                        # После определенного количества ошибок пытаемся переподключиться
+                        if consecutive_errors >= max_errors_before_reconnect:
+                            logger.error(
+                                "Слишком много I2C ошибок подряд (%d), попытка переподключения", consecutive_errors)
+                            self.reconnect_bus()
+                            consecutive_errors = 0
+                            # большая пауза после переподключения
+                            time.sleep(0.5)
+                        else:
+                            time.sleep(0.05)  # увеличенная пауза при ошибке
                         continue
 
                     all_err = (
