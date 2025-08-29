@@ -158,9 +158,16 @@ class HeadingHoldService:
             ok = self.robot.tank_turn_left(speed)
 
         if not ok:
-            # если Arduino отказала из-за датчиков — лучше сразу попытаться остановиться
-            self.robot.stop()
-            return
+            if not ok:
+                # не тормозим из-за единичного сбоя I²C — просто пропускаем импульс
+                logger.warning(
+                    "Correction pulse failed (I2C). Skipping pulse and resuming motion.")
+                if prev_moving and prev_speed > 0:
+                    if direction == 1:
+                        self.robot.move_forward(prev_speed)
+                    elif direction == 2:
+                        self.robot.move_backward(prev_speed)
+                return
 
         # Во время импульса проверяем препятствия каждые 20мс
         slice_s = 0.02
