@@ -103,6 +103,14 @@
     padding: 0.25rem 0.5rem !important;
 }
 
+.btn-emergency {
+    width: 100% !important;
+    min-height: 50px;
+    font-size: 1rem;
+    font-weight: bold;
+    padding: 0.75rem;
+}
+
 .compact-sensor {
     min-height: 50px;
     font-size: 0.85rem;
