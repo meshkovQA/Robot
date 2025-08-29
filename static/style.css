@@ -92,17 +92,6 @@
     width: 35px !important;
 }
 
-.control-grid .col-12 button {
-    aspect-ratio: unset !important;
-    min-height: 35px !important;
-    max-height: 35px !important;
-    height: 35px !important;
-    width: 100% !important;
-    max-width: none !important;
-    font-size: 0.75rem !important;
-    padding: 0.25rem 0.5rem !important;
-}
-
 .btn-emergency {
     width: 100% !important;
     min-height: 50px;
