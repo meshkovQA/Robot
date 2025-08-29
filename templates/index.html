@@ -91,45 +91,40 @@
               </div>
 
               <!-- Кнопки управления в сетке -->
-              <div class="control-grid">
-                <div class="row g-1">
-                  <div class="col-4"></div>
-                  <div class="col-4">
-                    <button class="btn btn-success w-100" onclick="moveForward()">
-                      <i class="bi bi-arrow-up"></i>
-                    </button>
-                  </div>
-                  <div class="col-4"></div>
+<!-- Кнопки управления в сетке -->
+              <div class="control-grid text-center">
+                <!-- Вперёд -->
+                <div class="d-flex justify-content-center mb-1">
+                  <button class="btn btn-success" onclick="moveForward()">
+                    <i class="bi bi-arrow-up"></i>
+                  </button>
+                </div>
 
-                  <div class="col-4">
-                    <button class="btn btn-warning w-100" onclick="tankTurnLeft()">
-                      <i class="bi bi-arrow-counterclockwise"></i>
-                    </button>
-                  </div>
-                  <div class="col-4">
-                    <button class="btn btn-danger w-100" onclick="stopRobot()">
-                      <i class="bi bi-stop-fill"></i>
-                    </button>
-                  </div>
-                  <div class="col-4">
-                    <button class="btn btn-warning w-100" onclick="tankTurnRight()">
-                      <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                  </div>
+                <!-- Влево / Стоп / Вправо -->
+                <div class="d-flex justify-content-center gap-2 mb-1">
+                  <button class="btn btn-warning" onclick="tankTurnLeft()">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                  </button>
+                  <button class="btn btn-danger" onclick="stopRobot()">
+                    <i class="bi bi-stop-fill"></i>
+                  </button>
+                  <button class="btn btn-warning" onclick="tankTurnRight()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                  </button>
+                </div>
 
-                  <div class="col-4"></div>
-                  <div class="col-4">
-                    <button class="btn btn-secondary w-100" onclick="moveBackward()">
-                      <i class="bi bi-arrow-down"></i>
-                    </button>
-                  </div>
-                  <div class="col-4"></div>
+                <!-- Назад -->
+                <div class="d-flex justify-content-center mb-2">
+                  <button class="btn btn-secondary" onclick="moveBackward()">
+                    <i class="bi bi-arrow-down"></i>
+                  </button>
+                </div>
 
-                  <div class="col-12 mt-2">
-                    <button class="btn btn-danger w-100" onclick="emergencyStop()">
-                      🚨 ЭКСТРЕННАЯ ОСТАНОВКА
-                    </button>
-                  </div>
+                <!-- Экстренная остановка -->
+                <div>
+                  <button class="btn btn-danger w-100" onclick="emergencyStop()">
+                    🚨 ЭКСТРЕННАЯ ОСТАНОВКА
+                  </button>
                 </div>
               </div>
             </div>
@@ -198,39 +193,32 @@
               <strong>🎯 Камера</strong>
             </div>
             <div class="card-body">
-              <div class="control-grid">
-                <div class="row g-1">
-                  <div class="col-4"></div>
-                  <div class="col-4">
-                    <button class="btn btn-outline-primary w-100" onclick="cameraTiltUp()">
-                      <i class="bi bi-chevron-up"></i>
-                    </button>
-                  </div>
-                  <div class="col-4"></div>
+              <div class="control-grid text-center">
+                  <!-- Вверх -->
+                <div class="d-flex justify-content-center mb-1">
+                  <button class="btn btn-outline-primary" onclick="cameraTiltUp()">
+                    <i class="bi bi-chevron-up"></i>
+                  </button>
+                </div>
 
-                  <div class="col-4">
-                    <button class="btn btn-outline-primary w-100" onclick="cameraPanLeft()">
-                      <i class="bi bi-chevron-left"></i>
-                    </button>
-                  </div>
-                  <div class="col-4">
-                    <button class="btn btn-outline-success w-100" onclick="cameraCenter()">
-                      <i class="bi bi-bullseye"></i>
-                    </button>
-                  </div>
-                  <div class="col-4">
-                    <button class="btn btn-outline-primary w-100" onclick="cameraPanRight()">
-                      <i class="bi bi-chevron-right"></i>
-                    </button>
-                  </div>
+                 <!-- Влево / Центр / Вправо -->
+                <div class="d-flex justify-content-center gap-2 mb-1">
+                  <button class="btn btn-outline-primary" onclick="cameraPanLeft()">
+                    <i class="bi bi-chevron-left"></i>
+                  </button>
+                  <button class="btn btn-outline-success" onclick="cameraCenter()">
+                    <i class="bi bi-bullseye"></i>
+                  </button>
+                  <button class="btn btn-outline-primary" onclick="cameraPanRight()">
+                    <i class="bi bi-chevron-right"></i>
+                  </button>
+                </div>
 
-                  <div class="col-4"></div>
-                  <div class="col-4">
-                    <button class="btn btn-outline-primary w-100" onclick="cameraTiltDown()">
-                      <i class="bi bi-chevron-down"></i>
-                    </button>
-                  </div>
-                  <div class="col-4"></div>
+                <!-- Вниз -->
+                <div class="d-flex justify-content-center">
+                  <button class="btn btn-outline-primary" onclick="cameraTiltDown()">
+                    <i class="bi bi-chevron-down"></i>
+                  </button>
                 </div>
               </div>
               <div class="text-center mt-2 small">
