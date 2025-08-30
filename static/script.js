@@ -172,6 +172,8 @@ function updateSensorData() {
                 // Предупреждения о препятствиях - обновить для всех датчиков
                 updateObstacleWarnings(status.obstacles);
 
+                window.imuControl.updateIMUData(status);
+
                 // Обновление времени
                 const now = new Date();
                 document.getElementById('last-update').textContent = `Обновлено: ${now.toLocaleTimeString()}`;

@@ -13,9 +13,10 @@ from robot.config import (
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED,
     CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
     CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE,
-    KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART,
+    KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART, IMU_ENABLED
 )
 from robot.i2c_bus import I2CBus, open_bus, FastI2CController
+from robot.devices.imu import MPU6500, IMUState
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,21 @@ class RobotController:
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
+
+        # ---- IMU ----
+        self._imu: Optional[MPU6500] = None
+        self._imu_state = IMUState()
+        self._imu_ok = False
+        self._imu_last_ts = 0.0
+
+        if IMU_ENABLED:
+            try:
+                self._imu = MPU6500()
+                started = self._imu.start()
+                logger.info("IMU %s", "started" if started else "not started")
+            except Exception as e:
+                logger.error("IMU init error: %s", e)
+                self._imu = None
 
     # -------- Кикстарт --------
 
@@ -198,6 +214,20 @@ class RobotController:
         pan_angle, tilt_angle = self.get_camera_angles()
 
         with self._lock:
+            imu_block = None
+            if IMU_ENABLED:
+                s = self._imu_state
+                imu_block = {
+                    "available": True,
+                    "ok": bool(self._imu_ok),
+                    "roll": s.roll, "pitch": s.pitch, "yaw": s.yaw,
+                    "gx": s.gx, "gy": s.gy, "gz": s.gz,
+                    "ax": s.ax, "ay": s.ay, "az": s.az,
+                    "timestamp": s.last_update or self._imu_last_ts,
+                    "whoami": s.whoami,
+                }
+
+        with self._lock:
             return {
                 "center_front_distance": center_front_dist,
                 "left_front_distance": left_front_dist,
@@ -213,6 +243,7 @@ class RobotController:
                 },
                 "temperature": temp,
                 "humidity": hum,
+                "imu": imu_block,
                 "current_speed": self.current_speed,
                 "effective_speed": self.get_effective_speed(),
                 "kickstart_active": self.is_kickstart_active(),
@@ -257,6 +288,13 @@ class RobotController:
             self._monitor_thread.join(timeout=1.5)
 
         self.fast_i2c.stop()
+
+        # IMU
+        if self._imu:
+            try:
+                self._imu.stop()
+            except Exception:
+                pass
         logger.info("Контроллер завершил работу")
 
     # -------- Движение --------
@@ -483,6 +521,17 @@ class RobotController:
 
                     moving = self.is_moving
                     direction = self.movement_direction
+
+                # ---- IMU: копируем актуальное состояние из драйвера ----
+                if IMU_ENABLED and self._imu is not None:
+                    st = self._imu.get_state()
+                    now = time.time()
+                    fresh = (now - (st.last_update or 0.0)) < 2.0
+                    # сохраним локально (под замком, чтобы брать в get_status)
+                    with self._lock:
+                        self._imu_state = st
+                        self._imu_last_ts = st.last_update or 0.0
+                        self._imu_ok = bool(st.ok and fresh)
 
                 # Автостоп
                 if moving and direction in (1, 2):
