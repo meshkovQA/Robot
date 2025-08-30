@@ -11,7 +11,6 @@ from pathlib import Path
 
 from robot.controller import RobotController
 from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
-from robot.devices.imu import MPU6500
 from robot.heading_controller import HeadingHoldService
 from robot.ai_integration import AIRobotController
 from robot.ai_vision.home_ai_vision import HomeAIVision
@@ -42,6 +41,14 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     robot = controller or RobotController()
 
     heading = None
+    try:
+        heading = HeadingHoldService(robot)
+        heading.start()  # поток запущен, флаг enabled берётся из конфига HDG_HOLD_ENABLED
+        logger.info("🧭 HeadingHold запущен")
+
+    except Exception as e:
+        logger.error(f"🧭 Ошибка запуска HeadingHold: {e}")
+        heading = None
 
     camera = camera_instance
 
@@ -734,6 +741,14 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             robot_status["camera"] = camera.get_status()
         else:
             robot_status["camera"] = {"available": False, "connected": False}
+
+        try:
+            robot_status["heading"] = heading.status() if heading else {
+                "enabled": False, "running": False}
+
+        except Exception as e:
+            robot_status["heading"] = {"enabled": False,
+                                       "running": False, "error": str(e)}
 
         return ok(robot_status)
 
