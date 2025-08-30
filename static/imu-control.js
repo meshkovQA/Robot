@@ -17,25 +17,38 @@ let imuData = {
 
 // ==================== ПОЛУЧЕНИЕ ДАННЫХ IMU ====================
 
-async function updateIMUData() {
-    // Получение данных IMU
+async function updateIMUData(fullStatus /* optional */) {
     try {
-        const response = await fetch('/api/imu/status');
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        let status = fullStatus;
+        if (!status) {
+            const resp = await fetch('/api/status');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            status = await resp.json();
         }
+        // Если /api/status возвращает просто объект, используем его напрямую.
+        // Если он обернут {"success":true,"data":{...}}, поправим:
+        const data = status.data || status;
 
-        const result = await response.json();
-        if (result.success && result.data) {
-            imuData = result.data;
-            imuAvailable = imuData.available && imuData.ok;
-            updateIMUDisplay();
+        const imu = data.imu || null;
+        if (imu) {
+            imuData = {
+                available: typeof imu.available === 'boolean' ? imu.available : true,
+                ok: !!imu.ok,
+                roll: +imu.roll || 0,
+                pitch: +imu.pitch || 0,
+                yaw: +imu.yaw || 0,
+                gx: +imu.gx || 0, gy: +imu.gy || 0, gz: +imu.gz || 0,
+                ax: +imu.ax || 0, ay: +imu.ay || 0, az: +imu.az || 0,
+                timestamp: imu.timestamp || imu.last_update || 0,
+                whoami: imu.whoami ?? null
+            };
+            imuAvailable = (imuData.available && imuData.ok);
         } else {
             imuAvailable = false;
-            updateIMUDisplay();
         }
-    } catch (error) {
-        console.debug('IMU недоступен:', error.message);
+        updateIMUDisplay();
+    } catch (e) {
+        console.debug('IMU (общий статус) недоступен:', e.message);
         imuAvailable = false;
         updateIMUDisplay();
     }
