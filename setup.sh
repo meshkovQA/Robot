@@ -351,7 +351,6 @@ echo -e "${BLUE}🔄 Обновление Robot Web Interface (git pull)${NC}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_DIR/venv"
 SERVICE_NAME="robot-web.service"
-KEEP_LOCAL_CONFIG="${KEEP_LOCAL_CONFIG:-1}"  # 1 — сохранять локальный robot/config.py
 
 if [[ ! -d "$PROJECT_DIR/.git" ]]; then
   echo -e "${RED}❌ В каталоге нет git-репозитория. Запустите ./setup.sh заново.${NC}"
