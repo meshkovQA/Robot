@@ -364,28 +364,10 @@ sudo systemctl stop "$SERVICE_NAME" || true
 cd "$PROJECT_DIR"
 ts="$(date +%Y%m%d_%H%M%S)"
 
-# Бэкап локальной конфигурации
-if [[ -f "robot/config.py" ]]; then
-  cp "robot/config.py" "robot/config.py.local.$ts"
-  echo -e "${BLUE}📦 Бэкап config.py: robot/config.py.local.$ts${NC}"
-fi
-
-# Сохраняем патч локальных изменений (если были)
-if [[ -n "$(git status --porcelain)" ]]; then
-  git diff > "local_changes_$ts.patch" || true
-  echo -e "${YELLOW}⚠️ Найдены локальные изменения. Сохранил патч: local_changes_$ts.patch${NC}"
-fi
-
 echo -e "${BLUE}📥 Получение обновлений из origin...${NC}"
 git fetch --all --tags
 git checkout main
 git reset --hard origin/main
-
-# Восстанавливаем локальный config.py при необходимости
-if [[ "${KEEP_LOCAL_CONFIG}" = "1" && -f "robot/config.py.local.$ts" ]]; then
-  cp -f "robot/config.py.local.$ts" "robot/config.py"
-  echo -e "${YELLOW}↩️ Восстановлен локальный robot/config.py из бэкапа${NC}"
-fi
 
 # Зависимости
 source "$VENV_DIR/bin/activate"
