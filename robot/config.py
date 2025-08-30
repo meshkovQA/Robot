@@ -61,7 +61,7 @@ IMU_COMPLEMENTARY_ALPHA = 0.98
 # УДЕРЖАНИЕ КУРСА (Yaw PID)
 # =========================
 
-HDG_HOLD_ENABLED = False
+HDG_HOLD_ENABLED = True
 
 # PID-коэффициенты
 HDG_KP = 0.8          # было 0.9 — немного мягче
