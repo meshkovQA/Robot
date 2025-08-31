@@ -180,35 +180,27 @@ class RobotLCDDisplay:
     Показывает движение, препятствия, температуру и влажность.
     """
 
-    def __init__(self, bus=None, address=0x27, update_interval=1.5):
+    def __init__(self, bus=None, address=0x27, update_interval=1.5, bus_num: int | None = None, debug: bool = False):
         self.bus = bus
+        self.bus_num = bus_num
         self.address = address
         self.update_interval = update_interval
+        self.debug = debug
+
         self.lcd = None
         self._running = False
         self._thread = None
         self._last_status = {}
-
-        if self.bus:
-            try:
-                self.lcd = LCD1602I2C(self.bus, self.address)
-                logger.info(f"Robot LCD Display инициализирован")
-            except Exception as e:
-                logger.error(f"Ошибка инициализации Robot LCD Display: {e}")
+        self._greet_pending = True  # одноразовое приветствие
 
     def start(self):
-        """Запуск автоматического отображения"""
-        if self.lcd and self.lcd.display_active and not self._running:
-            self._running = True
-            self._thread = threading.Thread(
-                target=self._display_loop, daemon=True)
-            self._thread.start()
-
-            # Показываем приветствие
-            self.lcd.display_two_lines("Robot Started", "LCD Ready")
-            time.sleep(2)
-
-            logger.info("Robot LCD Display запущен")
+        """Запуск фонового отображения (ленивая инициализация дисплея внутри потока)."""
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._display_loop, daemon=True)
+        self._thread.start()
+        logger.info("Robot LCD Display запущен (ленивая инициализация)")
 
     def stop(self):
         """Остановка отображения"""
@@ -258,38 +250,61 @@ class RobotLCDDisplay:
         return f"T:{temp_str} H:{hum_str}"
 
     def _display_loop(self):
-        """Основной цикл автоматического отображения информации"""
+        """Фоновый цикл: ленивая инициализация LCD и регулярное обновление текста."""
         while self._running:
             try:
-                if not self.lcd or not self.lcd.display_active:
+                # 1) Ленивая инициализация I²C и самого LCD
+                if self.lcd is None:
+                    try:
+                        if self.bus is None:
+                            import smbus2
+                            bus_num = self.bus_num if self.bus_num is not None else 1
+                            if self.debug:
+                                logger.debug(
+                                    f"LCD: открываю I²C шину #{bus_num}")
+                            self.bus = smbus2.SMBus(bus_num)
+                        # Создаём объект дисплея
+                        self.lcd = LCD1602I2C(self.bus, self.address)
+                        if self.lcd.display_active:
+                            logger.info(
+                                f"LCD инициализирован (addr=0x{self.address:02X}, bus={self.bus_num if self.bus_num is not None else 1})")
+                        else:
+                            logger.warning(
+                                "LCD не активен после инициализации")
+                    except Exception as e:
+                        logger.error(f"Не удалось инициализировать LCD: {e}")
+                        time.sleep(self.update_interval)
+                        continue
+
+                if not self.lcd.display_active:
                     time.sleep(self.update_interval)
                     continue
 
+                # 2) Приветствие один раз (уже в фоновом потоке, не блокирует запуск веба)
+                if self._greet_pending:
+                    self.lcd.display_two_lines("Robot Started", "LCD Ready")
+                    self._greet_pending = False
+
+                # 3) Обновление статуса
                 status = self._last_status
                 if not status:
-                    # Показываем статус ожидания
                     self.lcd.display_two_lines("Robot Ready", "Waiting...")
                     time.sleep(self.update_interval)
                     continue
 
-                # Получаем данные из статуса
                 is_moving = status.get("is_moving", False)
                 direction = status.get("movement_direction", 0)
                 temperature = status.get("temperature")
                 humidity = status.get("humidity")
                 obstacles = status.get("obstacles", {})
 
-                # Формируем строки для отображения
-                # Первая строка: состояние движения/препятствия
                 if any(obstacles.values()):
                     line1 = self._get_obstacle_text(obstacles)
                 else:
                     line1 = self._get_direction_text(direction, is_moving)
 
-                # Вторая строка: температура и влажность
                 line2 = self._format_sensor_line(temperature, humidity)
 
-                # Отображаем на LCD
                 self.lcd.display_two_lines(line1, line2)
 
             except Exception as e:
