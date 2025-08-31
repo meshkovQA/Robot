@@ -13,10 +13,12 @@ from robot.config import (
     SPEED_MIN, SPEED_MAX, DEFAULT_SPEED,
     CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
     CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE,
-    KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART, IMU_ENABLED
+    KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART, IMU_ENABLED,
+    LCD_ENABLED, LCD_I2C_BUS, LCD_I2C_ADDRESS, LCD_UPDATE_INTERVAL
 )
 from robot.i2c_bus import I2CBus, open_bus, FastI2CController
 from robot.devices.imu import MPU6500, IMUState
+from robot.devices.lcd_display import RobotLCDDisplay
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,31 @@ class RobotController:
             except Exception as e:
                 logger.error("IMU init error: %s", e)
                 self._imu = None
+
+        self.lcd_display = None
+
+        if LCD_ENABLED:
+            try:
+                # Используем отдельную I2C шину для LCD (не через арбитра)
+                import smbus2
+                lcd_bus = smbus2.SMBus(LCD_I2C_BUS)
+
+                self.lcd_display = RobotLCDDisplay(
+                    bus=lcd_bus,
+                    address=LCD_I2C_ADDRESS,
+                    update_interval=LCD_UPDATE_INTERVAL
+                )
+
+                # Запускаем автоматическое отображение
+                self.lcd_display.start()
+
+                logger.info("LCD дисплей инициализирован и запущен")
+
+            except Exception as e:
+                logger.error(f"Ошибка инициализации LCD: {e}")
+                self.lcd_display = None
+        else:
+            logger.info("LCD дисплей отключен в конфигурации")
 
     # -------- Кикстарт --------
 
@@ -228,7 +255,7 @@ class RobotController:
                 }
 
         with self._lock:
-            return {
+            status = {
                 "center_front_distance": center_front_dist,
                 "left_front_distance": left_front_dist,
                 "right_front_distance": right_front_dist,
@@ -253,6 +280,12 @@ class RobotController:
                 "last_command_time": self.last_command_time,
                 "timestamp": time.time(),
             }
+
+            # Автоматически обновляем LCD текущим статусом
+            if self.lcd_display and self.lcd_display.is_active():
+                self.lcd_display.update_status(status)
+
+            return status
 
     def reconnect_bus(self) -> bool:
         """Переподключение I2C: перезапускаем bus и арбитра."""
@@ -296,6 +329,13 @@ class RobotController:
             except Exception:
                 pass
         logger.info("Контроллер завершил работу")
+
+        if hasattr(self, 'lcd_display') and self.lcd_display:
+            try:
+                self.lcd_display.stop()
+            except Exception:
+                pass
+        logger.info("LCD дисплей остановлен")
 
     # -------- Движение --------
 
