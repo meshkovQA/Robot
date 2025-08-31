@@ -14,7 +14,7 @@ from robot.config import (
     CAMERA_PAN_MIN, CAMERA_PAN_MAX, CAMERA_PAN_DEFAULT,
     CAMERA_TILT_MIN, CAMERA_TILT_MAX, CAMERA_TILT_DEFAULT, CAMERA_STEP_SIZE,
     KICKSTART_DURATION, KICKSTART_SPEED, MIN_SPEED_FOR_KICKSTART, IMU_ENABLED,
-    LCD_ENABLED, LCD_I2C_BUS, LCD_I2C_ADDRESS, LCD_UPDATE_INTERVAL
+    LCD_ENABLED, LCD_I2C_BUS, LCD_I2C_ADDRESS, LCD_UPDATE_INTERVAL, LCD_DEBUG
 )
 from robot.i2c_bus import I2CBus, open_bus, FastI2CController
 from robot.devices.imu import MPU6500, IMUState
@@ -120,25 +120,24 @@ class RobotController:
 
         self.lcd_display = None
 
+        # ---- LCD (ленивый) ----
+        self.lcd_display = None
         if LCD_ENABLED:
             try:
-                # Используем отдельную I2C шину для LCD (не через арбитра)
-                import smbus2
-                lcd_bus = smbus2.SMBus(LCD_I2C_BUS)
-
+                # НИЧЕГО не открываем на I²C в конструкторе.
+                # Дисплей сам откроет шину и инициализируется в своём фоновом потоке.
                 self.lcd_display = RobotLCDDisplay(
-                    bus=lcd_bus,
+                    bus=None,                              # ленивое открытие шины внутри
                     address=LCD_I2C_ADDRESS,
-                    update_interval=LCD_UPDATE_INTERVAL
+                    update_interval=LCD_UPDATE_INTERVAL,
+                    bus_num=LCD_I2C_BUS,                   # берём из конфига
+                    debug=LCD_DEBUG                        # берём из конфига
                 )
-
-                # Запускаем автоматическое отображение
+                # start() не блокирует — он только запускает поток
                 self.lcd_display.start()
-
-                logger.info("LCD дисплей инициализирован и запущен")
-
+                logger.info("LCD дисплей запускается (ленивый режим)")
             except Exception as e:
-                logger.error(f"Ошибка инициализации LCD: {e}")
+                logger.error(f"Ошибка при создании LCD дисплея: {e}")
                 self.lcd_display = None
         else:
             logger.info("LCD дисплей отключен в конфигурации")
