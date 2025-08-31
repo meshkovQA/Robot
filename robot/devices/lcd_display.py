@@ -48,7 +48,7 @@ LCD_5x10DOTS = 0x04
 LCD_5x8DOTS = 0x00
 
 # Флаги для backlight control
-LCD_BACKLIGHT = 0x08
+LCD_BACKLIGHT = 0x08       # у тебя подсветка на P3 (0x08)
 LCD_NOBACKLIGHT = 0x00
 
 # Биты PCF8574 -> LCD
