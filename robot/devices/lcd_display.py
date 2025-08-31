@@ -89,34 +89,37 @@ class LCD1602I2C:
 
     def _write_4_bits(self, data):
         """
-        Отправка половинного байта (старшие 4 бита) + управляющие биты (RS/RW/EN).
-        Здесь data уже содержит RS (если нужно) и верхний полубайт команды/данных.
+        data уже содержит:
+        - ниббл данных в битах 7..4,
+        - флаги RS/RW в младших битах.
+        НИЧЕГО не маскируем — сохраняем RS/RW, просто добавляем подсветку
+        и стробим EN.
         """
-        out = (data & 0xF0) | self.backlight
-        if self.debug:
-            logger.debug(
-                f"_write_4_bits: data=0x{data:02X} -> out=0x{out:02X}")
         try:
+            out = data | self.backlight  # сохранить RS/RW + ниббл
+            if self.debug:
+                logger.debug(
+                    f"_write_4_bits: data=0x{data:02X} -> out=0x{out:02X}")
             self.bus.write_byte(self.address, out)
-            self._lcd_strobe(data)
+            self._lcd_strobe(out)        # стробим то же самое состояние
         except Exception as e:
             logger.error(f"Ошибка записи в LCD (4 bits): {e!r}")
             self.display_active = False
             raise
 
-    def _lcd_strobe(self, data):
+    def _lcd_strobe(self, out):
         """
-        Импульс Enable: высокий фронт EN, короткая пауза, низкий.
-        RS/RW/данные должны быть установлены ДО строба.
+        Строб EN при неизменённых RS/RW и линиях данных.
+        Подаём EN=1, короткая пауза, затем EN=0.
         """
-        hi = ((data & 0xF0) | En | self.backlight)
-        lo = ((data & 0xF0) | self.backlight)
-        if self.debug:
-            logger.debug(f"_lcd_strobe: EN↑ 0x{hi:02X}, EN↓ 0x{lo:02X}")
         try:
-            self.bus.write_byte(self.address, hi)   # EN=1
+            hi = out | En
+            lo = out & ~En
+            if self.debug:
+                logger.debug(f"_lcd_strobe: EN↑ 0x{hi:02X}, EN↓ 0x{lo:02X}")
+            self.bus.write_byte(self.address, hi)   # EN = 1
             time.sleep(0.0005)
-            self.bus.write_byte(self.address, lo)   # EN=0
+            self.bus.write_byte(self.address, lo)   # EN = 0
             time.sleep(0.0001)
         except Exception as e:
             logger.error(f"LCD: ошибка строба EN: {e!r}")
