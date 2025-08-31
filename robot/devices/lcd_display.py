@@ -373,16 +373,6 @@ class RobotLCDDisplay:
         - выводит приветствие и далее текущий статус.
         """
 
-        if first_run:
-            try:
-                self.lcd.display_two_lines("TEST 123", "ABC DEF")
-                logger.info("Test message sent to LCD")
-                time.sleep(5)  # Подольше показываем тест
-                first_run = False
-            except Exception as e:
-                logger.error(f"Test message error: {e}")
-                first_run = False
-
         while self._running:
             try:
                 # ленивое открытие I²C и создание LCD
