@@ -48,12 +48,11 @@ LCD_5x10DOTS = 0x04
 LCD_5x8DOTS = 0x00
 
 # Флаги для backlight control
-LCD_BACKLIGHT = 0x10       # P4 — часто подсветка (многие платы PCF8574)
+LCD_BACKLIGHT = 0x08
 LCD_NOBACKLIGHT = 0x00
 
-
 # Биты PCF8574 -> LCD
-En = 0b00100000  # Enable bit  (P5)
+En = 0b00000100  # Enable bit  (P2)
 Rw = 0b00000010  # Read/Write  (P1)
 Rs = 0b00000001  # RegisterSel (P0)
 
