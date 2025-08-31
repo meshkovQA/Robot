@@ -308,30 +308,30 @@ class RobotLCDDisplay:
     def _get_direction_text(self, direction: int, is_moving: bool) -> str:
         """Преобразование кода направления в текст"""
         if not is_moving:
-            return "Остановлен"
+            return "Stopped"
 
         direction_map = {
-            1: "Вперед",
-            2: "Назад",
-            3: "Влево",
-            4: "Вправо"
+            1: "Forward",
+            2: "Backward",
+            3: "Left",
+            4: "Right"
         }
-        return direction_map.get(direction, "Стоп")
+        return direction_map.get(direction, "Stop")
 
     def _get_obstacle_text(self, obstacles: Dict[str, bool]) -> str:
         """Получение текста о препятствиях"""
         if obstacles.get("center_front", False):
-            return "Препят: Перед"
+            return "Obstacle: Front"
         elif obstacles.get("left_front", False):
-            return "Препят: Лев-П"
+            return "Obstacle: L-F"
         elif obstacles.get("right_front", False):
-            return "Препят: Пр-П"
+            return "Obstacle: R-F"
         elif obstacles.get("left_rear", False):
-            return "Препят: Лев-З"
+            return "Obstacle: L-R"
         elif obstacles.get("right_rear", False):
-            return "Препят: Пр-З"
+            return "Obstacle: R-R"
         else:
-            return "Препят: Нет"
+            return "Clear"
 
     def _format_sensor_line(self, temp: Optional[float], humidity: Optional[float]) -> str:
         """Форматирование строки с данными датчиков"""
@@ -346,6 +346,17 @@ class RobotLCDDisplay:
         - инициализирует LCD;
         - выводит приветствие и далее текущий статус.
         """
+
+        if first_run:
+            try:
+                self.lcd.display_two_lines("TEST 123", "ABC DEF")
+                logger.info("Test message sent to LCD")
+                time.sleep(5)  # Подольше показываем тест
+                first_run = False
+            except Exception as e:
+                logger.error(f"Test message error: {e}")
+                first_run = False
+
         while self._running:
             try:
                 # ленивое открытие I²C и создание LCD
