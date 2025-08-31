@@ -120,21 +120,19 @@ class RobotController:
 
         self.lcd_display = None
 
-        # ---- LCD (ленивый) ----
+    # ---- LCD (ленивый запуск, БЕЗ I²C в главном потоке) ----
         self.lcd_display = None
         if LCD_ENABLED:
             try:
-                # НИЧЕГО не открываем на I²C в конструкторе.
-                # Дисплей сам откроет шину и инициализируется в своём фоновом потоке.
+                from robot.devices.lcd_display import RobotLCDDisplay
                 self.lcd_display = RobotLCDDisplay(
-                    bus=None,                              # ленивое открытие шины внутри
+                    bus=None,                       # ленивое открытие шины внутри потока
                     address=LCD_I2C_ADDRESS,
                     update_interval=LCD_UPDATE_INTERVAL,
-                    bus_num=LCD_I2C_BUS,                   # берём из конфига
-                    debug=LCD_DEBUG                        # берём из конфига
+                    bus_num=LCD_I2C_BUS,
+                    debug=LCD_DEBUG
                 )
-                # start() не блокирует — он только запускает поток
-                self.lcd_display.start()
+                self.lcd_display.start()           # не блокирует
                 logger.info("LCD дисплей запускается (ленивый режим)")
             except Exception as e:
                 logger.error(f"Ошибка при создании LCD дисплея: {e}")
