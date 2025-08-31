@@ -59,21 +59,32 @@ Rs = 0b00000001  # Register select bit
 class LCD1602I2C:
     """Класс для работы с LCD дисплеем 1602 через I2C."""
 
-    def __init__(self, bus, address=0x27):
+    def __init__(self, bus, address=0x27, debug: bool = False):
         self.bus = bus
         self.address = address
         self.backlight = LCD_BACKLIGHT
         self._lock = threading.Lock()
         self.display_active = False
+        self.debug = bool(debug)
+
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+            logger.debug(
+                f"LCD1602I2C.__init__: addr=0x{self.address:02X}, debug=on")
 
         try:
             if self.bus:
+                logger.debug(
+                    "LCD1602I2C.__init__: calling _initialize_display()")
                 self._initialize_display()
                 self.display_active = True
                 logger.info(
                     f"LCD 1602 инициализирован на адресе 0x{address:02X}")
+            else:
+                logger.debug(
+                    "LCD1602I2C.__init__: bus is None, skip init (lazy)")
         except Exception as e:
-            logger.error(f"Ошибка инициализации LCD: {e}")
+            logger.error(f"Ошибка инициализации LCD: {e!r}")
             self.display_active = False
 
     def _write_4_bits(self, data):
@@ -81,13 +92,15 @@ class LCD1602I2C:
         Отправка половинного байта (старшие 4 бита) + управляющие биты (RS/RW/EN).
         Здесь data уже содержит RS (если нужно) и верхний полубайт команды/данных.
         """
+        out = (data & 0xF0) | self.backlight
+        if self.debug:
+            logger.debug(
+                f"_write_4_bits: data=0x{data:02X} -> out=0x{out:02X}")
         try:
-            # выставляем шину (данные + подсветка)
-            self.bus.write_byte(self.address, (data & 0xF0) | self.backlight)
-            # импульс EN
+            self.bus.write_byte(self.address, out)
             self._lcd_strobe(data)
         except Exception as e:
-            logger.error(f"Ошибка записи в LCD (4 bits): {e}")
+            logger.error(f"Ошибка записи в LCD (4 bits): {e!r}")
             self.display_active = False
             raise
 
@@ -96,16 +109,17 @@ class LCD1602I2C:
         Импульс Enable: высокий фронт EN, короткая пауза, низкий.
         RS/RW/данные должны быть установлены ДО строба.
         """
+        hi = ((data & 0xF0) | En | self.backlight)
+        lo = ((data & 0xF0) | self.backlight)
+        if self.debug:
+            logger.debug(f"_lcd_strobe: EN↑ 0x{hi:02X}, EN↓ 0x{lo:02X}")
         try:
-            # EN=1
-            self.bus.write_byte(
-                self.address, ((data & 0xF0) | En | self.backlight))
+            self.bus.write_byte(self.address, hi)   # EN=1
             time.sleep(0.0005)
-            # EN=0
-            self.bus.write_byte(self.address, ((data & 0xF0) | self.backlight))
+            self.bus.write_byte(self.address, lo)   # EN=0
             time.sleep(0.0001)
         except Exception as e:
-            logger.error(f"LCD: ошибка строба EN: {e}")
+            logger.error(f"LCD: ошибка строба EN: {e!r}")
             self.display_active = False
             raise
 
@@ -115,57 +129,69 @@ class LCD1602I2C:
         mode=0 — команда; mode=Rs — данные.
         """
         if not self.display_active:
+            if self.debug:
+                logger.debug(
+                    f"_lcd_write: skip (display_inactive) cmd=0x{command:02X}, mode=0x{mode:02X}")
             return
-        # формируем старший и младший полубайты с учётом бита RS
+
         high = (mode | (command & 0xF0))
         low = (mode | ((command << 4) & 0xF0))
+        if self.debug:
+            kind = "DATA" if (mode & Rs) else "CMD"
+            logger.debug(
+                f"_lcd_write: {kind} 0x{command:02X} -> high=0x{high:02X}, low=0x{low:02X}")
         self._write_4_bits(high)
         self._write_4_bits(low)
 
     def _initialize_display(self):
         """
         Жёсткая инициализация HD44780 в 4-битном режиме через PCF8574.
-        Последовательность соответствует даташиту:
-        1) 0x30, пауза, 0x30, пауза, 0x30, пауза, 0x20 (переход в 4-бит)
-        2) FUNCTIONSET (4-bit, 2 lines, 5x8)
-        3) DISPLAY ON, CURSOR OFF, BLINK OFF
-        4) CLEAR
-        5) ENTRYMODESET (инкремент курсора, без сдвига)
         """
-        # начальная задержка после питания
+        if self.debug:
+            logger.debug("_initialize_display: begin, power-on delay")
         time.sleep(0.05)
 
-        # гарантируем состояние подсветки (бит PCF8574 P3=1 — обычно backlight)
+        # Подсветка (проверяем доступность PCF8574)
         try:
             self.bus.write_byte(self.address, self.backlight)
+            if self.debug:
+                logger.debug(
+                    f"_initialize_display: backlight ping ok (addr=0x{self.address:02X})")
         except Exception as e:
             logger.error(
-                f"LCD: экспандер недоступен по адресу 0x{self.address:02X}: {e}")
+                f"LCD: экспандер недоступен по адресу 0x{self.address:02X}: {e!r}")
             raise
 
-        # трижды 0x30 (8-битная инициализация), затем 0x20 (переход в 4-бит)
+        # Трижды 0x30, затем 0x20 — переход в 4-бит
+        if self.debug:
+            logger.debug("_initialize_display: send 0x30 x3")
         self._write_4_bits(0x30)
         time.sleep(0.0045)
         self._write_4_bits(0x30)
         time.sleep(0.0045)
         self._write_4_bits(0x30)
         time.sleep(0.00015)
-        self._write_4_bits(0x20)  # 4-битный режим
+        if self.debug:
+            logger.debug("_initialize_display: send 0x20 (4-bit)")
+        self._write_4_bits(0x20)
         time.sleep(0.00015)
 
-        # 4-бит, 2 строки, 5x8 точек
+        # FUNCTIONSET (4-bit, 2 lines, 5x8)
         self._lcd_write(LCD_FUNCTIONSET | LCD_4BITMODE |
                         LCD_2LINE | LCD_5x8DOTS, 0)
-        # дисплей включен, курсор/мигание выкл
+        # DISPLAY ON (cursor off, blink off)
         self._lcd_write(LCD_DISPLAYCONTROL | LCD_DISPLAYON |
                         LCD_CURSOROFF | LCD_BLINKOFF, 0)
-        # очистка
+        # CLEAR
         self._lcd_write(LCD_CLEARDISPLAY, 0)
         time.sleep(0.003)
-        # режим ввода: курсор вправо, без сдвига
+        # ENTRYMODESET (increment, no shift)
         self._lcd_write(LCD_ENTRYMODESET | LCD_ENTRYLEFT |
                         LCD_ENTRYSHIFTDECREMENT, 0)
         time.sleep(0.002)
+
+        if self.debug:
+            logger.debug("_initialize_display: done")
 
     def clear(self):
         """Очистка дисплея"""
@@ -177,40 +203,51 @@ class LCD1602I2C:
     def set_cursor(self, col, row):
         """Установка позиции курсора"""
         if not self.display_active:
+            if self.debug:
+                logger.debug(
+                    f"set_cursor: skip (inactive) col={col}, row={row}")
             return
-        if row == 0:
-            self._lcd_write(LCD_SETDDRAMADDR | (col & 0x0F))
-        else:
-            self._lcd_write(LCD_SETDDRAMADDR | (0x40 + (col & 0x0F)))
+        addr = (col & 0x0F) if row == 0 else (0x40 + (col & 0x0F))
+        if self.debug:
+            logger.debug(
+                f"set_cursor: col={col}, row={row}, ddram=0x{addr:02X}")
+        self._lcd_write(LCD_SETDDRAMADDR | addr)
 
     def write_string(self, message):
         """Вывод строки на дисплей"""
         if not self.display_active:
+            if self.debug:
+                logger.debug("write_string: skip (display_inactive)")
             return
-
-        for char in message:
-            self._lcd_write(ord(char), Rs)
+        if message is None:
+            message = ""
+        if self.debug:
+            logger.debug(f"write_string: '{message}' (len={len(message)})")
+        for ch in message:
+            b = ord(ch) if ord(ch) < 256 else ord('?')
+            self._lcd_write(b, Rs)
 
     def display_two_lines(self, line1: str, line2: str):
         """
-        Печать двух строк. Жёстко приводим к 16 символам и пишем в заданные адреса.
-        (Очистка всего дисплея не выполняется, чтобы не мигал — только позиционирование.)
+        Печать двух строк. Приводим к 16 символам и пишем в адреса 0x00/0x40.
         """
         if not self.display_active:
+            if self.debug:
+                logger.debug("display_two_lines: skip (display_inactive)")
             return
         with self._lock:
-            line1 = (line1 or "")[:16].ljust(16)
-            line2 = (line2 or "")[:16].ljust(16)
+            s1 = (line1 or "")[:16].ljust(16)
+            s2 = (line2 or "")[:16].ljust(16)
+            if self.debug:
+                logger.debug(f"display_two_lines: L1='{s1}' | L2='{s2}'")
 
-            # Первая строка (адрес 0x00)
             self._lcd_write(LCD_SETDDRAMADDR | 0x00, 0)
-            for ch in line1:
+            for ch in s1:
                 b = ord(ch) if ord(ch) < 256 else ord('?')
                 self._lcd_write(b, Rs)
 
-            # Вторая строка (адрес 0x40)
             self._lcd_write(LCD_SETDDRAMADDR | 0x40, 0)
-            for ch in line2:
+            for ch in s2:
                 b = ord(ch) if ord(ch) < 256 else ord('?')
                 self._lcd_write(b, Rs)
 
@@ -238,6 +275,10 @@ class RobotLCDDisplay:
         """Запуск фонового отображения (ленивая инициализация дисплея внутри потока)."""
         if self._running:
             return
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+            logger.debug(
+                f"RobotLCDDisplay.start: bus_num={self.bus_num}, addr=0x{self.address:02X}, debug=on")
         self._running = True
         self._thread = threading.Thread(target=self._display_loop, daemon=True)
         self._thread.start()
@@ -245,11 +286,16 @@ class RobotLCDDisplay:
 
     def stop(self):
         """Остановка отображения"""
+        if self.debug:
+            logger.debug("RobotLCDDisplay.stop: requested")
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
         if self.lcd and self.lcd.display_active:
-            self.lcd.clear()
+            try:
+                self.lcd.clear()
+            except Exception as e:
+                logger.warning(f"RobotLCDDisplay.stop: clear failed: {e!r}")
         logger.info("Robot LCD Display остановлен")
 
     def update_status(self, status: Dict[str, Any]):
@@ -305,29 +351,46 @@ class RobotLCDDisplay:
                         if self.bus is None:
                             import smbus2
                             bus_num = self.bus_num if self.bus_num is not None else 1
+                            if self.debug:
+                                logger.debug(
+                                    f"_display_loop: opening SMBus({bus_num})")
                             self.bus = smbus2.SMBus(bus_num)
-                        self.lcd = LCD1602I2C(self.bus, self.address)
+                            if self.debug:
+                                logger.debug(
+                                    f"_display_loop: SMBus({bus_num}) opened")
+
+                        if self.debug:
+                            logger.debug(
+                                f"_display_loop: creating LCD1602I2C(addr=0x{self.address:02X})")
+                        self.lcd = LCD1602I2C(
+                            self.bus, self.address, debug=self.debug)
+
                         if self.lcd.display_active:
                             logger.info(
                                 f"LCD готов: addr=0x{self.address:02X}")
-                            # приветствие ASCII (чтобы избежать проблем с кириллицей ПЗУ)
                             self.lcd.display_two_lines(
                                 "Robot Started", "LCD Ready")
                             time.sleep(1.5)
                         else:
                             logger.warning("LCD не активен после init")
                     except Exception as e:
-                        logger.error(f"LCD init error: {e}")
+                        logger.error(f"LCD init error: {e!r}")
                         # подождём и попробуем снова
                         time.sleep(self.update_interval)
                         continue
 
                 if not self.lcd.display_active:
+                    if self.debug:
+                        logger.debug(
+                            "_display_loop: lcd.display_active=False, retry later")
                     time.sleep(self.update_interval)
                     continue
 
                 status = self._last_status
                 if not status:
+                    if self.debug:
+                        logger.debug(
+                            "_display_loop: no status yet -> 'Robot Ready / Waiting...'")
                     self.lcd.display_two_lines("Robot Ready", "Waiting...")
                     time.sleep(self.update_interval)
                     continue
@@ -348,10 +411,14 @@ class RobotLCDDisplay:
                 # вторая строка: T/H
                 line2 = self._format_sensor_line(temperature, humidity)
 
+                if self.debug:
+                    logger.debug(
+                        f"_display_loop: show L1='{line1}' | L2='{line2}'")
+
                 self.lcd.display_two_lines(line1, line2)
 
             except Exception as e:
-                logger.error(f"Ошибка в цикле отображения LCD: {e}")
+                logger.error(f"Ошибка в цикле отображения LCD: {e!r}")
 
             time.sleep(self.update_interval)
 
