@@ -38,6 +38,13 @@ sys.exit(0 if ok else 1)
 PY
 echo -e "${GREEN}✅ Синтаксис корректен${NC}"
 
+
+# Применение прав выполнения для всех скриптов
+echo -e "${BLUE}🔧 Применение прав выполнения для скриптов...${NC}"
+chmod +x "$PROJECT_DIR"/*.sh 2>/dev/null || true
+find "$PROJECT_DIR" -type f -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+echo -e "${GREEN}✅ Права выполнения применены${NC}"
+
 echo -e "${BLUE}🚀 Запуск сервиса...${NC}"
 sudo systemctl start "$SERVICE_NAME"
 sleep 3
