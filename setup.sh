@@ -277,129 +277,26 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 ok "Systemd сервис создан/обновлён"
 
-# --- управляющие скрипты (обновлённый update.sh — git pull) ---
-info "Создание управляющих скриптов..."
+# --- управляющие скрипты ---
+info "Установка управляющих скриптов..."
 
-cat > "$PROJECT_DIR/start.sh" <<EOF
-#!/bin/bash
-echo "🚀 Запуск Robot Web Interface v2.1..."
-sudo systemctl start $SERVICE_NAME
-sleep 2
-sudo systemctl status $SERVICE_NAME --no-pager -l
-EOF
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="$SETUP_DIR"
 
-cat > "$PROJECT_DIR/stop.sh" <<EOF
-#!/bin/bash
-echo "⏹️ Остановка Robot Web Interface..."
-sudo systemctl stop $SERVICE_NAME
-echo "Сервис остановлен"
-EOF
-
-cat > "$PROJECT_DIR/restart.sh" <<'EOF'
-#!/bin/bash
-echo "🔄 Перезапуск Robot Web Interface v2.1..."
-sudo systemctl restart robot-web.service
-sleep 3
-sudo systemctl status robot-web.service --no-pager -l
-echo ""
-IP=$(hostname -I | awk '{print $1}')
-echo "🌐 Интерфейс доступен: http://$IP:5000"
-echo "🎥 Видеопоток: http://$IP:5000/camera/stream"
-echo "🧪 Тест камеры: python3 test_frame.py"
-EOF
-
-cat > "$PROJECT_DIR/logs.sh" <<'EOF'
-#!/bin/bash
-echo "📄 Логи Robot Web Interface (Ctrl+C для выхода):"
-echo "================================================"
-sudo journalctl -u robot-web.service -f --no-pager
-EOF
-
-cat > "$PROJECT_DIR/test_camera.sh" <<'EOF'
-#!/bin/bash
-echo "🎥 Расширенное тестирование USB камеры..."
-ls -la /dev/video* 2>/dev/null || echo "Видеоустройства не найдены"
-for device in /dev/video*; do
-  [[ -c "$device" ]] || continue
-  echo "---- $device ----"
-  v4l2-ctl --device="$device" --info 2>/dev/null | head -5 || true
-  v4l2-ctl --device="$device" --list-formats-ext 2>/dev/null | head -10 || true
-done
-EOF
-
-cat > "$PROJECT_DIR/status.sh" <<'EOF'
-#!/bin/bash
-SERVICE=robot-web.service
-echo "🔍 Диагностика Robot Web Interface v2.1"
-sudo systemctl status "$SERVICE" --no-pager -l
-echo -e "\n📄 Последние логи:"
-sudo journalctl -u "$SERVICE" --no-pager -n 20
-IP=$(hostname -I | awk '{print $1}')
-echo -e "\n🔗 Адреса:"
-echo "Веб-интерфейс: http://$IP:5000"
-echo "Видеопоток:   http://$IP:5000/camera/stream"
-echo "API статус:   http://$IP:5000/api/status"
-EOF
-
-# новый update.sh (ниже отдельным блоком тоже продублирован)
-cat > "$PROJECT_DIR/update.sh" <<'EOF'
-#!/bin/bash
-set -euo pipefail
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
-echo -e "${BLUE}🔄 Обновление Robot Web Interface (git pull)${NC}"
-
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$PROJECT_DIR/venv"
-SERVICE_NAME="robot-web.service"
-
-if [[ ! -d "$PROJECT_DIR/.git" ]]; then
-  echo -e "${RED}❌ В каталоге нет git-репозитория. Запустите ./setup.sh заново.${NC}"
-  exit 1
-fi
-
-echo -e "${YELLOW}⏸️ Остановка сервиса...${NC}"
-sudo systemctl stop "$SERVICE_NAME" || true
-
-cd "$PROJECT_DIR"
-ts="$(date +%Y%m%d_%H%M%S)"
-
-echo -e "${BLUE}📥 Получение обновлений из origin...${NC}"
-git fetch --all --tags
-git checkout main
-git reset --hard origin/main
-
-# Зависимости
-source "$VENV_DIR/bin/activate"
-if [[ -f "requirements.txt" ]]; then
-  pip install --upgrade pip setuptools wheel
-  pip install -r requirements.txt
-fi
-
-# Быстрая проверка синтаксиса
-python3 - <<'PY'
-import compileall, sys
-ok = compileall.compile_dir('.', force=False, quiet=1)
-sys.exit(0 if ok else 1)
-PY
-echo -e "${GREEN}✅ Синтаксис корректен${NC}"
-
-echo -e "${BLUE}🚀 Запуск сервиса...${NC}"
-sudo systemctl start "$SERVICE_NAME"
-sleep 3
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-  COMMIT=$(git rev-parse --short HEAD)
-  IP=$(hostname -I | awk '{print $1}')
-  echo -e "${GREEN}✅ Обновление успешно. Коммит: $COMMIT${NC}"
-  echo -e "${GREEN}🌐 Интерфейс: http://$IP:5000${NC}"
+if [[ -d "$SCRIPTS_DIR" ]]; then
+    for script_file in "$SCRIPTS_DIR"/*.sh; do
+        if [[ -f "$script_file" ]]; then
+            script_name=$(basename "$script_file")
+            info "Копирование скрипта: $script_name"
+            cp "$script_file" "$PROJECT_DIR/$script_name"
+            chmod +x "$PROJECT_DIR/$script_name"
+        fi
+    done
+    ok "Управляющие скрипты установлены"
 else
-  echo -e "${RED}❌ Сервис не запустился после обновления${NC}"
-  echo "Проверьте логи: ./logs.sh"
-  exit 1
+    warn "Каталог скриптов не найден: $SCRIPTS_DIR"
+    warn "Создайте каталог scripts/ с файлами: start.sh, stop.sh, restart.sh, logs.sh, status.sh, update.sh, test_camera.sh"
 fi
-EOF
-
-chmod +x "$PROJECT_DIR"/{start.sh,stop.sh,restart.sh,logs.sh,status.sh,update.sh,test_camera.sh}
-ok "Управляющие скрипты готовы"
 
 # --- первичные проверки и запуск ---
 info "Тест gunicorn конфигурации..."
