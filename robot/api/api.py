@@ -9,7 +9,7 @@ from flask import Flask, Blueprint, jsonify, request, render_template, Response
 from flask_cors import CORS  # ДОБАВЛЯЕМ CORS
 from pathlib import Path
 
-from robot.controller import RobotController
+from app.new_robot_controller import RobotController
 from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
 from robot.heading_controller import HeadingHoldService
 from robot.ai_integration import AIRobotController
