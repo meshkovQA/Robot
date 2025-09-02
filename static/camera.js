@@ -568,16 +568,21 @@ document.addEventListener('DOMContentLoaded', function () {
 // ==================== ИНТЕГРАЦИЯ С ОСНОВНЫМ МОДУЛЕМ ====================
 
 // Расширяем функцию updateSensorData из script.js
-const originalUpdateSensorData = window.updateSensorData;
-if (originalUpdateSensorData) {
-    window.updateSensorData = function () {
-        // Вызываем оригинальную функцию
-        const result = originalUpdateSensorData();
+const _origUpdateSensorData = window.updateSensorData;
 
-        // Камера получает данные из общего статуса, а не отдельным запросом
-        // Это предотвращает дублирование I2C запросов
+if (typeof _origUpdateSensorData === 'function') {
+    window.updateSensorData = async function (...args) {
+        // вызываем оригинал
+        const res = _origUpdateSensorData.apply(this, args);
+        // если оригинал async — дождёмся
+        const status = (res && typeof res.then === 'function') ? await res : res;
 
-        return result;
+        // достаём payload /api/status
+        const data = status?.data ?? status;
+        if (data?.camera) {
+            updateCameraStatus(data.camera);   // ← вот здесь ты обновляешь оверлей
+        }
+        return status;
     };
 }
 
