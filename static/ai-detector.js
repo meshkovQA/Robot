@@ -78,31 +78,6 @@ async function getAIFrame() {
     }
 }
 
-function toggleAIStream() {
-    const normalStream = document.getElementById('camera-stream');
-    const aiStream = document.getElementById('ai-stream');
-    const btn = document.getElementById('ai-stream-btn');
-
-    if (!aiStream) return showAlert('❌ AI видеопоток недоступен', 'danger');
-
-    const aiOn = normalStream.style.display !== 'none';
-    if (aiOn) {
-        normalStream.style.display = 'none';
-        aiStream.style.display = 'block';
-        // перезапуск с кэш-бастингом
-        aiStream.src = `/api/ai/stream?fps=12&scale=0.75&quality=70&_t=${Date.now()}`;
-        btn.textContent = '📹 Обычное видео';
-        btn.className = 'btn btn-sm btn-info';
-        showAlert('🔮 AI аннотации включены', 'info');
-    } else {
-        normalStream.style.display = 'block';
-        aiStream.style.display = 'none';
-        btn.textContent = '🔮 AI Аннотации';
-        btn.className = 'btn btn-sm btn-outline-info';
-        showAlert('📹 Обычное видео восстановлено', 'info');
-    }
-}
-
 // ==================== ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ====================
 
 function updateDetectionDisplay(detections) {
@@ -247,5 +222,4 @@ if (document.readyState === 'loading') {
 
 console.log('🔍 AI Detector модуль загружен');
 
-window.toggleAIStream = toggleAIStream;
 window.getAIFrame = getAIFrame;
