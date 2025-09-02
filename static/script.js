@@ -438,15 +438,5 @@ document.addEventListener('DOMContentLoaded', function () {
     // Переходим на SSE, без частого fetch('/api/status')
     startTelemetrySSE_All();
 
-    // Инициализация камеры
-    setTimeout(() => {
-        console.log('Запуск видеопотока...');
-        initializeVideoStream();
-    }, 2000);
-
-    setTimeout(() => {
-        showFileTab('photos');
-    }, 3000);
-
     showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
-});
+}); в
