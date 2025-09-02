@@ -131,17 +131,7 @@ source "$VENV_DIR/bin/activate"
 # --- установка Python зависимостей ---
 info "Установка Python зависимостей..."
 pip install --upgrade pip setuptools wheel
-if [[ -f "$PROJECT_DIR/requirements.txt" ]]; then
-    pip install -r "$PROJECT_DIR/requirements.txt"
-else
-    pip install "flask>=2.3.0" "gunicorn>=20.1.0" "gevent>=1.4.0" \
-    requests python-dotenv numpy opencv-python flask-cors \
-    ultralytics torch torchvision || true
-fi
-python3 - <<'PY' || true
-import cv2, sys
-print(f'✅ OpenCV {cv2.__version__} успешно импортирован')
-PY
+pip install -r "$PROJECT_DIR/requirements.txt"
 
 # --- загрузка YOLO 8 модели ---
 info "🧠 Загрузка YOLO 8 модели..."
@@ -271,26 +261,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 ok "Systemd сервис создан/обновлён"
 
-# --- управляющие скрипты ---
-info "Установка управляющих скриптов..."
-
-SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPTS_DIR="$SETUP_DIR"
-
-if [[ -d "$SCRIPTS_DIR" ]]; then
-    for script_file in "$SCRIPTS_DIR"/*.sh; do
-        if [[ -f "$script_file" ]]; then
-            script_name=$(basename "$script_file")
-            info "Копирование скрипта: $script_name"
-            cp "$script_file" "$PROJECT_DIR/$script_name"
-            chmod +x "$PROJECT_DIR/$script_name"
-        fi
-    done
-    ok "Управляющие скрипты установлены"
-else
-    warn "Каталог скриптов не найден: $SCRIPTS_DIR"
-    warn "Создайте каталог scripts/ с файлами: start.sh, stop.sh, restart.sh, logs.sh, status.sh, update.sh, test_camera.sh"
-fi
+# Применение прав выполнения для всех скриптов
+echo -e "${BLUE}🔧 Применение прав выполнения для скриптов...${NC}"
+chmod +x "$PROJECT_DIR"/*.sh 2>/dev/null || true
+echo -e "${GREEN}✅ Права выполнения применены${NC}"
 
 # --- первичные проверки и запуск ---
 info "Тест gunicorn конфигурации..."
