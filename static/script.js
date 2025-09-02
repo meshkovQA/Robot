@@ -301,6 +301,9 @@ document.addEventListener('keydown', function (event) {
     // Игнорируем если фокус на input элементах
     if (event.target.tagName === 'INPUT') return;
 
+    const photoModal = document.getElementById('photo-modal');
+    if (photoModal && photoModal.style.display === 'block') return;
+
     switch (event.key.toLowerCase()) {
         case 'w':
         case 'arrowup':
@@ -370,8 +373,9 @@ function applyRobotStatus(status) {
     updateEnvDisplay(status.temperature, status.humidity);
 
     // препятствия (исправляем ошибку: раньше передавалось status.obstacles.front || rear — таких полей нет)
-    updateObstacleWarnings(status.obstacles);
-    const anyObstacle = Object.values(status.obstacles || {}).some(Boolean);
+    const obstacles = status.obstacles || {};
+    updateObstacleWarnings(obstacles);
+    const anyObstacle = Object.values(obstacles).some(Boolean);
     updateObstacleStatus(anyObstacle);
 
     // IMU (защита от отсутствия модуля)
@@ -404,12 +408,21 @@ function startTelemetrySSE_All() {
             if (aiFpsEl && typeof msg.ai.fps === 'number') {
                 aiFpsEl.textContent = `AI: ${msg.ai.fps.toFixed(1)} FPS`;
             }
+
             const total = document.getElementById('ai-objects-count');
             if (total && typeof msg.ai.count === 'number') {
                 total.textContent = msg.ai.count;
             }
+
             setAIDetectorStatus((msg.ai.count ?? 0) > 0);
             if (msg.ai.last_ts) setAiLastUpdate(msg.ai.last_ts * 1000);
+
+            // 💡 новые строки — обновляем UI из SSE
+            if (Array.isArray(msg.ai.detections)) {
+                updateDetectionDisplay(msg.ai.detections);
+                updateDetectionStats(msg.ai.detections);
+                updateSimpleDetection(msg.ai.detections);
+            }
         }
     };
     es.onerror = () => {
@@ -426,10 +439,14 @@ document.addEventListener('DOMContentLoaded', function () {
     startTelemetrySSE_All();
 
     // Инициализация камеры
-    if (window.cameraControl?.init) {
-        window.cameraControl.init();
-        console.log('🎯 Управление камерой инициализировано');
-    }
+    setTimeout(() => {
+        console.log('Запуск видеопотока...');
+        initializeVideoStream();
+    }, 2000);
+
+    setTimeout(() => {
+        showFileTab('photos');
+    }, 3000);
 
     showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
 });

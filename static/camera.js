@@ -495,11 +495,8 @@ function updateCameraStatus(cameraData) {
 }
 
 function updateCameraStatusIndicator(connected) {
-    if (connected) {
-        cameraStatus.className = 'status-indicator active';
-    } else {
-        cameraStatus.className = 'status-indicator';
-    }
+    if (!cameraStatus) return;
+    cameraStatus.className = connected ? 'status-indicator active' : 'status-indicator';
 }
 
 // ==================== КЛАВИАТУРНЫЕ ГОРЯЧИЕ КЛАВИШИ ====================
@@ -539,80 +536,24 @@ document.addEventListener('DOMContentLoaded', function () {
     cameraStream.addEventListener('error', handleStreamError);
     cameraStream.addEventListener('load', handleStreamLoad);
 
-    // Проверка камеры и запуск стрима
-    setTimeout(() => {
-        checkCameraAvailability().then(available => {
-            console.log('Доступность камеры:', available);
-            if (available) {
-                console.log('Запуск видеопотока...');
-                initializeVideoStream();
-            } else {
-                console.warn('Камера недоступна');
-                updateCameraStatusIndicator(false);
-                cameraStream.src = '/static/no-camera.svg';
-            }
-        });
-    }, 2000);
-
-    // Загрузка списка файлов
-    setTimeout(() => {
-        showFileTab('photos'); // Устанавливаем активную вкладку
-    }, 3000);
-
     // Показываем подсказки
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
     }, 5000);
 });
 
-// ==================== ИНТЕГРАЦИЯ С ОСНОВНЫМ МОДУЛЕМ ====================
-
-// Расширяем функцию updateSensorData из script.js
-const _origUpdateSensorData = window.updateSensorData;
-
-if (typeof _origUpdateSensorData === 'function') {
-    window.updateSensorData = async function (...args) {
-        // вызываем оригинал
-        const res = _origUpdateSensorData.apply(this, args);
-        // если оригинал async — дождёмся
-        const status = (res && typeof res.then === 'function') ? await res : res;
-
-        // достаём payload /api/status
-        const data = status?.data ?? status;
-        if (data?.camera) {
-            updateCameraStatus(data.camera);   // ← вот здесь ты обновляешь оверлей
-        }
-        return status;
-    };
-}
-
 // ==================== МОДАЛЬНОЕ ОКНО ====================
 
 // Закрытие модального окна по Escape
 document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
-        closePhotoModal();
+        const modal = document.getElementById('photo-modal');
+        if (modal && modal.style.display === 'block') {
+            event.preventDefault();
+            event.stopPropagation(); // не отдаём наверх (в script.js)
+            closePhotoModal();
+        }
     }
 });
-
-// ==================== УТИЛИТЫ ====================
-
-// Функция для проверки доступности камеры
-function checkCameraAvailability() {
-    return fetch('/api/camera/status')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            return data.success && data.data.available && data.data.connected;
-        })
-        .catch(error => {
-            console.warn('Ошибка проверки камеры:', error.message);
-            return false;
-        });
-}
 
 console.log('🎥 Модуль управления камерой инициализирован');

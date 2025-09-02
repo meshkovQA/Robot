@@ -27,37 +27,6 @@ function setAiFpsFromTick(now) {
 
 // --- ОСНОВНЫЕ ФУНКЦИИ ---
 
-async function refreshAIDetection() {
-    try {
-        const resp = await fetch('/api/ai/detect');
-        const json = await resp.json();
-        if (!json.success) throw new Error(json.error || 'AI detect failed');
-
-        const payload = json.data || json; // поддержим обе формы
-        const detections = payload.detections || [];
-
-        updateDetectionDisplay(detections);
-        updateDetectionStats(detections);
-        updateSimpleDetection(detections);
-
-        const total = document.getElementById('ai-objects-count');
-        if (total) total.textContent = detections.length;
-
-        setAIDetectorStatus(true);
-        const ts = payload.ts ? payload.ts * 1000 : Date.now();
-        setAiLastUpdate(ts);
-        // FPS лучше приходит по SSE; оставим «оценку по тикам» как резерв:
-        setAiFpsFromTick(Date.now());
-
-        lastDetectionUpdate = Date.now();
-    } catch (e) {
-        console.error('AI detection error:', e);
-        setAIDetectorStatus(false);
-        const el = document.getElementById('ai-processing-fps');
-        if (el) el.textContent = 'AI: -- FPS';
-    }
-}
-
 function updateSimpleDetection(detections) {
     // НОВАЯ простая функция обновления
     const objectsContainer = document.getElementById('detected-objects-list');
@@ -262,52 +231,9 @@ function showAIFrameModal(frameBase64, detections = []) {
 }
 
 
-function startTelemetrySSE() {
-    try {
-        const es = new EventSource('/api/events');
-        es.onmessage = (ev) => {
-            const msg = JSON.parse(ev.data || '{}');
-
-            // камера: FPS, резолюция, connected
-            if (msg.camera) updateCameraStatus(msg.camera);
-
-            // AI: FPS + общий счётчик + "последнее обновление"
-            const aiFpsEl = document.getElementById('ai-processing-fps');
-            if (aiFpsEl && typeof msg.ai?.fps === 'number') {
-                aiFpsEl.textContent = `AI: ${msg.ai.fps.toFixed(1)} FPS`;
-            }
-            const total = document.getElementById('ai-objects-count');
-            if (total && typeof msg.ai?.count === 'number') {
-                total.textContent = msg.ai.count;
-            }
-            setAIDetectorStatus((msg.ai?.count ?? 0) > 0);
-            if (msg.ai?.last_ts) setAiLastUpdate(msg.ai.last_ts * 1000);
-        };
-        es.onerror = () => {
-            // можно показать предупреждение; браузер переподключится сам
-        };
-    } catch (e) {
-        console.warn('SSE init failed:', e);
-    }
-}
-
-// запусти сразу при загрузке
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startTelemetrySSE);
-} else {
-    startTelemetrySSE();
-}
-
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 function initializeAIDetector() {
-    console.log('🔍 Инициализация AI детектора...');
-
-    // Первое обновление
-    setTimeout(refreshAIDetection, 1000);
-
-    // Запускаем автообновление
-    startAutoUpdate();
 
     console.log('✅ AI детектор инициализирован');
 }
@@ -322,5 +248,4 @@ if (document.readyState === 'loading') {
 console.log('🔍 AI Detector модуль загружен');
 
 window.toggleAIStream = toggleAIStream;
-window.refreshAIDetection = refreshAIDetection;
 window.getAIFrame = getAIFrame;

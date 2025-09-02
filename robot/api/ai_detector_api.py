@@ -13,16 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 def add_ai_detector_routes(bp: Blueprint, *, ai_detector, camera, ai_runtime, ok, err):
-    @bp.route("/ai/detect", methods=["GET"])
-    def ai_detect():
-        if not ai_runtime:
-            return err("AI runtime недоступен", 503)
-        return ok({
-            "detections": ai_runtime.last_detections,
-            "ai_fps": ai_runtime.ai_fps,
-            "ts": ai_runtime.last_ts,
-        })
-
     @bp.route("/ai/annotated_frame", methods=["GET"])
     def ai_annotated_frame():
         """Получить кадр с аннотациями AI"""
