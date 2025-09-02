@@ -25,8 +25,8 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     "error": "Камера недоступна"
                 }), 400
 
-            # Получаем кадр
-            frame = camera.get_frame()
+            # Получаем кадр (ИСПРАВЛЕНО)
+            frame = camera.capture_frame()  # вместо get_frame()
             if frame is None:
                 return jsonify({
                     "success": False,
@@ -60,8 +60,8 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     "error": "Камера недоступна"
                 }), 400
 
-            # Получаем кадр
-            frame = camera.get_frame()
+            # Получаем кадр (ИСПРАВЛЕНО)
+            frame = camera.capture_frame()  # вместо get_frame()
             if frame is None:
                 return jsonify({
                     "success": False,
@@ -70,7 +70,8 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
 
             # Детекция и отрисовка
             detections = ai_detector.detect_objects(frame)
-            annotated_frame = ai_detector.draw_detections(frame, detections)
+            annotated_frame = ai_detector.draw_detections(
+                frame.copy(), detections)
 
             # Кодируем в base64
             encode_param = [cv2.IMWRITE_JPEG_QUALITY, 80]
@@ -107,7 +108,8 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     if not camera:
                         break
 
-                    frame = camera.get_frame()
+                    # ИСПРАВЛЕНО
+                    frame = camera.capture_frame()  # вместо get_frame()
                     if frame is None:
                         time.sleep(0.1)
                         continue
@@ -115,7 +117,7 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     # Детекция и отрисовка
                     detections = ai_detector.detect_objects(frame)
                     annotated_frame = ai_detector.draw_detections(
-                        frame, detections)
+                        frame.copy(), detections)
 
                     # Кодируем
                     encode_param = [cv2.IMWRITE_JPEG_QUALITY, 70]
