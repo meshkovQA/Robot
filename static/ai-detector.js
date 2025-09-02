@@ -7,11 +7,15 @@ function setAIDetectorStatus(on) {
     const dot = document.getElementById('ai-detector-status');
     if (dot) dot.classList.toggle('active', !!on);
 }
+
 function setAiLastUpdate(ts = Date.now()) {
     const fmt = new Date(ts).toLocaleTimeString();
-    document.getElementById('ai-last-update')?.innerText = fmt;
-    document.getElementById('last-update')?.innerText = fmt; // маленький таймстамп сверху
+    const el1 = document.getElementById('ai-last-update');
+    if (el1) el1.innerText = fmt;          // НЕЛЬЗЯ через ?.
+    const el2 = document.getElementById('last-update');
+    if (el2) el2.innerText = fmt;          // НЕЛЬЗЯ через ?.
 }
+
 function setAiFpsFromTick(now) {
     if (!lastAiTick) { lastAiTick = now; return; }
     const dt = (now - lastAiTick) / 1000;
@@ -21,37 +25,37 @@ function setAiFpsFromTick(now) {
     if (el) el.textContent = `AI: ${fps.toFixed(1)} FPS`;
 }
 
-// ==================== ОСНОВНЫЕ ФУНКЦИИ ====================
+// --- ОСНОВНЫЕ ФУНКЦИИ ---
 
 async function refreshAIDetection() {
     try {
         const resp = await fetch('/api/ai/detect');
         const json = await resp.json();
-
         if (!json.success) throw new Error(json.error || 'AI detect failed');
 
         const detections = json.detections || [];
 
-        updateDetectionDisplay(detections);   // уже есть
-        updateDetectionStats(detections);     // ВАЖНО: раньше не вызывалась
-        updateSimpleDetection(detections);    // если хотите оставить простой список — ок
+        updateDetectionDisplay(detections);
+        updateDetectionStats(detections);
+        updateSimpleDetection(detections);
 
-        // счетчик в шапке
         const total = document.getElementById('ai-objects-count');
         if (total) total.textContent = detections.length;
 
-        // индикатор + время + FPS
         setAIDetectorStatus(true);
         setAiLastUpdate(json.timestamp ? json.timestamp * 1000 : Date.now());
         setAiFpsFromTick(Date.now());
 
+        // чтобы таймер не дёргал часто
+        lastDetectionUpdate = Date.now();
+
     } catch (e) {
         console.error('AI detection error:', e);
         setAIDetectorStatus(false);
-        document.getElementById('ai-processing-fps')?.textContent = 'AI: -- FPS';
+        const el = document.getElementById('ai-processing-fps'); // НЕЛЬЗЯ через ?.
+        if (el) el.textContent = 'AI: -- FPS';
     }
 }
-
 function updateSimpleDetection(detections) {
     // НОВАЯ простая функция обновления
     const objectsContainer = document.getElementById('detected-objects-list');
@@ -258,7 +262,6 @@ function showAIFrameModal(frameBase64, detections = []) {
 // ==================== АВТООБНОВЛЕНИЕ ====================
 
 function startAutoUpdate() {
-    // Автоматическое обновление каждые 5 секунд
     setInterval(() => {
         if (Date.now() - lastDetectionUpdate > 5000) {
             refreshAIDetection();
@@ -288,3 +291,7 @@ if (document.readyState === 'loading') {
 }
 
 console.log('🔍 AI Detector модуль загружен');
+
+window.toggleAIStream = toggleAIStream;
+window.refreshAIDetection = refreshAIDetection;
+window.getAIFrame = getAIFrame;
