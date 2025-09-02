@@ -6,6 +6,7 @@ let isRecording = false;
 let recordingStartTime = 0;
 let recordingTimer = null;
 let currentFileTab = 'photos';
+let streamVersion = 0;
 
 // Элементы интерфейса камеры
 const cameraStatus = document.getElementById('camera-status');
@@ -154,50 +155,77 @@ function initializeVideoStream() {
     let cameraStream = document.getElementById('camera-stream');
     if (!cameraStream) { console.error('Элемент camera-stream не найден'); return; }
 
-    // гасим AI (если включён)
+    // выключаем AI, если был включён
     const aiStream = document.getElementById('ai-stream');
     if (aiStream && aiStream.style.display !== 'none') {
         hardStopImgStream(aiStream).style.display = 'none';
     }
 
+    // новая версия стрима
+    streamVersion++;
+    streamRetryCount = 0;                   // сброс ретраев
+    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
+
     console.log('Инициализация видеопотока...');
     const streamUrl = `/camera/stream?_t=${Date.now()}`;
 
-    cameraStream = hardStopImgStream(cameraStream); // здесь уже перевешены обработчики
+    cameraStream = hardStopImgStream(cameraStream); // клонируем узел (старые слушатели исчезают)
+    cameraStream = wireStreamEvents(cameraStream);  // навешиваем ровно 1 set onload/onerror
     cameraStream.style.display = 'block';
     cameraStream.src = streamUrl;
+
     console.log('Стрим URL установлен:', streamUrl);
 }
 
 
 function handleStreamError() {
-    const cameraStream = document.getElementById('camera-stream'); // <— берём свежий узел
-    console.warn(`Ошибка видеопотока (попытка ${streamRetryCount + 1}/${maxStreamRetries})`);
+    const img = document.getElementById('camera-stream');
+
+    // если уже ждём ретрай — не дублируем
+    if (streamRetryTimeout) return;
+
+    const attempt = streamRetryCount + 1;
+    console.warn(`Ошибка видеопотока (попытка ${attempt}/${maxStreamRetries})`);
+
     cameraConnected = false;
     updateCameraStatusIndicator(false);
 
-    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
-    if (cameraStream) cameraStream.src = '';
+    // закрываем текущее соединение
+    if (img) img.src = '';
 
-    if (streamRetryCount < maxStreamRetries) {
-        streamRetryCount++;
-        const delay = 5000;
-        console.log(`Попытка переподключения через ${delay}ms`);
-        streamRetryTimeout = setTimeout(() => {
-            streamRetryTimeout = null;
-            initializeVideoStream();
-        }, delay);
-    } else {
+    if (streamRetryCount >= maxStreamRetries) {
         console.error('Максимальное количество попыток переподключения исчерпано');
         showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
-        if (cameraStream) cameraStream.src = '/static/no-camera.svg';
+        if (img) img.src = '/static/no-camera.svg';
+        return;
     }
+
+    streamRetryCount++;
+    const delay = 5000;
+    console.log(`Попытка переподключения через ${delay}ms`);
+    streamRetryTimeout = setTimeout(() => {
+        streamRetryTimeout = null;
+        initializeVideoStream();
+    }, delay);
 }
 
 function wireStreamEvents(img) {
     if (!img) return img;
-    img.addEventListener('error', handleStreamError);
-    img.addEventListener('load', handleStreamLoad);
+    // убираем любые старые обработчики
+    img.onload = null;
+    img.onerror = null;
+
+    const myVersion = streamVersion; // «прикалываем» версию к этому узлу
+
+    img.onload = () => {
+        // игнорим, если это событие от старого узла/версии
+        if (myVersion !== streamVersion) return;
+        handleStreamLoad();
+    };
+    img.onerror = () => {
+        if (myVersion !== streamVersion) return;
+        handleStreamError();
+    };
     return img;
 }
 
