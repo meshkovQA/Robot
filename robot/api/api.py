@@ -5,7 +5,7 @@ import logging
 import signal
 import time
 from datetime import datetime
-from flask import Flask, Blueprint, jsonify, request, render_template, Response
+from flask import Flask, Blueprint, app, jsonify, request, render_template, Response
 from flask_cors import CORS  # ДОБАВЛЯЕМ CORS
 from pathlib import Path
 
@@ -151,6 +151,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
         return render_template("index.html")
 
     # === SSE /api/events — единый канал телеметрии ===
+
     @app.route("/api/events", methods=["GET"])
     def events():
         def gen():
@@ -159,13 +160,20 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                     robot_status = app.robot.get_status() if hasattr(
                         app, "robot") and app.robot else {}
                     cam_status = app.camera.get_status() if app.camera else {}
+
                     ai_block = {
                         "fps": (ai_runtime.ai_fps if ai_runtime else 0.0),
                         "count": (len(ai_runtime.last_detections) if ai_runtime else 0),
                         "last_ts": (ai_runtime.last_ts if ai_runtime else 0.0),
+                        "detections": ai_runtime.last_detections if ai_runtime else [],
                     }
-                    payload = {"ts": time.time(), "robot": robot_status,
-                               "camera": cam_status, "ai": ai_block}
+
+                    payload = {
+                        "ts": time.time(),
+                        "robot": robot_status,
+                        "camera": cam_status,
+                        "ai": ai_block
+                    }
                     yield f"data: {json.dumps(payload)}\n\n"
                     time.sleep(0.5)  # 2 Гц
                 except GeneratorExit:
@@ -173,8 +181,16 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                 except Exception as e:
                     logger.error("SSE error: %s", e)
                     time.sleep(1.0)
-        return Response(gen(), mimetype="text/event-stream",
-                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no', 'Access-Control-Allow-Origin': '*'})
+
+        return Response(
+            gen(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
 
     # ==================== API МАРШРУТЫ ДВИЖЕНИЯ ====================
 
