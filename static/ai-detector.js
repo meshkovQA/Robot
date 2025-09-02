@@ -5,22 +5,16 @@ let lastDetectionUpdate = 0;
 // ==================== ОСНОВНЫЕ ФУНКЦИИ ====================
 
 async function refreshAIDetection() {
-    // Обновление данных детекции
+    // Принудительное обновление AI данных (ИСПРАВЛЕНО)
     try {
-        showAlert('🔄 Обновление AI детекции...', 'info');
+        showAlert('🔄 Обновление AI данных...', 'info');
 
-        const response = await fetch('/api/ai/detect');
+        const response = await fetch('/api/ai/detect');  // НОВЫЙ ENDPOINT
         const data = await response.json();
 
         if (data.success) {
-            updateDetectionDisplay(data.detections);
-            updateDetectionStats(data.detections);
-            lastDetectionUpdate = Date.now();
-
-            document.getElementById('ai-last-update').textContent =
-                new Date().toLocaleTimeString();
-
-            showAlert('✅ AI детекция обновлена', 'success');
+            updateSimpleDetection(data.detections);  // УПРОЩЕННАЯ ФУНКЦИЯ
+            showAlert('✅ AI данные обновлены', 'success');
         } else {
             showAlert(`❌ Ошибка детекции: ${data.error}`, 'danger');
         }
@@ -28,6 +22,37 @@ async function refreshAIDetection() {
         console.error('AI detection error:', error);
         showAlert('❌ Ошибка соединения с AI детекцией', 'danger');
     }
+}
+
+function updateSimpleDetection(detections) {
+    // НОВАЯ простая функция обновления
+    const objectsContainer = document.getElementById('detected-objects-list');
+    if (!objectsContainer) return;
+
+    if (!detections || detections.length === 0) {
+        objectsContainer.innerHTML = '<span class="badge text-bg-secondary">Объекты не обнаружены</span>';
+        return;
+    }
+
+    // Группируем объекты по классам
+    const grouped = {};
+    detections.forEach(det => {
+        const className = det.class_name;
+        if (!grouped[className]) grouped[className] = 0;
+        grouped[className]++;
+    });
+
+    // Создаем бейджи
+    const badges = Object.entries(grouped).map(([className, count]) => {
+        const displayCount = count > 1 ? ` (${count})` : '';
+        return `<span class="badge text-bg-primary">${className}${displayCount}</span>`;
+    }).join(' ');
+
+    objectsContainer.innerHTML = badges;
+
+    // Обновляем общий счетчик
+    const totalCount = document.getElementById('ai-objects-count');
+    if (totalCount) totalCount.textContent = detections.length;
 }
 
 async function getAIFrame() {
