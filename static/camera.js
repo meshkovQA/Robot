@@ -1,12 +1,22 @@
 // camera.js - Упрощенная версия для стабильной работы камеры
 
+const STREAMS = {
+    normal: '/camera/stream',
+    ai: '/api/ai/stream?fps=12&scale=0.75&quality=70'
+};
+
 // Глобальные переменные камеры
 let cameraConnected = false;
 let isRecording = false;
 let recordingStartTime = 0;
 let recordingTimer = null;
 let currentFileTab = 'photos';
-let streamVersion = 0;
+
+let currentStream = 'normal';
+let isSwitching = false;
+let retryTimer = null;
+let retries = 0;
+const MAX_RETRIES = 3
 
 // Элементы интерфейса камеры
 const cameraStatus = document.getElementById('camera-status');
@@ -14,10 +24,6 @@ const recordingIndicator = document.getElementById('recording-indicator');
 const recordingTime = document.getElementById('recording-time');
 const recordBtn = document.getElementById('record-btn');
 
-// Переменные для стрима
-let streamRetryCount = 0;
-const maxStreamRetries = 3;
-let streamRetryTimeout = null;
 
 // ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
@@ -151,137 +157,72 @@ function refreshCamera() {
 
 // ==================== УПРОЩЕННОЕ УПРАВЛЕНИЕ ВИДЕОПОТОКОМ ====================
 
-function initializeVideoStream() {
-    let cameraStream = document.getElementById('camera-stream');
-    if (!cameraStream) { console.error('Элемент camera-stream не найден'); return; }
+function setStream(kind) {
+    const img = document.getElementById('video-stream');
+    if (!img) { console.error('video-stream not found'); return; }
 
-    // выключаем AI, если был включён
-    const aiStream = document.getElementById('ai-stream');
-    if (aiStream && aiStream.style.display !== 'none') {
-        hardStopImgStream(aiStream).style.display = 'none';
-    }
+    if (isSwitching) return;
+    isSwitching = true;
 
-    // новая версия стрима
-    streamVersion++;
-    streamRetryCount = 0;                   // сброс ретраев
-    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
+    // Сбросим предыдущий ретрай
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
 
-    console.log('Инициализация видеопотока...');
-    const streamUrl = `/camera/stream?_t=${Date.now()}`;
+    currentStream = kind;
+    retries = 0;
 
-    cameraStream = hardStopImgStream(cameraStream); // клонируем узел (старые слушатели исчезают)
-    cameraStream = wireStreamEvents(cameraStream);  // навешиваем ровно 1 set onload/onerror
-    cameraStream.style.display = 'block';
-    cameraStream.src = streamUrl;
-
-    console.log('Стрим URL установлен:', streamUrl);
-}
-
-
-function handleStreamError() {
-    const img = document.getElementById('camera-stream');
-
-    // если уже ждём ретрай — не дублируем
-    if (streamRetryTimeout) return;
-
-    const attempt = streamRetryCount + 1;
-    console.warn(`Ошибка видеопотока (попытка ${attempt}/${maxStreamRetries})`);
-
-    cameraConnected = false;
-    updateCameraStatusIndicator(false);
-
-    // закрываем текущее соединение
-    if (img) img.src = '';
-
-    if (streamRetryCount >= maxStreamRetries) {
-        console.error('Максимальное количество попыток переподключения исчерпано');
-        showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
-        if (img) img.src = '/static/no-camera.svg';
-        return;
-    }
-
-    streamRetryCount++;
-    const delay = 5000;
-    console.log(`Попытка переподключения через ${delay}ms`);
-    streamRetryTimeout = setTimeout(() => {
-        streamRetryTimeout = null;
-        initializeVideoStream();
-    }, delay);
-}
-
-function wireStreamEvents(img) {
-    if (!img) return img;
-    // убираем любые старые обработчики
+    // 1) Жёстко обнуляем src, чтобы закрыть соединение
     img.onload = null;
     img.onerror = null;
+    img.src = '';
 
-    const myVersion = streamVersion; // «прикалываем» версию к этому узлу
-
+    // 2) Навешиваем простые «одноразовые» обработчики
     img.onload = () => {
-        // игнорим, если это событие от старого узла/версии
-        if (myVersion !== streamVersion) return;
-        handleStreamLoad();
+        isSwitching = false;
+        cameraConnected = true;
+        updateCameraStatusIndicator(true);
+        retries = 0;
+        // console.log('stream loaded');
     };
     img.onerror = () => {
-        if (myVersion !== streamVersion) return;
-        handleStreamError();
+        cameraConnected = false;
+        updateCameraStatusIndicator(false);
+        if (retries >= MAX_RETRIES) {
+            isSwitching = false;
+            showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
+            img.src = '/static/no-camera.svg';
+            return;
+        }
+        retries++;
+        retryTimer = setTimeout(() => {
+            retryTimer = null;
+            // повторная подстановка
+            img.src = STREAMS[currentStream] + (STREAMS[currentStream].includes('?') ? '&' : '?') + '_t=' + Date.now();
+        }, 1000);
     };
-    return img;
+
+    // 3) Чуть подождём и поставим новый src
+    setTimeout(() => {
+        const url = STREAMS[kind] + (STREAMS[kind].includes('?') ? '&' : '?') + '_t=' + Date.now();
+        img.src = url;
+    }, 80);
 }
 
-function handleStreamLoad() {
-    console.log('✅ Видеопоток успешно загружен');
-    streamRetryCount = 0;
-    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
-    cameraConnected = true;
-    updateCameraStatusIndicator(true);
+
+function initializeVideoStream() {
+    setStream('normal');
 }
 
-function hardStopImgStream(imgEl) {
-    if (!imgEl) return null;
-    try {
-        imgEl.src = '';
-        imgEl.removeAttribute('src');
-    } catch (e) { }
-
-    const clone = imgEl.cloneNode(false);
-    // если это наш основной стрим — сразу вернём с обработчиками
-    imgEl.replaceWith(clone);
-    if (clone.id === 'camera-stream') wireStreamEvents(clone);
-    return clone;
-}
 
 
 function toggleAIStream() {
-    let normalStream = document.getElementById('camera-stream');
-    let aiStream = document.getElementById('ai-stream');
     const btn = document.getElementById('ai-stream-btn');
-    if (!aiStream) return showAlert('❌ AI видеопоток недоступен', 'danger');
-
-    const aiIsOff = normalStream.style.display !== 'none';
-
-    if (aiIsOff) {
-        normalStream = hardStopImgStream(normalStream);
-        normalStream.style.display = 'none';
-
-        aiStream = hardStopImgStream(aiStream);
-        aiStream.style.display = 'block';
-        aiStream.src = `/api/ai/stream?fps=12&scale=0.75&quality=70&_t=${Date.now()}`;
-
-        btn.textContent = '📹 Обычное видео';
-        btn.className = 'btn btn-sm btn-info';
+    if (currentStream === 'normal') {
+        setStream('ai');
+        if (btn) { btn.textContent = '📹 Обычное видео'; btn.className = 'btn btn-sm btn-info'; }
         showAlert('🔮 AI аннотации включены', 'info');
     } else {
-        aiStream = hardStopImgStream(aiStream);
-        aiStream.style.display = 'none';
-
-        normalStream = hardStopImgStream(normalStream);
-        normalStream = wireStreamEvents(normalStream); // <— ВАЖНО
-        normalStream.style.display = 'block';
-        normalStream.src = `/camera/stream?_t=${Date.now()}`;
-
-        btn.textContent = '🔮 AI Аннотации';
-        btn.className = 'btn btn-sm btn-outline-info';
+        setStream('normal');
+        if (btn) { btn.textContent = '🔮 AI Аннотации'; btn.className = 'btn btn-sm btn-outline-info'; }
         showAlert('📹 Обычное видео восстановлено', 'info');
     }
 }
@@ -602,14 +543,7 @@ document.addEventListener('keydown', function (event) {
 
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🎥 Модуль камеры загружен');
-
-
-    const el = document.getElementById('camera-stream');
-    if (!el) { console.error('Элемент camera-stream не найден в DOM'); return; }
-
-    wireStreamEvents(el);              // <— вместо прямых addEventListener на старый узел
-    setTimeout(() => initializeVideoStream(), 2000);
-    // Показываем подсказки
+    initializeVideoStream();
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
     }, 5000);
@@ -629,20 +563,15 @@ document.addEventListener('keydown', function (event) {
     }
 });
 
+// На выгрузке/сворачивании — закрыть длинный запрос
 window.addEventListener('beforeunload', () => {
-    const cam = document.getElementById('camera-stream');
-    const ai = document.getElementById('ai-stream');
-    if (cam) hardStopImgStream(cam);
-    if (ai) hardStopImgStream(ai);
+    const img = document.getElementById('video-stream');
+    if (img) img.src = '';
 });
-
-document.addEventListener('visibilitychange', function () {
+document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-        // при сворачивании вкладки лучше разорвать длинные коннекты
-        const cam = document.getElementById('camera-stream');
-        const ai = document.getElementById('ai-stream');
-        if (cam) hardStopImgStream(cam);
-        if (ai) hardStopImgStream(ai);
+        const img = document.getElementById('video-stream');
+        if (img) img.src = '';
     }
 });
 
