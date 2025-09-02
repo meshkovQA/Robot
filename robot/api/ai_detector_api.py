@@ -8,6 +8,7 @@ import base64
 import cv2
 import time
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,22 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     "error": "Камера недоступна"
                 }), 400
 
-            # Получаем кадр (ИСПРАВЛЕНО)
-            frame = camera.capture_frame()  # вместо get_frame()
-            if frame is None:
+            # Получаем JPEG кадр и декодируем в numpy array
+            jpeg_data = camera.get_frame_jpeg()
+            if jpeg_data is None:
                 return jsonify({
                     "success": False,
                     "error": "Нет кадров с камеры"
+                }), 400
+
+            # Декодируем JPEG в numpy array
+            nparr = np.frombuffer(jpeg_data, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                return jsonify({
+                    "success": False,
+                    "error": "Ошибка декодирования кадра"
                 }), 400
 
             # Детекция
@@ -60,12 +71,22 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     "error": "Камера недоступна"
                 }), 400
 
-            # Получаем кадр (ИСПРАВЛЕНО)
-            frame = camera.capture_frame()  # вместо get_frame()
-            if frame is None:
+            # Получаем JPEG кадр и декодируем в numpy array
+            jpeg_data = camera.get_frame_jpeg()
+            if jpeg_data is None:
                 return jsonify({
                     "success": False,
                     "error": "Нет кадров с камеры"
+                }), 400
+
+            # Декодируем JPEG в numpy array
+            nparr = np.frombuffer(jpeg_data, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                return jsonify({
+                    "success": False,
+                    "error": "Ошибка декодирования кадра"
                 }), 400
 
             # Детекция и отрисовка
@@ -108,8 +129,16 @@ def add_ai_detector_routes(bp: Blueprint, ai_detector, camera):
                     if not camera:
                         break
 
-                    # ИСПРАВЛЕНО
-                    frame = camera.capture_frame()  # вместо get_frame()
+                    # Получаем JPEG кадр и декодируем
+                    jpeg_data = camera.get_frame_jpeg()
+                    if jpeg_data is None:
+                        time.sleep(0.1)
+                        continue
+
+                    # Декодируем в numpy array
+                    nparr = np.frombuffer(jpeg_data, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
                     if frame is None:
                         time.sleep(0.1)
                         continue

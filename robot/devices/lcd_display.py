@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import threading
 import logging
+import smbus2
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -378,7 +379,6 @@ class RobotLCDDisplay:
                 if self.lcd is None:
                     try:
                         if self.bus is None:
-                            import smbus2
                             bus_num = self.bus_num if self.bus_num is not None else 1
                             if self.debug:
                                 logger.debug(
