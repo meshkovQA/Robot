@@ -275,6 +275,63 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             **robot.get_status()
         })
 
+    # ==================== RGB УПРАВЛЕНИЕ ====================
+
+    @bp.route("/rgb/color", methods=["POST"])
+    def set_rgb_color():
+        """Установить RGB цвет"""
+        data = request.get_json() or {}
+
+        try:
+            red = int(data.get("red", 0))
+            green = int(data.get("green", 0))
+            blue = int(data.get("blue", 0))
+        except (TypeError, ValueError):
+            return err("Неверный формат RGB значений", 400)
+
+        success = robot.set_rgb_color(red, green, blue)
+
+        return ok({
+            "command": "set_rgb_color",
+            "rgb": {"red": red, "green": green, "blue": blue},
+            "success": success
+        })
+
+    @bp.route("/rgb/preset", methods=["POST"])
+    def set_rgb_preset():
+        """Установить предустановленный цвет"""
+        data = request.get_json() or {}
+        preset = data.get("preset", "").lower()
+
+        if not preset:
+            return err("Не указан preset", 400)
+
+        success = robot.set_rgb_preset(preset)
+
+        return ok({
+            "command": "set_rgb_preset",
+            "preset": preset,
+            "success": success
+        })
+
+    @bp.route("/rgb/presets", methods=["GET"])
+    def get_rgb_presets():
+        """Получить список предустановок RGB"""
+        presets = {
+            'red': {'name': 'Красный', 'rgb': [255, 0, 0]},
+            'green': {'name': 'Зеленый', 'rgb': [0, 255, 0]},
+            'blue': {'name': 'Синий', 'rgb': [0, 0, 255]},
+            'white': {'name': 'Белый', 'rgb': [255, 255, 255]},
+            'yellow': {'name': 'Желтый', 'rgb': [255, 255, 0]},
+            'purple': {'name': 'Фиолетовый', 'rgb': [255, 0, 255]},
+            'cyan': {'name': 'Голубой', 'rgb': [0, 255, 255]},
+            'orange': {'name': 'Оранжевый', 'rgb': [255, 165, 0]},
+            'pink': {'name': 'Розовый', 'rgb': [255, 192, 203]},
+            'off': {'name': 'Выключен', 'rgb': [0, 0, 0]}
+        }
+
+        return ok({"presets": presets})
+
     # ==================== УПРАВЛЕНИЕ КАМЕРОЙ ====================
 
     @bp.route("/camera/pan", methods=["POST"])
