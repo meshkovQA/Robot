@@ -1,0 +1,13 @@
+flask>=2.3.0
+gunicorn>=20.1.0
+requests
+python-dotenv
+numpy
+smbus2
+opencv-python
+flask-cors
+ultralytics
+torch
+torchvision
+cv2
+sys
