@@ -8,7 +8,6 @@ let recordingTimer = null;
 let currentFileTab = 'photos';
 
 // Элементы интерфейса камеры
-const cameraStream = document.getElementById('camera-stream');
 const cameraStatus = document.getElementById('camera-status');
 const recordingIndicator = document.getElementById('recording-indicator');
 const recordingTime = document.getElementById('recording-time');
@@ -152,42 +151,33 @@ function refreshCamera() {
 // ==================== УПРОЩЕННОЕ УПРАВЛЕНИЕ ВИДЕОПОТОКОМ ====================
 
 function initializeVideoStream() {
-    if (!cameraStream) {
-        console.error('Элемент camera-stream не найден');
-        return;
-    }
+    let cameraStream = document.getElementById('camera-stream');
+    if (!cameraStream) { console.error('Элемент camera-stream не найден'); return; }
 
-    // если уже идёт тот же стрим — не пересоздаём коннект
-    if (cameraStream.src && cameraStream.src.includes('/camera/stream')) {
-        console.log('Стрим уже активен, повторный запуск не требуется');
-        return;
+    // гасим AI (если включён)
+    const aiStream = document.getElementById('ai-stream');
+    if (aiStream && aiStream.style.display !== 'none') {
+        hardStopImgStream(aiStream).style.display = 'none';
     }
 
     console.log('Инициализация видеопотока...');
     const streamUrl = `/camera/stream?_t=${Date.now()}`;
 
-    // аккуратно закрываем предыдущий коннект (если был)
-    cameraStream.src = '';
-    // маленькая пауза помогает Safari корректно разорвать соединение
-    setTimeout(() => {
-        cameraStream.src = streamUrl;
-        console.log('Стрим URL установлен:', streamUrl);
-    }, 0);
+    cameraStream = hardStopImgStream(cameraStream); // здесь уже перевешены обработчики
+    cameraStream.style.display = 'block';
+    cameraStream.src = streamUrl;
+    console.log('Стрим URL установлен:', streamUrl);
 }
 
-function handleStreamError() {
-    console.warn(`Ошибка видеопотока (попытка ${streamRetryCount + 1}/${maxStreamRetries})`);
 
+function handleStreamError() {
+    const cameraStream = document.getElementById('camera-stream'); // <— берём свежий узел
+    console.warn(`Ошибка видеопотока (попытка ${streamRetryCount + 1}/${maxStreamRetries})`);
     cameraConnected = false;
     updateCameraStatusIndicator(false);
 
-    if (streamRetryTimeout) {
-        clearTimeout(streamRetryTimeout);
-        streamRetryTimeout = null;
-    }
-
-    // закрыть текущее соединение наверняка
-    cameraStream.src = '';
+    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
+    if (cameraStream) cameraStream.src = '';
 
     if (streamRetryCount < maxStreamRetries) {
         streamRetryCount++;
@@ -200,22 +190,72 @@ function handleStreamError() {
     } else {
         console.error('Максимальное количество попыток переподключения исчерпано');
         showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
-        cameraStream.src = '/static/no-camera.svg';
+        if (cameraStream) cameraStream.src = '/static/no-camera.svg';
     }
+}
+
+function wireStreamEvents(img) {
+    if (!img) return img;
+    img.addEventListener('error', handleStreamError);
+    img.addEventListener('load', handleStreamLoad);
+    return img;
 }
 
 function handleStreamLoad() {
     console.log('✅ Видеопоток успешно загружен');
-
-    // Сбрасываем счетчики при успешной загрузке
     streamRetryCount = 0;
-    if (streamRetryTimeout) {
-        clearTimeout(streamRetryTimeout);
-        streamRetryTimeout = null;
-    }
-
+    if (streamRetryTimeout) { clearTimeout(streamRetryTimeout); streamRetryTimeout = null; }
     cameraConnected = true;
     updateCameraStatusIndicator(true);
+}
+
+function hardStopImgStream(imgEl) {
+    if (!imgEl) return null;
+    try {
+        imgEl.src = '';
+        imgEl.removeAttribute('src');
+    } catch (e) { }
+
+    const clone = imgEl.cloneNode(false);
+    // если это наш основной стрим — сразу вернём с обработчиками
+    imgEl.replaceWith(clone);
+    if (clone.id === 'camera-stream') wireStreamEvents(clone);
+    return clone;
+}
+
+
+function toggleAIStream() {
+    let normalStream = document.getElementById('camera-stream');
+    let aiStream = document.getElementById('ai-stream');
+    const btn = document.getElementById('ai-stream-btn');
+    if (!aiStream) return showAlert('❌ AI видеопоток недоступен', 'danger');
+
+    const aiIsOff = normalStream.style.display !== 'none';
+
+    if (aiIsOff) {
+        normalStream = hardStopImgStream(normalStream);
+        normalStream.style.display = 'none';
+
+        aiStream = hardStopImgStream(aiStream);
+        aiStream.style.display = 'block';
+        aiStream.src = `/api/ai/stream?fps=12&scale=0.75&quality=70&_t=${Date.now()}`;
+
+        btn.textContent = '📹 Обычное видео';
+        btn.className = 'btn btn-sm btn-info';
+        showAlert('🔮 AI аннотации включены', 'info');
+    } else {
+        aiStream = hardStopImgStream(aiStream);
+        aiStream.style.display = 'none';
+
+        normalStream = hardStopImgStream(normalStream);
+        normalStream = wireStreamEvents(normalStream); // <— ВАЖНО
+        normalStream.style.display = 'block';
+        normalStream.src = `/camera/stream?_t=${Date.now()}`;
+
+        btn.textContent = '🔮 AI Аннотации';
+        btn.className = 'btn btn-sm btn-outline-info';
+        showAlert('📹 Обычное видео восстановлено', 'info');
+    }
 }
 
 // ==================== УПРАВЛЕНИЕ ФАЙЛАМИ ====================
@@ -535,19 +575,12 @@ document.addEventListener('keydown', function (event) {
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🎥 Модуль камеры загружен');
 
-    if (!cameraStream) {
-        console.error('Элемент camera-stream не найден в DOM');
-        return;
-    }
 
-    // Простые обработчики событий
-    cameraStream.addEventListener('error', handleStreamError);
-    cameraStream.addEventListener('load', handleStreamLoad);
+    const el = document.getElementById('camera-stream');
+    if (!el) { console.error('Элемент camera-stream не найден в DOM'); return; }
 
-    setTimeout(() => {
-        initializeVideoStream();
-    }, 2000);
-
+    wireStreamEvents(el);              // <— вместо прямых addEventListener на старый узел
+    setTimeout(() => initializeVideoStream(), 2000);
     // Показываем подсказки
     setTimeout(() => {
         showAlert('Камера: P - фото, R - запись, F - обновить файлы', 'success');
@@ -565,6 +598,23 @@ document.addEventListener('keydown', function (event) {
             event.stopPropagation(); // не отдаём наверх (в script.js)
             closePhotoModal();
         }
+    }
+});
+
+window.addEventListener('beforeunload', () => {
+    const cam = document.getElementById('camera-stream');
+    const ai = document.getElementById('ai-stream');
+    if (cam) hardStopImgStream(cam);
+    if (ai) hardStopImgStream(ai);
+});
+
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+        // при сворачивании вкладки лучше разорвать длинные коннекты
+        const cam = document.getElementById('camera-stream');
+        const ai = document.getElementById('ai-stream');
+        if (cam) hardStopImgStream(cam);
+        if (ai) hardStopImgStream(ai);
     }
 });
 

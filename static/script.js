@@ -439,4 +439,4 @@ document.addEventListener('DOMContentLoaded', function () {
     startTelemetrySSE_All();
 
     showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
-}); в
+});
