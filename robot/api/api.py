@@ -13,7 +13,7 @@ from robot.ai_vision.ai_runtime import AIVisionRuntime
 import json
 from robot.controller import RobotController
 from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
-from robot.heading_controller import HeadingHoldService
+from robot.controllers.heading_controller import HeadingHoldService
 from robot.ai_vision.simple_ai_detector import SimpleAIDetector
 from robot.api.ai_detector_api import add_ai_detector_routes
 from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, STATIC_DIR, TEMPLATES_DIR
