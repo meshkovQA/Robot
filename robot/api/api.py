@@ -139,9 +139,32 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     @app.before_request
     def _auth():
+        # 1) Разрешаем preflight без ключа и с правильными заголовками
+        if request.method == "OPTIONS":
+            resp = app.make_default_options_response()
+            # Гарантируем CORS-заголовки для preflight
+            h = resp.headers
+            h['Access-Control-Allow-Origin'] = request.headers.get(
+                'Origin', '*')
+            h['Vary'] = 'Origin'
+            h['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+            h['Access-Control-Allow-Headers'] = request.headers.get(
+                'Access-Control-Request-Headers',
+                'Content-Type, X-API-Key'
+            )
+            # (по желанию) время кэширования preflight
+            h['Access-Control-Max-Age'] = '600'
+            return resp
+
+        # 2) Авторизация для остальных /api/*
         if API_KEY and request.path.startswith("/api/") and request.path not in EXEMPT_API_PATHS:
             if request.headers.get("X-API-Key") != API_KEY:
-                return err("unauthorized", 401)
+                # Вернём ответ с CORS, чтобы браузер его не игнорировал
+                resp = jsonify({"success": False, "error": "unauthorized",
+                                "timestamp": datetime.now().isoformat()})
+                resp.headers['Access-Control-Allow-Origin'] = request.headers.get(
+                    'Origin', '*')
+                return resp, 401
 
     # ==================== ГЛАВНАЯ СТРАНИЦА ====================
 
