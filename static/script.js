@@ -142,72 +142,6 @@ async function sendCommand(url, method, data = null) {
     }
 }
 
-// Обновление данных датчиков
-function updateSensorData() {
-    fetch('/api/status')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const status = data.data;
-
-                // Обновление индикаторов состояния
-                updateConnectionStatus(true);
-                updateMovementStatusIndicator(status.is_moving);
-                updateObstacleStatus(status.obstacles.front || status.obstacles.rear);
-
-                // Обновление состояния движения
-                const directionText = getDirectionText(status.movement_direction, status.is_moving);
-                updateMovementState(status.is_moving, directionText);
-
-                // Обновление датчиков расстояния
-                updateSensorDisplay('center-front', status.center_front_distance);
-                updateSensorDisplay('left-front', status.left_front_distance);
-                updateSensorDisplay('right-front', status.right_front_distance);
-                updateSensorDisplay('right-rear', status.right_rear_distance);
-                updateSensorDisplay('left-rear', status.left_rear_distance);
-
-                // Обновление температуры и влажности
-                updateEnvDisplay(status.temperature, status.humidity);
-
-                // Предупреждения о препятствиях - обновить для всех датчиков
-                updateObstacleWarnings(status.obstacles);
-
-                window.imuControl.updateIMUData(status);
-
-                // Обновление времени
-                const now = new Date();
-                document.getElementById('last-update').textContent = `Обновлено: ${now.toLocaleTimeString()}`;
-
-                // Обновление углов камеры
-                if (window.cameraControl) {
-                    window.cameraControl.updateAnglesFromStatus(status);
-                }
-
-                lastUpdateTime = Date.now();
-                obstacleDetected = status.obstacles.front || status.obstacles.rear;
-
-                if (!connectionActive) {
-                    showAlert('✅ Соединение восстановлено', 'success');
-                }
-
-                connectionActive = true;
-            } else {
-                updateConnectionStatus(false);
-                connectionActive = false;
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка получения статуса:', error);
-            updateConnectionStatus(false);
-
-            if (connectionActive) {
-                showAlert('Потеряно соединение с роботом. Переподключение...', 'danger');
-            }
-
-            connectionActive = false;
-        });
-}
-
 function getDirectionText(direction, isMoving) {
     if (!isMoving) return 'Остановлен';
 
@@ -299,6 +233,7 @@ function updateMovementStatusIndicator(moving) {
 function updateObstacleStatus(obstacles) {
     const el = document.getElementById('obstacle-status');
     if (!el) return;
+    // ожидали boolean — теперь подаём boolean (anyObstacle)
     el.classList.toggle('warning', !!obstacles);
 }
 
@@ -413,30 +348,88 @@ document.addEventListener('visibilitychange', function () {
     }
 });
 
+// Новый обработчик одного «среза» статуса
+function applyRobotStatus(status) {
+    if (!status) return;
+
+    updateConnectionStatus(true);
+    updateMovementStatusIndicator(status.is_moving);
+
+    // направление
+    const directionText = getDirectionText(status.movement_direction, status.is_moving);
+    updateMovementState(status.is_moving, directionText);
+
+    // дистанции
+    updateSensorDisplay('center-front', status.center_front_distance);
+    updateSensorDisplay('left-front', status.left_front_distance);
+    updateSensorDisplay('right-front', status.right_front_distance);
+    updateSensorDisplay('right-rear', status.right_rear_distance);
+    updateSensorDisplay('left-rear', status.left_rear_distance);
+
+    // окружение
+    updateEnvDisplay(status.temperature, status.humidity);
+
+    // препятствия (исправляем ошибку: раньше передавалось status.obstacles.front || rear — таких полей нет)
+    updateObstacleWarnings(status.obstacles);
+    const anyObstacle = Object.values(status.obstacles || {}).some(Boolean);
+    updateObstacleStatus(anyObstacle);
+
+    // IMU (защита от отсутствия модуля)
+    if (window.imuControl && typeof window.imuControl.updateIMUData === 'function') {
+        window.imuControl.updateIMUData(status);
+    }
+
+    // время обновления — просто время
+    const el = document.getElementById('last-update');
+    if (el) el.textContent = new Date().toLocaleTimeString();
+
+    // углы камеры, если есть контрол
+    if (window.cameraControl && typeof window.cameraControl.updateAnglesFromStatus === 'function') {
+        window.cameraControl.updateAnglesFromStatus(status);
+    }
+
+    lastUpdateTime = Date.now();
+    connectionActive = true;
+}
+
+// Подписка на SSE (можно оставить в ai-detector.js, но логичнее держать в одном месте)
+function startTelemetrySSE_All() {
+    const es = new EventSource('/api/events');
+    es.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data || '{}');
+        if (msg.robot) applyRobotStatus(msg.robot);
+        if (msg.camera) updateCameraStatus(msg.camera);
+        if (msg.ai) {
+            const aiFpsEl = document.getElementById('ai-processing-fps');
+            if (aiFpsEl && typeof msg.ai.fps === 'number') {
+                aiFpsEl.textContent = `AI: ${msg.ai.fps.toFixed(1)} FPS`;
+            }
+            const total = document.getElementById('ai-objects-count');
+            if (total && typeof msg.ai.count === 'number') {
+                total.textContent = msg.ai.count;
+            }
+            setAIDetectorStatus((msg.ai.count ?? 0) > 0);
+            if (msg.ai.last_ts) setAiLastUpdate(msg.ai.last_ts * 1000);
+        }
+    };
+    es.onerror = () => {
+        updateConnectionStatus(false);
+        // можно показать предупреждение; браузер будет пытаться переподключиться
+    };
+}
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🤖 Интерфейс управления роботом загружен');
+    console.log('🤖 UI загружен');
 
-    // Запуск периодического обновления данных каждые 500мс
-    setInterval(updateSensorData, 500);
+    // Переходим на SSE, без частого fetch('/api/status')
+    startTelemetrySSE_All();
 
-    // Первоначальное обновление
-    updateSensorData();
-
-    // Инициализация управления камерой
-    if (window.cameraControl) {
+    // Инициализация камеры
+    if (window.cameraControl?.init) {
         window.cameraControl.init();
         console.log('🎯 Управление камерой инициализировано');
     }
 
-    // Проверка соединения
-    setInterval(() => {
-        if (Date.now() - lastUpdateTime > 3000 && connectionActive) {
-            updateConnectionStatus(false);
-            showAlert('Потеряно соединение с роботом', 'danger');
-            connectionActive = false;
-        }
-    }, 1000);
-
-    showAlert('Управление: W/S - движение, A/D - повороты, Пробел - стоп', 'success');
+    showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
 });
