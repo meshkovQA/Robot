@@ -157,13 +157,22 @@ function initializeVideoStream() {
         return;
     }
 
+    // если уже идёт тот же стрим — не пересоздаём коннект
+    if (cameraStream.src && cameraStream.src.includes('/camera/stream')) {
+        console.log('Стрим уже активен, повторный запуск не требуется');
+        return;
+    }
+
     console.log('Инициализация видеопотока...');
-
-    // Простая установка источника стрима с кешбастингом
     const streamUrl = `/camera/stream?_t=${Date.now()}`;
-    cameraStream.src = streamUrl;
 
-    console.log('Стрим URL установлен:', streamUrl);
+    // аккуратно закрываем предыдущий коннект (если был)
+    cameraStream.src = '';
+    // маленькая пауза помогает Safari корректно разорвать соединение
+    setTimeout(() => {
+        cameraStream.src = streamUrl;
+        console.log('Стрим URL установлен:', streamUrl);
+    }, 0);
 }
 
 function handleStreamError() {
@@ -172,16 +181,17 @@ function handleStreamError() {
     cameraConnected = false;
     updateCameraStatusIndicator(false);
 
-    // Очищаем предыдущий таймер
     if (streamRetryTimeout) {
         clearTimeout(streamRetryTimeout);
         streamRetryTimeout = null;
     }
 
+    // закрыть текущее соединение наверняка
+    cameraStream.src = '';
+
     if (streamRetryCount < maxStreamRetries) {
         streamRetryCount++;
-        const delay = 5000; // Фиксированная задержка 5 секунд
-
+        const delay = 5000;
         console.log(`Попытка переподключения через ${delay}ms`);
         streamRetryTimeout = setTimeout(() => {
             streamRetryTimeout = null;
@@ -190,8 +200,6 @@ function handleStreamError() {
     } else {
         console.error('Максимальное количество попыток переподключения исчерпано');
         showAlert('Камера недоступна. Нажмите "🔄 Обновить"', 'danger');
-
-        // Показываем заглушку
         cameraStream.src = '/static/no-camera.svg';
     }
 }
@@ -535,6 +543,10 @@ document.addEventListener('DOMContentLoaded', function () {
     // Простые обработчики событий
     cameraStream.addEventListener('error', handleStreamError);
     cameraStream.addEventListener('load', handleStreamLoad);
+
+    setTimeout(() => {
+        initializeVideoStream();
+    }, 2000);
 
     // Показываем подсказки
     setTimeout(() => {
