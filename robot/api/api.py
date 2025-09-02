@@ -12,9 +12,8 @@ from pathlib import Path
 from robot.controller import RobotController
 from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
 from robot.heading_controller import HeadingHoldService
-from robot.ai_integration import AIRobotController
-from robot.ai_vision.home_ai_vision import HomeAIVision
-from robot.api.ai_api_extensions import add_ai_routes
+from robot.ai_vision.simple_ai_detector import SimpleAIDetector
+from robot.api.ai_detector_api import add_ai_detector_routes
 from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, STATIC_DIR, TEMPLATES_DIR
 from datetime import datetime
 from pathlib import Path
@@ -98,17 +97,16 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # ==================== AI ИНТЕГРАЦИЯ ====================
 
     # Создаем AI контроллер робота
-    ai_robot = AIRobotController(robot, camera)
+    ai_detector = None
 
     # Заменяем обычное AI зрение на домашнее
-    if camera and CAMERA_AVAILABLE:
+    if camera and CAMERA_AVAILABLE and not LIGHT_INIT:
         try:
-            home_ai_vision = HomeAIVision(camera)
-            ai_robot.ai_vision = home_ai_vision
-            ai_robot._setup_ai_callbacks()  # Переустанавливаем колбэки
-            logger.info("🏠 Домашнее AI зрение установлено")
+            ai_detector = SimpleAIDetector()
+            logger.info("✅ AI детектор инициализирован")
         except Exception as e:
-            logger.error(f"Ошибка инициализации домашнего AI: {e}")
+            logger.error(f"Ошибка инициализации AI детектора: {e}")
+            ai_detector = None
 
     # API Blueprint
     bp = Blueprint("api", __name__)
@@ -767,8 +765,9 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     # ==================== ДОБАВЛЯЕМ AI МАРШРУТЫ ====================
 
-    # Добавляем все AI API эндпоинты
-    add_ai_routes(bp, ai_robot)
+    # Добавляем простые AI маршруты
+    if ai_detector:
+        add_ai_detector_routes(bp, ai_detector, camera)
 
     # Регистрируем API blueprint
     app.register_blueprint(bp, url_prefix="/api")
@@ -793,18 +792,11 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def _graceful_shutdown(*_):
         logger.info("🔄 Завершение по сигналу...")
         try:
-            # Останавливаем AI системы
-            if ai_robot:
-                ai_robot.stop_ai()
 
             if heading:
                 heading.stop()
 
-            # Останавливаем базовый робот
-            if hasattr(ai_robot, 'robot'):
-                ai_robot.robot.shutdown()
-            else:
-                robot.shutdown()
+            robot.shutdown()
 
             if camera:
                 camera.stop()
@@ -818,8 +810,8 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     signal.signal(signal.SIGTERM, _graceful_shutdown)
 
     # Сохраняем ссылки на компоненты для доступа извне
-    app.robot = ai_robot.robot if ai_robot else robot
-    app.ai_robot = ai_robot
+    app.robot = robot
+    app.ai_detector = ai_detector
     app.camera = camera
 
     logger.info("🤖🧠 Flask приложение создано успешно с поддержкой AI и камеры")

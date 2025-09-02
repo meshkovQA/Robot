@@ -135,39 +135,33 @@ if [[ -f "$PROJECT_DIR/requirements.txt" ]]; then
     pip install -r "$PROJECT_DIR/requirements.txt"
 else
     pip install "flask>=2.3.0" "gunicorn>=20.1.0" "gevent>=1.4.0" \
-        requests python-dotenv numpy smbus2 opencv-python flask-cors \
-        scipy pillow scikit-image imutils || true
+    requests python-dotenv numpy opencv-python flask-cors \
+    ultralytics torch torchvision || true
 fi
 python3 - <<'PY' || true
 import cv2, sys
 print(f'✅ OpenCV {cv2.__version__} успешно импортирован')
 PY
 
-# --- загрузка AI моделей (как и раньше) ---
-info "🧠 Загрузка AI моделей для домашнего робота..."
+# --- загрузка YOLO 8 модели ---
+info "🧠 Загрузка YOLO 8 модели..."
 cd "$PROJECT_DIR/models/yolo"
-if [[ ! -f "yolov4-tiny.cfg" ]]; then
-    curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4-tiny.cfg" -o "yolov4-tiny.cfg"
-    ok "yolov4-tiny.cfg загружен"
+
+# Только YOLO 8 и классы COCO
+if [[ ! -f "yolov8n.pt" ]]; then
+    curl -L "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt" -o "yolov8n.pt"
+    ok "yolov8n.pt загружен"
 fi
+
 if [[ ! -f "coco.names" ]]; then
-    curl -L "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names" -o "coco.names" \
-      || curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names" -o "coco.names"
-    ok "coco.names загружен"
+    curl -L "https://raw.githubusercontent.com/ultralytics/ultralytics/main/ultralytics/cfg/datasets/coco.yaml" -o "coco_temp.yaml"
+    # Извлекаем только названия классов из YAML
+    grep -A 100 "names:" coco_temp.yaml | tail -n +2 | head -80 | sed 's/^[[:space:]]*[0-9]*:[[:space:]]*//' | sed "s/'//g" > "coco.names"
+    rm -f coco_temp.yaml
+    ok "coco.names создан для YOLO 8"
 fi
-if [[ ! -f "yolov4-tiny.weights" ]]; then
-    curl -L "https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4-tiny.weights" -o "yolov4-tiny.weights"
-    ok "yolov4-tiny.weights загружен"
-fi
-# опционально
-if [[ ! -f "yolov3-tiny.cfg" ]]; then
-    curl -L "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3-tiny.cfg" -o "yolov3-tiny.cfg" \
-      || curl -L "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov3-tiny.cfg" -o "yolov3-tiny.cfg" || true
-fi
-if [[ ! -f "yolov3-tiny.weights" ]]; then
-    curl -L "https://pjreddie.com/media/files/yolov3-tiny.weights" -o "yolov3-tiny.weights" || true
-fi
-ok "🧠 AI модели загружены"
+
+ok "🧠 YOLO 8 модель загружена"
 cd "$PROJECT_DIR"
 
 # --- файлы-заглушки/утилиты (создаём если отсутствуют) ---

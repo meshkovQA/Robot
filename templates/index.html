@@ -40,15 +40,12 @@
                 <span id="camera-status" class="status-indicator me-1"></span> Камера
               </span>
               <span class="badge text-bg-primary">
-                <span id="ai-vision-status" class="status-indicator me-1"></span> AI Зрение
+                <span id="ai-detector-status" class="status-indicator me-1"></span> AI Детекция
               </span>
             </div>
             <div class="d-flex flex-wrap gap-1 mt-1">
               <span class="badge text-bg-success">
                 <span id="ai-objects-count" class="me-1">0</span> объектов
-              </span>
-              <span class="badge text-bg-info">
-                <span id="ai-room-context">неизвестно</span>
               </span>
             </div>
             <div class="small text-muted mt-1">
@@ -284,110 +281,64 @@
         </ul>
 
         <div class="tab-content mt-3" id="main-tab-content">
-          
-          <!-- AI Управление -->
+
+          <!-- AI Детекция -->
           <div class="tab-pane fade show active" id="ai-pane" role="tabpanel">
             <div class="card">
               <div class="card-header d-flex align-items-center py-2">
-                🧠 AI Управление
-                <button class="btn btn-sm btn-outline-primary ms-auto" onclick="toggleAI()" id="ai-toggle-btn">
-                  🚀 Запустить AI
-                </button>
+                🔍 AI Детекция объектов
+                <div class="ms-auto d-flex gap-2">
+                  <button class="btn btn-sm btn-outline-success" onclick="refreshAIDetection()">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                  </button>
+                  <button class="btn btn-sm btn-outline-info" onclick="getAIFrame()">
+                    🖼️ Кадр с детекцией
+                  </button>
+                </div>
               </div>
               <div class="card-body">
-                <div class="row g-2 mb-3">
-                  <div class="col-md-6">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" id="follow-person-mode" onchange="toggleFollowPerson(this.checked)">
-                      <label class="form-check-label" for="follow-person-mode">👤 Следовать за человеком</label>
-                    </div>
-                  </div>
-                  <div class="col-md-6">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" id="avoid-people-mode" checked onchange="toggleAvoidPeople(this.checked)">
-                      <label class="form-check-label" for="avoid-people-mode">🚶 Избегать людей</label>
-                    </div>
-                  </div>
-                  <div class="col-md-6">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" id="smart-navigation-mode" onchange="toggleSmartNavigation(this.checked)">
-                      <label class="form-check-label" for="smart-navigation-mode">🧭 Умная навигация</label>
-                    </div>
-                  </div>
-                  <div class="col-md-6">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" id="pet-awareness-mode" checked>
-                      <label class="form-check-label" for="pet-awareness-mode">🐕 Внимание к питомцам</label>
+                <div class="row g-3 mb-3">
+                  <div class="col-md-12">
+                    <h6 class="text-muted mb-2">Обнаруженные объекты:</h6>
+                    <div id="detected-objects-list" class="d-flex flex-wrap gap-1">
+                      <span class="badge text-bg-secondary">Нет данных</span>
                     </div>
                   </div>
                 </div>
-
-                <div class="d-grid gap-2">
-                  <button class="btn btn-primary" onclick="aiSmartMoveForward()">🧠 Умное движение вперед</button>
-                  <div class="input-group">
-                    <input type="text" class="form-control" id="ai-navigation-target" placeholder="Например: кухня, диван, человек">
-                    <button class="btn btn-outline-success" onclick="aiNavigateTo()">🎯 Навигация к цели</button>
+                
+                <div class="mb-3">
+                  <h6 class="text-muted mb-2">Статистика:</h6>
+                  <div class="row g-2 text-center">
+                    <div class="col-3">
+                      <div class="p-2 border rounded">
+                        <div class="fw-bold" id="people-count">0</div>
+                        <small class="text-muted">👤 Люди</small>
+                      </div>
+                    </div>
+                    <div class="col-3">
+                      <div class="p-2 border rounded">
+                        <div class="fw-bold" id="vehicles-count">0</div>
+                        <small class="text-muted">🚗 Транспорт</small>
+                      </div>
+                    </div>
+                    <div class="col-3">
+                      <div class="p-2 border rounded">
+                        <div class="fw-bold" id="animals-count">0</div>
+                        <small class="text-muted">🐕 Животные</small>
+                      </div>
+                    </div>
+                    <div class="col-3">
+                      <div class="p-2 border rounded">
+                        <div class="fw-bold" id="objects-count">0</div>
+                        <small class="text-muted">📦 Объекты</small>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div class="mt-3 p-2 bg-light rounded">
-                  <small class="text-muted">AI видит:</small><br>
-                  <strong id="ai-scene-description">AI не активен</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- AI Детекция -->
-          <div class="tab-pane fade" id="detection-pane" role="tabpanel">
-            <div class="card">
-              <div class="card-header d-flex align-items-center py-2">
-                🔍 AI Детекция
-                <button class="btn btn-sm btn-outline-info ms-auto" onclick="refreshAIDetection()">
-                  <i class="bi bi-arrow-clockwise"></i>
-                </button>
-              </div>
-              <div class="card-body">
-                <div class="row g-3 mb-3">
-                  <div class="col-md-6">
-                    <h6 class="text-muted mb-2">Домашние объекты:</h6>
-                    <div id="detected-objects" class="d-flex flex-wrap gap-1">
-                      <span class="badge text-bg-secondary">Нет данных</span>
-                    </div>
-                  </div>
-                  <div class="col-md-6">
-                    <h6 class="text-muted mb-2">Обитатели:</h6>
-                    <div class="row g-2">
-                      <div class="col-6">
-                        <div class="p-2 border rounded text-center">
-                          <div class="fw-bold" id="people-count">0</div>
-                          <small class="text-muted">👤 Люди</small>
-                        </div>
-                      </div>
-                      <div class="col-6">
-                        <div class="p-2 border rounded text-center">
-                          <div class="fw-bold" id="pets-count">0</div>
-                          <small class="text-muted">🐕 Питомцы</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="mb-3">
-                  <h6 class="text-muted mb-2">Безопасность:</h6>
-                  <div class="d-flex gap-2 flex-wrap">
-                    <span class="badge" id="path-safety-pets">🐕 Питомцы: ?</span>
-                    <span class="badge" id="path-safety-people">👤 Люди: ?</span>
-                    <span class="badge" id="path-safety-furniture">🪑 Мебель: ?</span>
-                  </div>
-                </div>
-
-                <div>
-                  <h6 class="text-muted mb-2">💡 Подсказки:</h6>
-                  <div id="navigation-hints" class="small">
-                    <div class="text-muted">AI подсказки появятся здесь</div>
-                  </div>
+                  <small class="text-muted">Последнее обновление:</small><br>
+                  <strong id="ai-last-update">Нет данных</strong>
                 </div>
               </div>
             </div>
@@ -544,7 +495,7 @@
   <script src="{{ url_for('static', filename='script.js') }}"></script>
   <script src="{{ url_for('static', filename='camera.js') }}"></script>
   <script src="{{ url_for('static', filename='camera-control.js') }}"></script>
-  <script src="{{ url_for('static', filename='ai-control.js') }}"></script>
+  <script src="{{ url_for('static', filename='ai-detector.js') }}"></script>>
   <script src="{{ url_for('static', filename='imu-control.js') }}"></script>
 
 </body>
