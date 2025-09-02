@@ -90,7 +90,7 @@ function toggleAIStream() {
         normalStream.style.display = 'none';
         aiStream.style.display = 'block';
         // перезапуск с кэш-бастингом
-        aiStream.src = `/api/ai/stream?_t=${Date.now()}`;
+        aiStream.src = `/api/ai/stream?fps=12&scale=0.75&quality=70&_t=${Date.now()}`;
         btn.textContent = '📹 Обычное видео';
         btn.className = 'btn btn-sm btn-info';
         showAlert('🔮 AI аннотации включены', 'info');
