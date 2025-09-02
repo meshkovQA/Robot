@@ -89,6 +89,16 @@ class LCD1602I2C:
             logger.error(f"Ошибка инициализации LCD: {e!r}")
             self.display_active = False
 
+    def _raw_lcd_write(self, command, mode=0):
+        """
+        НИЗКОУРОВНЕВАЯ отправка байта в LCD (команда/данные) БЕЗ проверки display_active.
+        Используется ТОЛЬКО во время инициализации, когда контроллер ещё «спит».
+        """
+        high = (mode | (command & 0xF0))
+        low = (mode | ((command << 4) & 0xF0))
+        self._write_4_bits(high)
+        self._write_4_bits(low)
+
     def _write_4_bits(self, data):
         """
         data уже содержит:
@@ -151,76 +161,46 @@ class LCD1602I2C:
     def _initialize_display(self):
         """
         Жёсткая инициализация HD44780 в 4-битном режиме через PCF8574.
-        Последовательность «3,3,3,2» + стандартные команды.
-        Даём отчётливые логи и мигаем подсветкой для визуального контроля маппинга BL.
+        ДЕЛАЕМ все записи «сырьем» (_raw_lcd_write), т.к. display_active ещё False.
         """
-        logger.debug("LCD init: start, addr=0x%02X", self.address)
-
-        # начальная задержка после питания
+        # 1) Пауза после питания
         time.sleep(0.05)
 
-        # пробный контроль подсветки — должен мигнуть экран
+        # 2) Подсветка/пинг экспандера — держим BL включённым
         try:
-            self.bus.write_byte(self.address, LCD_NOBACKLIGHT)
-            time.sleep(0.05)
-            self.bus.write_byte(self.address, LCD_BACKLIGHT)
-            time.sleep(0.05)
-            logger.debug(
-                "LCD init: backlight blinked (BL mask=0x%02X)", LCD_BACKLIGHT)
+            self.bus.write_byte(self.address, self.backlight)
         except Exception as e:
             logger.error(
-                "LCD: экспандер недоступен по адресу 0x%02X: %r", self.address, e)
+                f"LCD: экспандер недоступен по адресу 0x{self.address:02X}: {e}")
             raise
 
-        # трижды 0x30 (8-битная инициализация), затем 0x20 (переход в 4-бит)
-        self._write_4_bits(0x30)  # 0b0011xxxx
+        # 3) Три раза 0x30 (8-битный режим), затем 0x20 (переход в 4-битный)
+        self._write_4_bits(0x30)
         time.sleep(0.0045)
         self._write_4_bits(0x30)
         time.sleep(0.0045)
         self._write_4_bits(0x30)
         time.sleep(0.00015)
-        self._write_4_bits(0x20)  # 0b0010xxxx -> 4-битный режим
+        self._write_4_bits(0x20)
         time.sleep(0.00015)
 
-        # 4-бит, 2 строки, 5x8 точек
-        self._lcd_write(LCD_FUNCTIONSET | LCD_4BITMODE |
-                        LCD_2LINE | LCD_5x8DOTS, 0)
-        logger.debug("LCD init: FUNCTIONSET 4bit,2line,5x8")
-
-        # дисплей OFF перед очисткой (так рекомендует даташит)
-        self._lcd_write(LCD_DISPLAYCONTROL | LCD_DISPLAYOFF |
-                        LCD_CURSOROFF | LCD_BLINKOFF, 0)
-        logger.debug("LCD init: DISPLAY OFF")
-
-        # очистка
-        self._lcd_write(LCD_CLEARDISPLAY, 0)
+        # 4) БАЗОВЫЕ НАСТРОЙКИ — ВАЖНО: используем _raw_lcd_write (без guard)
+        # FUNCTIONSET: 4-bit, 2 строки, 5x8
+        self._raw_lcd_write(LCD_FUNCTIONSET | LCD_4BITMODE |
+                            LCD_2LINE | LCD_5x8DOTS, 0)
+        # DISPLAY ON, CURSOR OFF, BLINK OFF
+        self._raw_lcd_write(LCD_DISPLAYCONTROL | LCD_DISPLAYON |
+                            LCD_CURSOROFF | LCD_BLINKOFF, 0)
+        # CLEAR
+        self._raw_lcd_write(LCD_CLEARDISPLAY, 0)
         time.sleep(0.003)
-        logger.debug("LCD init: CLEAR")
+        # ENTRYMODE: инкремент курсора, без сдвига
+        self._raw_lcd_write(LCD_ENTRYMODESET | LCD_ENTRYLEFT |
+                            LCD_ENTRYSHIFTDECREMENT, 0)
+        time.sleep(0.002)
 
-        # режим ввода: курсор вправо, без сдвига
-        self._lcd_write(LCD_ENTRYMODESET | LCD_ENTRYLEFT |
-                        LCD_ENTRYSHIFTDECREMENT, 0)
-        logger.debug("LCD init: ENTRYMODESET")
-
-        # дисплей ON (без курсора/мигания)
-        self._lcd_write(LCD_DISPLAYCONTROL | LCD_DISPLAYON |
-                        LCD_CURSOROFF | LCD_BLINKOFF, 0)
-        logger.debug("LCD init: DISPLAY ON")
-
-        # Быстрый ASCII-самотест: 'HELLO 1602' / 'I2C OK       '
-        try:
-            self._lcd_write(LCD_SETDDRAMADDR | 0x00, 0)
-            for ch in "HELLO 1602     "[:16]:
-                self._lcd_write(ord(ch), Rs)
-            self._lcd_write(LCD_SETDDRAMADDR | 0x40, 0)
-            for ch in "I2C OK         "[:16]:
-                self._lcd_write(ord(ch), Rs)
-            logger.debug("LCD init: ASCII selftest written")
-        except Exception as e:
-            logger.error("LCD init: selftest write error: %r", e)
-
-        logger.info("LCD 1602 инициализирован (EN=0x%02X, BL=0x%02X)",
-                    En, LCD_BACKLIGHT)
+        # 5) Теперь и только теперь помечаем дисплей как активный
+        self.display_active = True
 
     def clear(self):
         """Очистка дисплея"""

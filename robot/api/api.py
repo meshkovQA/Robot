@@ -9,6 +9,8 @@ from flask import Flask, Blueprint, jsonify, request, render_template, Response
 from flask_cors import CORS  # ДОБАВЛЯЕМ CORS
 from pathlib import Path
 
+from robot.ai_vision.ai_runtime import AIVisionRuntime
+import json
 from robot.controller import RobotController
 from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
 from robot.heading_controller import HeadingHoldService
@@ -23,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(controller: RobotController | None = None, camera_instance: USBCamera | None = None) -> Flask:
-    app = Flask(__name__,
-                template_folder=TEMPLATES_DIR,
+    app = Flask(__name__, template_folder=TEMPLATES_DIR,
                 static_folder=STATIC_DIR)
+    CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
     STATIC_ROOT = Path(app.static_folder).resolve()
 
@@ -33,9 +35,6 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     VIDEOS_DIR = Path(CAMERA_VIDEO_PATH)
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # ВКЛЮЧАЕМ CORS ДЛЯ ВСЕХ МАРШРУТОВ
-    CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
     robot = controller or RobotController()
 
@@ -108,32 +107,35 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
             logger.error(f"Ошибка инициализации AI детектора: {e}")
             ai_detector = None
 
+    ai_runtime = None
+    if ai_detector and camera:
+        try:
+            ai_runtime = AIVisionRuntime(ai_detector, camera, target_fps=10)
+            logger.info("✅ AI runtime запущен (фоновая инференс-петля)")
+        except Exception as e:
+            logger.error(f"Ошибка запуска AI runtime: {e}")
+            ai_runtime = None
+
     # API Blueprint
     bp = Blueprint("api", __name__)
 
     # ==================== УТИЛИТЫ ОТВЕТОВ ====================
 
     def ok(data=None, code=200):
-        response = jsonify({
-            "success": True,
-            "data": data or {},
-            "timestamp": datetime.now().isoformat()
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, code
+        resp = jsonify({"success": True, "data": data or {},
+                        "timestamp": datetime.now().isoformat()})
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp, code
 
     def err(msg, code=400):
-        response = jsonify({
-            "success": False,
-            "error": msg,
-            "timestamp": datetime.now().isoformat()
-        })
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        return response, code
+        resp = jsonify({"success": False, "error": msg,
+                       "timestamp": datetime.now().isoformat()})
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp, code
 
     # ==================== АУТЕНТИФИКАЦИЯ ====================
 
-    EXEMPT_API_PATHS = {"/api/ai/stream"}
+    EXEMPT_API_PATHS = {"/api/ai/stream", "/api/events"}
 
     @app.before_request
     def _auth():
@@ -147,6 +149,32 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     def index():
         """Главная страница с веб-интерфейсом"""
         return render_template("index.html")
+
+    # === SSE /api/events — единый канал телеметрии ===
+    @app.route("/api/events", methods=["GET"])
+    def events():
+        def gen():
+            while True:
+                try:
+                    robot_status = app.robot.get_status() if hasattr(
+                        app, "robot") and app.robot else {}
+                    cam_status = app.camera.get_status() if app.camera else {}
+                    ai_block = {
+                        "fps": (ai_runtime.ai_fps if ai_runtime else 0.0),
+                        "count": (len(ai_runtime.last_detections) if ai_runtime else 0),
+                        "last_ts": (ai_runtime.last_ts if ai_runtime else 0.0),
+                    }
+                    payload = {"ts": time.time(), "robot": robot_status,
+                               "camera": cam_status, "ai": ai_block}
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    time.sleep(0.5)  # 2 Гц
+                except GeneratorExit:
+                    break
+                except Exception as e:
+                    logger.error("SSE error: %s", e)
+                    time.sleep(1.0)
+        return Response(gen(), mimetype="text/event-stream",
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no', 'Access-Control-Allow-Origin': '*'})
 
     # ==================== API МАРШРУТЫ ДВИЖЕНИЯ ====================
 
@@ -598,7 +626,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                     frame_data = None
 
                     # Пытаемся получить кадр от камеры
-                    if camera and camera.status.is_connected:
+                    if camera and getattr(camera, "status", None) and getattr(camera.status, "is_connected", False):
                         frame_data = camera.get_frame_jpeg()
 
                     # Если нет кадра - используем заглушку
@@ -768,8 +796,11 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     # ==================== ДОБАВЛЯЕМ AI МАРШРУТЫ ====================
 
     # Добавляем простые AI маршруты
-    if ai_detector:
-        add_ai_detector_routes(bp, ai_detector, camera)
+    add_ai_detector_routes(bp,
+                           ai_detector=ai_detector,
+                           camera=camera,
+                           ai_runtime=ai_runtime,
+                           ok=ok, err=err)
 
     # Регистрируем API blueprint
     app.register_blueprint(bp, url_prefix="/api")

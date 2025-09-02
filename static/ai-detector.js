@@ -33,7 +33,8 @@ async function refreshAIDetection() {
         const json = await resp.json();
         if (!json.success) throw new Error(json.error || 'AI detect failed');
 
-        const detections = json.detections || [];
+        const payload = json.data || json; // поддержим обе формы
+        const detections = payload.detections || [];
 
         updateDetectionDisplay(detections);
         updateDetectionStats(detections);
@@ -43,19 +44,20 @@ async function refreshAIDetection() {
         if (total) total.textContent = detections.length;
 
         setAIDetectorStatus(true);
-        setAiLastUpdate(json.timestamp ? json.timestamp * 1000 : Date.now());
+        const ts = payload.ts ? payload.ts * 1000 : Date.now();
+        setAiLastUpdate(ts);
+        // FPS лучше приходит по SSE; оставим «оценку по тикам» как резерв:
         setAiFpsFromTick(Date.now());
 
-        // чтобы таймер не дёргал часто
         lastDetectionUpdate = Date.now();
-
     } catch (e) {
         console.error('AI detection error:', e);
         setAIDetectorStatus(false);
-        const el = document.getElementById('ai-processing-fps'); // НЕЛЬЗЯ через ?.
+        const el = document.getElementById('ai-processing-fps');
         if (el) el.textContent = 'AI: -- FPS';
     }
 }
+
 function updateSimpleDetection(detections) {
     // НОВАЯ простая функция обновления
     const objectsContainer = document.getElementById('detected-objects-list');
@@ -259,14 +261,41 @@ function showAIFrameModal(frameBase64, detections = []) {
     modal.addEventListener('hidden.bs.modal', () => modal.remove());
 }
 
-// ==================== АВТООБНОВЛЕНИЕ ====================
 
-function startAutoUpdate() {
-    setInterval(() => {
-        if (Date.now() - lastDetectionUpdate > 5000) {
-            refreshAIDetection();
-        }
-    }, 5000);
+function startTelemetrySSE() {
+    try {
+        const es = new EventSource('/api/events');
+        es.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data || '{}');
+
+            // камера: FPS, резолюция, connected
+            if (msg.camera) updateCameraStatus(msg.camera);
+
+            // AI: FPS + общий счётчик + "последнее обновление"
+            const aiFpsEl = document.getElementById('ai-processing-fps');
+            if (aiFpsEl && typeof msg.ai?.fps === 'number') {
+                aiFpsEl.textContent = `AI: ${msg.ai.fps.toFixed(1)} FPS`;
+            }
+            const total = document.getElementById('ai-objects-count');
+            if (total && typeof msg.ai?.count === 'number') {
+                total.textContent = msg.ai.count;
+            }
+            setAIDetectorStatus((msg.ai?.count ?? 0) > 0);
+            if (msg.ai?.last_ts) setAiLastUpdate(msg.ai.last_ts * 1000);
+        };
+        es.onerror = () => {
+            // можно показать предупреждение; браузер переподключится сам
+        };
+    } catch (e) {
+        console.warn('SSE init failed:', e);
+    }
+}
+
+// запусти сразу при загрузке
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startTelemetrySSE);
+} else {
+    startTelemetrySSE();
 }
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
