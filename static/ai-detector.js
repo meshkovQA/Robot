@@ -1,26 +1,54 @@
 // static/ai-detector.js - Простая AI детекция объектов
 
 let lastDetectionUpdate = 0;
+let lastAiTick = 0;
+
+function setAIDetectorStatus(on) {
+    const dot = document.getElementById('ai-detector-status');
+    if (dot) dot.classList.toggle('active', !!on);
+}
+function setAiLastUpdate(ts = Date.now()) {
+    const fmt = new Date(ts).toLocaleTimeString();
+    document.getElementById('ai-last-update')?.innerText = fmt;
+    document.getElementById('last-update')?.innerText = fmt; // маленький таймстамп сверху
+}
+function setAiFpsFromTick(now) {
+    if (!lastAiTick) { lastAiTick = now; return; }
+    const dt = (now - lastAiTick) / 1000;
+    lastAiTick = now;
+    const fps = dt > 0 ? (1 / dt) : 0;
+    const el = document.getElementById('ai-processing-fps');
+    if (el) el.textContent = `AI: ${fps.toFixed(1)} FPS`;
+}
 
 // ==================== ОСНОВНЫЕ ФУНКЦИИ ====================
 
 async function refreshAIDetection() {
-    // Принудительное обновление AI данных (ИСПРАВЛЕНО)
     try {
-        showAlert('🔄 Обновление AI данных...', 'info');
+        const resp = await fetch('/api/ai/detect');
+        const json = await resp.json();
 
-        const response = await fetch('/api/ai/detect');  // НОВЫЙ ENDPOINT
-        const data = await response.json();
+        if (!json.success) throw new Error(json.error || 'AI detect failed');
 
-        if (data.success) {
-            updateSimpleDetection(data.detections);  // УПРОЩЕННАЯ ФУНКЦИЯ
-            showAlert('✅ AI данные обновлены', 'success');
-        } else {
-            showAlert(`❌ Ошибка детекции: ${data.error}`, 'danger');
-        }
-    } catch (error) {
-        console.error('AI detection error:', error);
-        showAlert('❌ Ошибка соединения с AI детекцией', 'danger');
+        const detections = json.detections || [];
+
+        updateDetectionDisplay(detections);   // уже есть
+        updateDetectionStats(detections);     // ВАЖНО: раньше не вызывалась
+        updateSimpleDetection(detections);    // если хотите оставить простой список — ок
+
+        // счетчик в шапке
+        const total = document.getElementById('ai-objects-count');
+        if (total) total.textContent = detections.length;
+
+        // индикатор + время + FPS
+        setAIDetectorStatus(true);
+        setAiLastUpdate(json.timestamp ? json.timestamp * 1000 : Date.now());
+        setAiFpsFromTick(Date.now());
+
+    } catch (e) {
+        console.error('AI detection error:', e);
+        setAIDetectorStatus(false);
+        document.getElementById('ai-processing-fps')?.textContent = 'AI: -- FPS';
     }
 }
 
@@ -76,26 +104,22 @@ async function getAIFrame() {
 }
 
 function toggleAIStream() {
-    // Переключение AI видеопотока
     const normalStream = document.getElementById('camera-stream');
     const aiStream = document.getElementById('ai-stream');
     const btn = document.getElementById('ai-stream-btn');
 
-    if (!aiStream) {
-        console.error('AI stream element not found');
-        showAlert('❌ AI видеопоток недоступен', 'danger');
-        return;
-    }
+    if (!aiStream) return showAlert('❌ AI видеопоток недоступен', 'danger');
 
-    if (normalStream.style.display !== 'none') {
-        // Включаем AI поток
+    const aiOn = normalStream.style.display !== 'none';
+    if (aiOn) {
         normalStream.style.display = 'none';
         aiStream.style.display = 'block';
+        // перезапуск с кэш-бастингом
+        aiStream.src = `/api/ai/stream?_t=${Date.now()}`;
         btn.textContent = '📹 Обычное видео';
         btn.className = 'btn btn-sm btn-info';
         showAlert('🔮 AI аннотации включены', 'info');
     } else {
-        // Возвращаемся к обычному потоку
         normalStream.style.display = 'block';
         aiStream.style.display = 'none';
         btn.textContent = '🔮 AI Аннотации';

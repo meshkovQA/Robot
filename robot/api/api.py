@@ -133,9 +133,11 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     # ==================== АУТЕНТИФИКАЦИЯ ====================
 
+    EXEMPT_API_PATHS = {"/api/ai/stream"}
+
     @app.before_request
     def _auth():
-        if API_KEY and request.path.startswith("/api/"):
+        if API_KEY and request.path.startswith("/api/") and request.path not in EXEMPT_API_PATHS:
             if request.headers.get("X-API-Key") != API_KEY:
                 return err("unauthorized", 401)
 
