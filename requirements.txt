@@ -9,5 +9,3 @@ flask-cors
 ultralytics
 torch
 torchvision
-cv2
-sys
