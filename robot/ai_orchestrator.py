@@ -1,6 +1,6 @@
 import json
 import logging
-import openai
+from openai import OpenAI
 from datetime import datetime
 from pathlib import Path
 from robot.ai_agent.speech_handler import SpeechHandler
@@ -30,6 +30,7 @@ class AIOrchestrater:
         self.speech = None
         self.vision = None
         self.audio_manager = None
+        self.openai_client = None
 
         self._initialize_agents()
 
@@ -50,22 +51,8 @@ class AIOrchestrater:
                     config = json.load(f)
                 logging.info("📄 Конфигурация AI загружена")
             else:
-                config = {}
-
-            # Переопределяем API ключ из environment переменной
-            env_api_key = os.getenv('OPENAI_API_KEY')
-            if env_api_key:
-                config['openai_api_key'] = env_api_key
-                logging.info(
-                    "🔑 OpenAI API ключ загружен из environment переменной")
-            elif not config.get('openai_api_key'):
-                logging.warning(
-                    "⚠️ OpenAI API ключ не найден ни в env, ни в конфигурации")
-
-                return config
-            else:
-                # Дефолтная конфигурация
-                default_config = {
+                # Дефолтная конфигурация если файла нет
+                config = {
                     "openai_api_key": "",
                     "model": "gpt-4o-mini",
                     "speech_enabled": True,
@@ -86,17 +73,23 @@ class AIOrchestrater:
                     }
                 }
 
-                # Создаем конфигурацию
-                config_path.parent.mkdir(exist_ok=True)
-                with open(config_path, 'w', encoding='utf-8') as f:
-                    json.dump(default_config, f, ensure_ascii=False, indent=2)
-                logging.info("📄 Создана дефолтная конфигурация AI")
-                return default_config
+            # Переопределяем API ключ из environment переменной
+            env_api_key = os.getenv('OPENAI_API_KEY')
+            if env_api_key:
+                config['openai_api_key'] = env_api_key
+                logging.info(
+                    "🔑 AIOrchestrater. OpenAI API ключ загружен из environment переменной")
+            elif not config.get('openai_api_key'):
+                logging.warning(
+                    "⚠️ AIOrchestrater. OpenAI API ключ не найден ни в env, ни в конфигурации")
+
+            return config
 
         except Exception as e:
-            logging.error(f"❌ Ошибка загрузки конфигурации: {e}")
+            logging.error(
+                f"❌ AIOrchestrater. Ошибка загрузки конфигурации: {e}")
             return {
-                "openai_api_key": "",
+                "openai_api_key": os.getenv('OPENAI_API_KEY', ""),
                 "speech_enabled": False,
                 "vision_enabled": False
             }
@@ -104,13 +97,19 @@ class AIOrchestrater:
     def _initialize_agents(self):
         """Инициализация всех AI агентов"""
 
+        # Проверяем что конфигурация загружена
+        if not self.config:
+            logging.error("❌ Конфигурация AI не загружена! self.config = None")
+            return
+
         # Проверяем API ключ
         api_key = self.config.get('openai_api_key')
         if not api_key:
             logging.warning("⚠️ OpenAI API ключ не настроен")
             return
 
-        openai.api_key = api_key
+        # Создаем OpenAI клиент для анализа намерений
+        self.openai_client = OpenAI(api_key=api_key)
 
         # AudioManager (всегда инициализируем для тестов)
         try:
@@ -118,36 +117,6 @@ class AIOrchestrater:
             logging.info("✅ AudioManager инициализирован")
         except Exception as e:
             logging.error(f"❌ Ошибка инициализации AudioManager: {e}")
-
-        # Speech Agent
-        if self.config.get('speech_enabled', True):
-            try:
-                self.speech = SpeechHandler(self.config)
-                self.speech.audio_manager = self.audio_manager  # Связываем с аудио
-                logging.info("✅ Speech Agent инициализирован")
-
-                # Тестируем аудио если доступно
-                if self.audio_manager:
-                    audio_test = self.audio_manager.test_audio_system()
-                    if audio_test["microphone_test"] and audio_test["speaker_test"]:
-                        logging.info("✅ Аудио система протестирована успешно")
-                    else:
-                        logging.warning("⚠️ Проблемы с аудио системой")
-
-            except Exception as e:
-                logging.error(f"❌ Ошибка инициализации Speech Agent: {e}")
-
-        # Vision Agent
-        if self.config.get('vision_enabled', True):
-            try:
-                self.vision = VisionAnalyzer(
-                    config=self.config,
-                    camera=self.camera,
-                    ai_detector=self.ai_detector
-                )
-                logging.info("✅ Vision Agent инициализирован")
-            except Exception as e:
-                logging.error(f"❌ Ошибка инициализации Vision Agent: {e}")
 
     def analyze_user_intent(self, user_text):
         """Определение намерения пользователя через ключевые слова и LLM"""
@@ -193,8 +162,8 @@ class AIOrchestrater:
                 {"role": "user", "content": f"Запрос: '{user_text}'"}
             ]
 
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
                 messages=messages,
                 max_tokens=10,
                 temperature=0.1
@@ -432,7 +401,7 @@ class AIOrchestrater:
                 "conversation_history": self.conversation_history[-3:] if self.conversation_history else []
             }
 
-            context_prompt = f"""Ты робот-помощник. Вот полная информация о текущей ситуации:
+            context_prompt = f"""Ты робот-помощник Винди. Вот полная информация о текущей ситуации:
 
 {json.dumps(full_context, ensure_ascii=False, indent=2)}
 

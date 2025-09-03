@@ -2,7 +2,8 @@
 
 import json
 import logging
-import openai
+from openai import OpenAI
+import os
 import cv2
 import base64
 from datetime import datetime
@@ -19,18 +20,22 @@ class VisionAnalyzer:
         self.config = config
         self.camera = camera
         self.ai_detector = ai_detector
-        self.api_key = config.get('openai_api_key')
+
+        # Получаем ключ только из environment переменной
+        self.api_key = os.getenv('OPENAI_API_KEY')
 
         if not self.api_key:
-            raise ValueError("OpenAI API key не найден в конфигурации")
+            raise ValueError(
+                "OpenAI API key не найден в переменной окружения OPENAI_API_KEY")
 
-        openai.api_key = self.api_key
+        # Создаем клиент с новым API
+        self.client = OpenAI(api_key=self.api_key)
 
-        # Настройки для GPT-4V
+        # Настройки для GPT-4V (остается как есть)
         self.vision_model = config.get('vision_model', 'gpt-4o-mini')
         self.max_tokens = config.get('vision_max_tokens', 300)
 
-        # Проверяем доступность компонентов
+        # Проверяем доступность компонентов (остается как есть)
         if not self.ai_detector:
             logging.warning(
                 "⚠️ SimpleAIDetector не подключен - детекция объектов недоступна")
@@ -43,7 +48,7 @@ class VisionAnalyzer:
         else:
             logging.info("✅ VisionAnalyzer подключен к камере")
 
-        logging.info("👁️ VisionAnalyzer инициализирован")
+        logging.info("👁️ VisionAnalyzer инициализирован с новым OpenAI API")
 
     def capture_frame(self):
         """Получить текущий кадр с камеры"""
@@ -161,7 +166,7 @@ class VisionAnalyzer:
 
                 logging.info("🧠 Отправляю изображение в GPT-4V...")
 
-                response = openai.chat.completions.create(
+                response = self.client.chat.completions.create(
                     model=self.vision_model,
                     messages=messages,
                     max_tokens=self.max_tokens,
