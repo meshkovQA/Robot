@@ -116,7 +116,7 @@ class WakeWordService:
 
         finally:
             if self.audio_manager:
-                self.audio_manager.stop_continuous_listening()
+                self.audio_manager.stop_continuous_recording()
             logging.info("🔚 Цикл WakeWord завершен")
 
     def _process_audio_stream(self, audio_data, volume):
