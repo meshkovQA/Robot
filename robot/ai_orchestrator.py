@@ -41,12 +41,27 @@ class AIOrchestrater:
 
     def _load_config(self):
         """Загрузить конфигурацию AI"""
+        import os
+
         config_path = Path("data/ai_config.json")
         try:
             if config_path.exists():
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                 logging.info("📄 Конфигурация AI загружена")
+            else:
+                config = {}
+
+            # Переопределяем API ключ из environment переменной
+            env_api_key = os.getenv('OPENAI_API_KEY')
+            if env_api_key:
+                config['openai_api_key'] = env_api_key
+                logging.info(
+                    "🔑 OpenAI API ключ загружен из environment переменной")
+            elif not config.get('openai_api_key'):
+                logging.warning(
+                    "⚠️ OpenAI API ключ не найден ни в env, ни в конфигурации")
+
                 return config
             else:
                 # Дефолтная конфигурация
