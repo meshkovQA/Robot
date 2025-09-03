@@ -1,7 +1,6 @@
 {
-    "openai_api_key": "",
-    "model": "gpt-4o-mini",
-    "vision_model": "gpt-4o-mini",
+    "model": "gpt-5",
+    "vision_model": "gpt-5",
     "speech_enabled": true,
     "vision_enabled": true,
     "max_conversation_length": 10,
