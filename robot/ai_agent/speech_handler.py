@@ -1,6 +1,9 @@
+# robot/ai_agent/speech_handler.py
+
 import json
 import logging
-import openai
+from openai import OpenAI
+import os
 from datetime import datetime
 from pathlib import Path
 import time
@@ -14,40 +17,43 @@ class SpeechHandler:
 
     def __init__(self, config):
         self.config = config
-        self.api_key = config.get('openai_api_key')
+
+        # Получаем ключ только из environment переменной
+        self.api_key = os.getenv('OPENAI_API_KEY')
 
         if not self.api_key:
-            raise ValueError("OpenAI API key не найден в конфигурации")
+            raise ValueError(
+                "OpenAI API key не найден в переменной окружения OPENAI_API_KEY")
 
-        openai.api_key = self.api_key
+        # Создаем клиент с новым API
+        self.client = OpenAI(api_key=self.api_key)
 
-        # Настройки для OpenAI
+        # Настройки для OpenAI (остается как есть)
         self.model = config.get('model', 'gpt-4o-mini')
         self.max_tokens = config.get('max_tokens', 1500)
         self.temperature = config.get('temperature', 0.7)
 
-        # Настройки речи
+        # Настройки речи (остается как есть)
         self.whisper_model = config.get('whisper_model', 'whisper-1')
         self.tts_model = config.get('tts_model', 'tts-1')
-        # alloy, echo, fable, onyx, nova, shimmer
         self.tts_voice = config.get('voice', 'alloy')
 
-        # История диалогов
+        # История диалогов (остается как есть)
         self.conversation_file = Path("data/conversations.json")
         self.conversation_history = self._load_conversations()
 
         # AudioManager будет подключен извне
         self.audio_manager = None
 
-        # Системные промпты
+        # Системные промпты (остается как есть)
         self.system_prompts = {
-            'default': "Ты умный робот-помощник. Отвечай кратко и дружелюбно на русском языке. Ты можешь видеть через камеру, слышать через микрофон и двигаться по дому.",
+            'default': "Ты умный робот-помощник, которого зовут Винди. Отвечай кратко и дружелюбно на русском языке. Ты можешь видеть через камеру, слышать через микрофон и двигаться по дому.",
             'vision': "Ты робот с камерой. Анализируй изображения и описывай что видишь простым языком.",
             'status': "Ты робот-диагност. Анализируй техническую информацию и отвечай понятно о состоянии систем.",
             'context': "Ты умный робот-аналитик. Обрабатывай всю доступную информацию и давай комплексные, но понятные ответы."
         }
 
-        logging.info("🎤 SpeechHandler инициализирован")
+        logging.info("🎤 SpeechHandler инициализирован с новым OpenAI API")
 
     def _load_conversations(self):
         """Загрузить историю диалогов"""
@@ -83,7 +89,7 @@ class SpeechHandler:
             logging.info(f"🎤→📝 Распознавание речи: {audio_file_path}")
 
             with open(audio_file_path, 'rb') as audio_file:
-                response = openai.audio.transcriptions.create(
+                response = self.client.audio.transcriptions.create(
                     model=self.whisper_model,
                     file=audio_file,
                     language="ru",  # Форсируем русский язык
@@ -143,7 +149,7 @@ class SpeechHandler:
                 f"🧠 Генерация ответа ({intent}): '{user_message[:50]}...'")
 
             # Отправляем запрос в OpenAI
-            response = openai.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
@@ -193,7 +199,7 @@ class SpeechHandler:
 
             logging.info(f"📝→🔊 Синтез речи: '{clean_text[:50]}...'")
 
-            response = openai.audio.speech.create(
+            response = self.client.audio.speech.create(
                 model=self.tts_model,
                 voice=voice or self.tts_voice,
                 input=clean_text,
@@ -506,7 +512,7 @@ class SpeechHandler:
         try:
             # 1. Тест подключения к OpenAI API
             try:
-                response = openai.models.list()
+                response = self.client.models.list()
                 results["openai_api_test"] = True
                 results["details"].append("✅ OpenAI API подключение работает")
             except Exception as e:
