@@ -9,3 +9,5 @@ flask-cors
 ultralytics
 torch
 torchvision
+openai
+pyaudio
