@@ -23,6 +23,13 @@ from pathlib import Path
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FMT)
 logger = logging.getLogger(__name__)
 
+try:
+    from robot.api.ai_agent_api import create_ai_blueprint
+    AI_API_AVAILABLE = True
+except ImportError as e:
+    AI_API_AVAILABLE = False
+    logging.warning(f"⚠️ AI API недоступно: {e}")
+
 
 def create_app(controller: RobotController | None = None, camera_instance: USBCamera | None = None) -> Flask:
     app = Flask(__name__, template_folder=TEMPLATES_DIR,
@@ -867,6 +874,26 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
 
     # Регистрируем API blueprint
     app.register_blueprint(bp, url_prefix="/api")
+
+    # ===  Интеграция полноценного AI API ===
+    if AI_API_AVAILABLE:
+        try:
+            # Создаем AI blueprint с нашими компонентами
+            ai_bp = create_ai_blueprint(
+                robot_controller=robot,
+                camera=camera,
+                ai_detector=ai_detector
+            )
+
+            # Регистрируем AI API blueprint
+            app.register_blueprint(ai_bp)  # Префикс /api/ai уже в blueprint
+
+            logger.info("✅ AI API успешно интегрировано")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка интеграции AI API: {e}")
+    else:
+        logger.info("ℹ️ AI API пропущено - модули недоступны")
 
     # ==================== ОБРАБОТКА ОШИБОК ====================
 
