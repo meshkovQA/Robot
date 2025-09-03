@@ -30,6 +30,7 @@ class AIOrchestrater:
         self.speech = None
         self.vision = None
         self.audio_manager = None
+        self.wake_word_service = None
         self.openai_client = None
 
         self._initialize_agents()
@@ -117,6 +118,38 @@ class AIOrchestrater:
             logging.info("✅ AudioManager инициализирован")
         except Exception as e:
             logging.error(f"❌ Ошибка инициализации AudioManager: {e}")
+
+        # SpeechHandler (для голосового взаимодействия)
+        if self.config.get('speech_enabled', True):
+            try:
+                self.speech = SpeechHandler(self.config)
+                if self.audio_manager:
+                    self.speech.audio_manager = self.audio_manager
+                logging.info("✅ SpeechHandler инициализирован")
+            except Exception as e:
+                logging.error(f"❌ Ошибка инициализации SpeechHandler: {e}")
+
+        # WakeWordService (для голосовой активации)
+        if self.config.get('wake_word_enabled', True) and api_key:
+            try:
+                from robot.ai_agent.wake_word_service import WakeWordService
+                self.wake_word_service = WakeWordService(
+                    self.config, ai_orchestrator=self)
+
+                # АВТОЗАПУСК WakeWordService
+                if self.wake_word_service.start_service():
+                    logging.info("🚀 WakeWordService автоматически запущен")
+                else:
+                    logging.warning("⚠️ Не удалось запустить WakeWordService")
+
+            except Exception as e:
+                logging.error(f"❌ Ошибка инициализации WakeWordService: {e}")
+                self.wake_word_service = None
+        else:
+            self.wake_word_service = None
+            if not api_key:
+                logging.warning(
+                    "⚠️ WakeWordService пропущен: нет OpenAI API ключа")
 
     def analyze_user_intent(self, user_text):
         """Определение намерения пользователя через ключевые слова и LLM"""
