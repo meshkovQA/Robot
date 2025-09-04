@@ -96,48 +96,77 @@ class WakeWordService:
         logging.info("⏹️ WakeWord сервис остановлен")
 
     def _wake_word_loop(self):
-        """Основной цикл прослушивания wake word"""
+        """Основной цикл прослушивания wake word через arecord"""
         try:
+            import subprocess
+            import tempfile
+
             while self.is_running:
                 try:
-                    # Запускаем непрерывное прослушивание
                     self.is_listening = True
-                    self.audio_manager.start_continuous_recording(
-                        callback=self._process_audio_stream
-                    )
+                    logging.info("🎤 Начата непрерывная запись (через arecord)")
 
-                    # Спим пока сервис активен
                     while self.is_running and self.is_listening:
-                        time.sleep(1)
+                        # Записываем короткие отрезки (2 секунды) для обнаружения wake word
+                        temp_file = f"/tmp/wake_word_{int(time.time())}.wav"
+
+                        cmd = [
+                            'arecord',
+                            # PLUGHW!
+                            '-D', f'plughw:{self.audio_manager.microphone_index},0',
+                            '-r', str(self.audio_manager.sample_rate),
+                            '-c', str(self.audio_manager.channels),
+                            '-f', 'S16_LE',
+                            '-d', '2',  # 2 секунды
+                            temp_file
+                        ]
+
+                        try:
+                            result = subprocess.run(
+                                cmd, capture_output=True, timeout=3)
+
+                            if result.returncode == 0 and Path(temp_file).exists():
+                                # Проверяем размер файла (должен быть > 1000 байт для 2 сек)
+                                file_size = Path(temp_file).stat().st_size
+
+                                if file_size > 1000:
+                                    # Обрабатываем записанный файл на наличие wake word
+                                    self._process_wake_word_file(temp_file)
+
+                            # Удаляем временный файл
+                            Path(temp_file).unlink(missing_ok=True)
+
+                        except subprocess.TimeoutExpired:
+                            logging.debug("Timeout записи wake word")
+                            Path(temp_file).unlink(missing_ok=True)
+                            continue
+                        except Exception as e:
+                            logging.error(f"Ошибка записи wake word: {e}")
+                            Path(temp_file).unlink(missing_ok=True)
+                            time.sleep(1)
 
                 except Exception as e:
                     logging.error(f"❌ Ошибка в цикле прослушивания: {e}")
                     time.sleep(5)  # Пауза перед повтором
 
         finally:
-            if self.audio_manager:
-                self.audio_manager.stop_continuous_recording()
             logging.info("🔚 Цикл WakeWord завершен")
 
-    def _process_audio_stream(self, audio_data, volume):
-        """Обработка потока аудио данных на наличие wake word"""
+    def _process_wake_word_file(self, audio_file):
+        """Обработка записанного файла на наличие wake word"""
         try:
-            # Проверяем громкость
-            if volume < self.sensitivity_threshold:
+            if not self.speech_handler:
                 return
 
-            logging.debug(f"🎤 Обрабатываю поток (громкость: {volume:.0f})")
+            # Распознаем речь в файле
+            text = self.speech_handler.transcribe_audio(audio_file)
 
-            # Сохраняем аудио данные во временный файл
-            temp_file = f"data/temp_wake_{int(time.time())}.wav"
-
-            # Создаем WAV файл из потока
-            if self._save_audio_stream_to_file(audio_data, temp_file):
-                # Обрабатываем как раньше
-                self._process_wake_word_file(temp_file, volume)
+            if text and self._contains_wake_word(text.lower()):
+                logging.info(f"🗣️ Обнаружено слово: '{text}'")
+                self._handle_activation(text)
 
         except Exception as e:
-            logging.error(f"❌ Ошибка обработки потока: {e}")
+            logging.error(f"❌ Ошибка обработки wake word: {e}")
 
     def _save_audio_stream_to_file(self, audio_data, filename):
         """Сохранение потока аудио в WAV файл"""
