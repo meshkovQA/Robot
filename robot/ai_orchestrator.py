@@ -39,6 +39,9 @@ class AIOrchestrater:
         self.conversation_history = []
         self.current_context = {}
 
+        # Загружаем системные промпты
+        self._load_system_prompts()
+
         logging.info("🧠 AI Оркестратор инициализирован")
 
     def _load_config(self):
@@ -52,39 +55,19 @@ class AIOrchestrater:
                     config = json.load(f)
                 logging.info("📄 Конфигурация AI загружена")
             else:
-                # Дефолтная конфигурация если файла нет
-                config = {
-                    "openai_api_key": "",
-                    "model": "gpt-4o-mini",
-                    "speech_enabled": True,
-                    "vision_enabled": True,
-                    "max_conversation_length": 10,
-                    "audio": {
-                        "sample_rate": 16000,
-                        "channels": 1,
-                        "chunk_size": 1024,
-                        "microphone_index": None,
-                        "speaker_index": None
-                    },
-                    "intents": {
-                        "vision_keywords": ["видишь", "посмотри", "что там", "опиши", "сцена", "камера"],
-                        "status_keywords": ["статус", "состояние", "как дела", "работает", "датчики", "системы"],
-                        "action_keywords": ["поехали", "двигайся", "поверни", "остановись", "вперед", "назад"],
-                        "context_keywords": ["расскажи", "анализ", "происходит", "ситуация", "обстановка"]
-                    }
-                }
+                logging.warning("⚠️ Конфигурационный файл AI не найден")
 
-            # Переопределяем API ключ из environment переменной
-            env_api_key = os.getenv('OPENAI_API_KEY')
-            if env_api_key:
-                config['openai_api_key'] = env_api_key
-                logging.info(
-                    "🔑 AIOrchestrater. OpenAI API ключ загружен из environment переменной")
-            elif not config.get('openai_api_key'):
-                logging.warning(
-                    "⚠️ AIOrchestrater. OpenAI API ключ не найден ни в env, ни в конфигурации")
+                # Переопределяем API ключ из environment переменной
+                env_api_key = os.getenv('OPENAI_API_KEY')
+                if env_api_key:
+                    config['openai_api_key'] = env_api_key
+                    logging.info(
+                        "🔑 AIOrchestrater. OpenAI API ключ загружен из environment переменной")
+                elif not config.get('openai_api_key'):
+                    logging.warning(
+                        "⚠️ AIOrchestrater. OpenAI API ключ не найден ни в env, ни в конфигурации")
 
-            return config
+                return config
 
         except Exception as e:
             logging.error(
@@ -94,6 +77,16 @@ class AIOrchestrater:
                 "speech_enabled": False,
                 "vision_enabled": False
             }
+
+    def _load_system_prompts(self):
+        """Загрузить системные промпты из JSON файла"""
+        prompts_file = Path("data/system_prompts.json")
+
+        with open(prompts_file, 'r', encoding='utf-8') as f:
+            self.system_prompts = json.load(f)
+
+        logging.info(
+            f"📄 Загружено {len(self.system_prompts)} системных промптов")
 
     def _initialize_agents(self):
         """Инициализация всех AI агентов"""
@@ -153,42 +146,8 @@ class AIOrchestrater:
 
     def analyze_user_intent(self, user_text):
         """Определение намерения пользователя через ключевые слова и LLM"""
-        if not user_text:
-            return 'chat'
-
-        user_text_lower = user_text.lower()
-
-        # Сначала проверяем через ключевые слова (быстро)
-        intents = self.config.get('intents', {})
-
-        for keyword in intents.get('vision_keywords', []):
-            if keyword in user_text_lower:
-                return 'vision'
-
-        for keyword in intents.get('status_keywords', []):
-            if keyword in user_text_lower:
-                return 'status'
-
-        for keyword in intents.get('action_keywords', []):
-            if keyword in user_text_lower:
-                return 'action'
-
-        for keyword in intents.get('context_keywords', []):
-            if keyword in user_text_lower:
-                return 'context'
-
-        # Если не нашли через ключевые слова - используем LLM
         try:
-            system_prompt = """Ты анализируешь запросы к роботу и определяешь тип ответа.
-
-Возможные типы:
-- "chat" - обычная беседа, вопросы, шутки
-- "vision" - просьба посмотреть, описать что видишь
-- "action" - команды движения, управления роботом  
-- "status" - вопросы о состоянии робота, датчиках
-- "context" - сложные вопросы требующие полной информации
-
-Отвечай ТОЛЬКО одним словом типа."""
+            system_prompt = self.system_prompts['intent_analysis']
 
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -196,10 +155,10 @@ class AIOrchestrater:
             ]
 
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o",
+                model=self.config.get('intent_analysis_model', 'gpt-4o'),
                 messages=messages,
-                max_tokens=10,
-                temperature=0.1
+                max_tokens=self.config.get('intent_analysis_max_tokens', 10),
+                temperature=self.config.get('intent_analysis_temperature', 0.1)
             )
 
             intent = response.choices[0].message.content.strip().lower()
@@ -440,7 +399,9 @@ class AIOrchestrater:
 
 Вопрос пользователя: {user_text}
 
-Проанализируй всю доступную информацию и дай развернутый, но понятный ответ о текущей ситуации."""
+Проанализируй всю доступную информацию и дай развернутый, но понятный ответ о текущей ситуации.
+
+Ответ должен быть только в мужском роде от лица робота."""
 
             if self.speech:
                 ai_response = self.speech.generate_response(context_prompt)
@@ -472,13 +433,22 @@ class AIOrchestrater:
         if not self.speech:
             ai_response = "Модуль общения не активен"
         else:
-            ai_response = self.speech.generate_response(user_text)
+            # Промпт из system_prompts.json
+            system_prompt = self.system_prompts['chat']
+            ai_response = self.speech.generate_response(
+                user_text, system_prompt=system_prompt)
+
+        # TTS инструкции из ai_config.json
+        tts_instructions = None
+        if is_voice and self.config.get('tts_instructions', {}).get('chat'):
+            tts_instructions = self.config['tts_instructions']['chat']
 
         return self._create_response(
             user_text=user_text,
             ai_response=ai_response,
             intent='chat',
-            is_voice=is_voice
+            is_voice=is_voice,
+            tts_instructions=tts_instructions
         )
 
     def _create_response(self, user_text, ai_response, intent, is_voice=False, extra_data=None):
