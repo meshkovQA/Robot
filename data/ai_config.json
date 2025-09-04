@@ -12,14 +12,11 @@
     "voice": "marin",
     "tts_instructions": "Тебя зовут Винди, говори дружелюбно как робот-помощник. Будь выразительным и естественным.",
     "audio": {
-        "sample_rate": 44100,
+        "sample_rate": 48000,
         "channels": 1,
         "chunk_size": 1024,
-        "microphone_index": 1,
-        "speaker_index": 0,
-        "voice_threshold": 1000,
-        "silence_timeout": 2.0,
-        "max_record_seconds": 30
+        "microphone_index": 3,
+        "speaker_index": 2
     },
     "wake_words": [
         "винди",
