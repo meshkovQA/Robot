@@ -1,3 +1,4 @@
+from curses import raw
 import json
 import logging
 from openai import OpenAI
@@ -136,7 +137,7 @@ class AIOrchestrater:
 
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Запрос: '{user_text}'"}
+                {"role": "user", "content": f"Запрос: '{user_text}'\nОтветь строго JSON: {{\"intent\":\"...\"}}"}
             ]
 
             response = self.openai_client.chat.completions.create(
@@ -146,14 +147,32 @@ class AIOrchestrater:
                 temperature=self.config.get('intent_analysis_temperature', 0.1)
             )
 
-            intent = response.choices[0].message.content.strip().lower()
-            valid_intents = ['chat', 'vision', 'action', 'status', 'context']
+            raw = response.choices[0].message.content.strip()
+            valid_intents = {'chat', 'vision', 'action', 'status', 'context'}
+
+            # --- Надёжный парсинг JSON из ответа ---
+
+            intent = None
+            try:
+                # Убираем возможные обёртки ```json ... ```
+                if raw.startswith("```"):
+                    raw = raw.strip().strip("`")
+                # после среза может остаться префикс 'json'
+                    if raw.lower().startswith("json"):
+                        raw = raw[4:].lstrip()
+                import json as _json
+                data = _json.loads(raw)
+                intent = str(data.get("intent", "")).strip().lower()
+            except Exception:
+                # Фолбэк: если пришло просто слово/строка — снимаем кавычки
+                intent = raw.strip('"\'').lower()
 
             if intent in valid_intents:
                 logging.info(f"🎯 LLM определил намерение: {intent}")
                 return intent
             else:
-                logging.warning(f"⚠️ Неизвестное намерение от LLM: {intent}")
+                logging.warning(
+                    f"⚠️ Некорректное намерение от LLM: '{intent}', raw: '{raw}'")
                 return 'chat'
 
         except Exception as e:

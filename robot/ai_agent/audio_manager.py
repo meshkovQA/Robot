@@ -216,56 +216,6 @@ class AudioManager:
             logging.error(f"❌ Ошибка воспроизведения: {e}")
             return False
 
-    def play_audio_pyaudio(self, audio_file):
-        """Воспроизведение через PyAudio (альтернативный метод)"""
-        if not self.audio or not Path(audio_file).exists():
-            return False
-
-        try:
-            # Открываем WAV файл
-            with wave.open(audio_file, 'rb') as wf:
-                # Настройки из файла
-                channels = wf.getnchannels()
-                sample_width = wf.getsampwidth()
-                framerate = wf.getframerate()
-
-                # Определяем формат
-                if sample_width == 1:
-                    format = pyaudio.paInt8
-                elif sample_width == 2:
-                    format = pyaudio.paInt16
-                elif sample_width == 4:
-                    format = pyaudio.paInt32
-                else:
-                    format = pyaudio.paInt16
-
-                # Открываем поток для воспроизведения
-                stream = self.audio.open(
-                    format=format,
-                    channels=channels,
-                    rate=framerate,
-                    output=True,
-                    output_device_index=self.speaker_index,
-                    frames_per_buffer=self.chunk
-                )
-
-                # Воспроизводим по частям
-                data = wf.readframes(self.chunk)
-                while data:
-                    stream.write(data)
-                    data = wf.readframes(self.chunk)
-
-                # Закрываем поток
-                stream.stop_stream()
-                stream.close()
-
-                logging.info(f"✅ Воспроизведение завершено: {audio_file}")
-                return True
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка воспроизведения PyAudio: {e}")
-            return False
-
     def get_audio_devices_info(self):
         """Получить информацию об аудио устройствах"""
         if not self.audio:
@@ -302,46 +252,6 @@ class AudioManager:
         except Exception as e:
             logging.error(f"Ошибка получения списка устройств: {e}")
             return {"error": str(e)}
-
-    def test_audio_system(self):
-        """Тест аудио системы"""
-        results = {
-            "microphone_test": False,
-            "speaker_test": False,
-            "devices_detected": False
-        }
-
-        try:
-            # Тест устройств
-            devices = self.get_audio_devices_info()
-            if not devices.get("error"):
-                results["devices_detected"] = True
-                logging.info(
-                    f"Найдено микрофонов: {len(devices['microphones'])}")
-                logging.info(f"Найдено динамиков: {len(devices['speakers'])}")
-
-            # Тест записи
-            if self.microphone_index is not None:
-                test_file = "data/audio_test.wav"
-                recorded_file = self.record_audio(
-                    duration_seconds=2, output_file=test_file)
-                if recorded_file and Path(recorded_file).exists():
-                    results["microphone_test"] = True
-                    logging.info("✅ Тест микрофона пройден")
-
-                    # Тест воспроизведения
-                    if self.play_audio(recorded_file):
-                        results["speaker_test"] = True
-                        logging.info("✅ Тест динамиков пройден")
-
-                    # Удаляем тестовый файл
-                    Path(recorded_file).unlink(missing_ok=True)
-
-            return results
-
-        except Exception as e:
-            logging.error(f"Ошибка тестирования аудио: {e}")
-            return results
 
     def __del__(self):
         """Очистка ресурсов"""
