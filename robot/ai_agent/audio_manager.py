@@ -187,13 +187,19 @@ class AudioManager:
             return False
 
         try:
-            # Используем aplay для воспроизведения (стандартно в RPi OS)
-            if self.speaker_index is not None:
-                # Если знаем индекс устройства
-                cmd = f"aplay -D plughw:{self.speaker_index},0 {audio_file}"
+            # Выбираем плеер в зависимости от формата файла
+            if audio_file.lower().endswith('.mp3'):
+                # Для MP3 используем mpg123
+                if self.speaker_index is not None:
+                    cmd = f"mpg123 -a plughw:{self.speaker_index},0 {audio_file}"
+                else:
+                    cmd = f"mpg123 {audio_file}"
             else:
-                # Используем дефолтное устройство
-                cmd = f"aplay {audio_file}"
+                # Для WAV используем aplay
+                if self.speaker_index is not None:
+                    cmd = f"aplay -D plughw:{self.speaker_index},0 {audio_file}"
+                else:
+                    cmd = f"aplay {audio_file}"
 
             logging.info(f"🔊 Воспроизведение: {audio_file}")
             result = subprocess.run(
