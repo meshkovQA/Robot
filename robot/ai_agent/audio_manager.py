@@ -190,7 +190,7 @@ class AudioManager:
             # Используем aplay для воспроизведения (стандартно в RPi OS)
             if self.speaker_index is not None:
                 # Если знаем индекс устройства
-                cmd = f"aplay -D hw:{self.speaker_index},0 {audio_file}"
+                cmd = f"aplay -D plughw:{self.speaker_index},0 {audio_file}"
             else:
                 # Используем дефолтное устройство
                 cmd = f"aplay {audio_file}"

@@ -158,6 +158,10 @@ class WakeWordService:
             if not self.speech_handler:
                 return
 
+            # Проверяем уровень звука перед отправкой на распознавание
+            if not self._check_audio_has_speech(audio_file):
+                return
+
             # Распознаем речь в файле
             text = self.speech_handler.transcribe_audio(audio_file)
 
@@ -167,6 +171,35 @@ class WakeWordService:
 
         except Exception as e:
             logging.error(f"❌ Ошибка обработки wake word: {e}")
+
+    def _check_audio_has_speech(self, audio_file):
+        """Проверка наличия речи в аудиофайле по уровню громкости"""
+        try:
+            import wave
+            import numpy as np
+
+            with wave.open(audio_file, 'rb') as wf:
+                frames = wf.readframes(wf.getnframes())
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+
+                # Вычисляем среднюю громкость
+                volume = np.abs(audio_data).mean()
+                max_volume = np.abs(audio_data).max()
+
+                # Проверяем пороги
+                min_avg_volume = 100   # Минимальная средняя громкость
+                min_max_volume = 1000  # Минимальная пиковая громкость
+
+                has_speech = volume > min_avg_volume and max_volume > min_max_volume
+
+                logging.debug(
+                    f"🔊 Аудио проверка: avg={volume:.1f}, max={max_volume:.1f}, speech={has_speech}")
+
+                return has_speech
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка проверки аудио: {e}")
+            return True  # В случае ошибки пропускаем проверку
 
     def _save_audio_stream_to_file(self, audio_data, filename):
         """Сохранение потока аудио в WAV файл"""
@@ -192,8 +225,6 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка сохранения аудио: {e}")
             return False
-
-
 
     def _contains_wake_word(self, text):
         """Проверка текста на наличие wake word"""
