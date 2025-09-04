@@ -83,11 +83,7 @@ class AudioManager:
             logging.info(f"✅ Выбран динамик: {speakers[0][1]}")
 
     def record_audio(self, duration_seconds=5, output_file=None):
-        """Запись аудио с микрофона"""
-        if not self.audio or self.microphone_index is None:
-            logging.error("❌ Микрофон не найден")
-            return None
-
+        """Запись аудио с микрофона через arecord (более надежно для USB Audio)"""
         if output_file is None:
             output_file = f"data/temp_recording_{int(time.time())}.wav"
 
@@ -96,36 +92,28 @@ class AudioManager:
         try:
             logging.info(f"🎤 Запись аудио {duration_seconds}с в {output_file}")
 
-            # Открываем поток для записи
-            stream = self.audio.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=self.microphone_index,
-                frames_per_buffer=self.chunk
-            )
+            # Используем arecord с plughw для USB микрофона
+            cmd = [
+                'arecord',
+                '-D', f'plughw:{self.microphone_index},0',
+                '-r', str(self.sample_rate),
+                '-c', str(self.channels),
+                '-f', 'S16_LE',
+                '-d', str(duration_seconds),
+                output_file
+            ]
 
-            frames = []
+            result = subprocess.run(cmd, capture_output=True,
+                                    text=True, timeout=duration_seconds + 5)
 
-            # Записываем аудио
-            for _ in range(0, int(self.sample_rate / self.chunk * duration_seconds)):
-                data = stream.read(self.chunk)
-                frames.append(data)
-
-            # Закрываем поток
-            stream.stop_stream()
-            stream.close()
-
-            # Сохраняем в WAV файл
-            with wave.open(output_file, 'wb') as wf:
-                wf.setnchannels(self.channels)
-                wf.setsampwidth(self.audio.get_sample_size(self.format))
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(b''.join(frames))
-
-            logging.info(f"✅ Запись сохранена: {output_file}")
-            return output_file
+            if result.returncode == 0 and Path(output_file).exists():
+                file_size = Path(output_file).stat().st_size
+                logging.info(
+                    f"✅ Запись сохранена: {output_file} ({file_size} байт)")
+                return output_file
+            else:
+                logging.error(f"❌ Ошибка arecord: {result.stderr}")
+                return None
 
         except Exception as e:
             logging.error(f"❌ Ошибка записи аудио: {e}")
