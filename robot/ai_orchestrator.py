@@ -271,12 +271,17 @@ class AIOrchestrater:
                 response_text = "Не могу проанализировать изображение с камеры"
                 extra_data = {}
 
+        tts_instructions = None
+        if is_voice and self.config.get('tts_instructions', {}).get('vision'):
+            tts_instructions = self.config['tts_instructions']['vision']
+
         return self._create_response(
             user_text=user_text,
             ai_response=response_text,
             intent='vision',
             is_voice=is_voice,
-            extra_data=extra_data
+            extra_data=extra_data,
+            tts_instructions=tts_instructions
         )
 
     def _handle_status_request(self, user_text, is_voice=False):
@@ -318,12 +323,18 @@ class AIOrchestrater:
             else:
                 ai_response = basic_status
 
+            # TTS инструкции из ai_config.json
+            tts_instructions = None
+            if is_voice and self.config.get('tts_instructions', {}).get('status'):
+                tts_instructions = self.config['tts_instructions']['status']
+
             return self._create_response(
                 user_text=user_text,
                 ai_response=ai_response,
                 intent='status',
                 is_voice=is_voice,
-                extra_data={"context_data": context}
+                extra_data={"context_data": context},
+                tts_instructions=tts_instructions
             )
 
         except Exception as e:
@@ -347,12 +358,17 @@ class AIOrchestrater:
         # - Вызов методов robot_controller
         # - Контроль безопасности
 
+        tts_instructions = None
+        if is_voice and self.config.get('tts_instructions', {}).get('action'):
+            tts_instructions = self.config['tts_instructions']['action']
+
         return self._create_response(
             user_text=user_text,
             ai_response=action_response,
             intent='action',
             is_voice=is_voice,
-            extra_data={"planned_action": "movement_control_not_implemented"}
+            extra_data={"planned_action": "movement_control_not_implemented"},
+            tts_instructions=tts_instructions
         )
 
     def _handle_context_request(self, user_text, is_voice=False):
@@ -436,7 +452,7 @@ class AIOrchestrater:
             tts_instructions=tts_instructions
         )
 
-    def _create_response(self, user_text, ai_response, intent, is_voice=False, extra_data=None):
+    def _create_response(self, user_text, ai_response, intent, is_voice=False, extra_data=None, tts_instructions=None):
         """Создание унифицированного ответа"""
         response = {
             "success": True,
@@ -454,7 +470,8 @@ class AIOrchestrater:
         # Генерируем аудио если это голосовой запрос
         if is_voice and self.speech and self.speech.audio_manager:
             try:
-                audio_file = self.speech.text_to_speech(ai_response)
+                audio_file = self.speech.text_to_speech(
+                    ai_response, instructions=tts_instructions)
                 response["audio_file"] = audio_file
 
                 # Можем сразу воспроизвести
