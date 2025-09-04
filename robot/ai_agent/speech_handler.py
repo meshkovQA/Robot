@@ -120,10 +120,10 @@ class SpeechHandler:
             logging.error(f"❌ Ошибка Whisper: {e}")
             return None
 
-    def generate_response(self, user_message, context_data=None):
+    def generate_response(self, user_message, context_data=None, system_prompt=None, intent=None):
         """Генерация ответа через OpenAI GPT"""
 
-        system_prompt = self.system_prompts['default']
+        system_prompt = system_prompt or self.system_prompts['default']
 
         # Собираем сообщения для OpenAI
         messages = [
