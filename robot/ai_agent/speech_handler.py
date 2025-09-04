@@ -99,8 +99,6 @@ class SpeechHandler:
                     language="ru",  # Форсируем русский язык
                     response_format="text",
                     temperature=0.0,  # Для более стабильного распознавания
-                    # Новые возможности gpt-4o-transcribe
-                    prompt="Робот Винди слушает команды пользователя. Распознавай четко технические термины и имена."
                 )
 
             # OpenAI возвращает текст напрямую при response_format="text"
@@ -180,8 +178,14 @@ class SpeechHandler:
             clean_text = text.strip()
 
             # Получаем инструкции для TTS
-            tts_instructions = instructions or self.config.get('tts_instructions',
-                                                               "Говори дружелюбно как робот-помощник. Будь выразительным и естественным.")
+            tts_instructions = instructions
+            if tts_instructions is None:
+                tts_instructions = self.config.get('tts_instructions')
+            if isinstance(tts_instructions, dict):
+                tts_instructions = tts_instructions.get('default', "")
+
+            if not isinstance(tts_instructions, str):
+                tts_instructions = ""
 
             logging.info(
                 f"📝→🔊 Синтез речи (новая модель): '{clean_text[:50]}...'")
