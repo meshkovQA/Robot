@@ -15,7 +15,7 @@ class AudioManager:
         self.config = config or {}
 
         # Настройки аудио
-        self.sample_rate = self.config.get('sample_rate', 16000)
+        self.sample_rate = self.config.get('sample_rate', 48000)
         self.channels = self.config.get('channels', 1)
         self.chunk = self.config.get('chunk_size', 1024)
         self.format = pyaudio.paInt16
