@@ -90,11 +90,13 @@ class SpeechHandler:
 
             with open(audio_file_path, 'rb') as audio_file:
                 response = self.client.audio.transcriptions.create(
-                    model=self.whisper_model,
+                    model=self.whisper_model,  # Теперь это gpt-4o-transcribe
                     file=audio_file,
                     language="ru",  # Форсируем русский язык
                     response_format="text",
-                    temperature=0.0  # Для более стабильного распознавания
+                    temperature=0.0,  # Для более стабильного распознавания
+                    # Новые возможности gpt-4o-transcribe
+                    prompt="Робот Винди слушает команды пользователя. Распознавай четко технические термины и имена."
                 )
 
             # OpenAI возвращает текст напрямую при response_format="text"
@@ -182,7 +184,7 @@ class SpeechHandler:
 
             return fallback_responses.get(intent, fallback_responses['default'])
 
-    def text_to_speech(self, text, voice=None):
+    def text_to_speech(self, text, voice=None, instructions=None):
         """Синтез речи через OpenAI TTS"""
         if not text or not text.strip():
             logging.warning("⚠️ Пустой текст для синтеза")
@@ -192,19 +194,21 @@ class SpeechHandler:
             # Очищаем текст от лишних символов
             clean_text = text.strip()
 
-            # Ограничиваем длину текста (OpenAI TTS имеет лимиты)
-            if len(clean_text) > 4000:
-                clean_text = clean_text[:4000] + "..."
-                logging.warning(f"⚠️ Текст обрезан до 4000 символов")
+            # Получаем инструкции для TTS
+            tts_instructions = instructions or self.config.get('tts_instructions',
+                                                               "Говори дружелюбно как робот-помощник. Будь выразительным и естественным.")
 
-            logging.info(f"📝→🔊 Синтез речи: '{clean_text[:50]}...'")
+            logging.info(
+                f"📝→🔊 Синтез речи (новая модель): '{clean_text[:50]}...'")
 
             response = self.client.audio.speech.create(
-                model=self.tts_model,
+                model=self.tts_model,  # Теперь это gpt-4o-mini-tts
                 voice=voice or self.tts_voice,
                 input=clean_text,
-                response_format="mp3",  # MP3 более компактный
-                speed=1.0  # Нормальная скорость
+                response_format="mp3",
+                speed=1.0,
+                # НОВАЯ ФИЧА: инструкции для стиля речи
+                instructions=tts_instructions
             )
 
             # Сохраняем в файл
@@ -605,10 +609,17 @@ class SpeechHandler:
                 {"id": "nova", "name": "Nova",
                     "description": "Молодой женский голос"},
                 {"id": "shimmer", "name": "Shimmer",
-                    "description": "Мягкий женский голос"}
+                    "description": "Мягкий женский голос"},
+                # Новые голоса от OpenAI 2025
+                {"id": "marin", "name": "Marin",
+                    "description": "Новый выразительный голос"},
+                {"id": "cedar", "name": "Cedar",
+                    "description": "Новый естественный голос"}
             ],
             "current_voice": self.tts_voice,
-            "models": ["tts-1", "tts-1-hd"]
+            "models": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
+            "current_model": self.tts_model,
+            "supports_instructions": True
         }
 
     def set_voice(self, voice_id):
@@ -638,4 +649,21 @@ class SpeechHandler:
                     if self.conversation_history else None
                 )
             }
+        }
+
+    def set_tts_instructions(self, instructions):
+        """Установить инструкции для стиля речи TTS"""
+        self.config['tts_instructions'] = instructions
+        logging.info(f"🎭 Инструкции TTS обновлены: '{instructions[:50]}...'")
+        return {"success": True, "instructions": instructions}
+
+    def get_tts_presets(self):
+        """Получить предустановленные стили речи"""
+        return {
+            "robot_friendly": "Говори дружелюбно как робот-помощник. Будь выразительным и естественным.",
+            "professional": "Говори профессионально и четко как деловой ассистент.",
+            "caring": "Говори заботливо и сочувственно как медицинский помощник.",
+            "excited": "Говори энергично и восторженно как игровой персонаж.",
+            "calm": "Говори спокойно и медитативно как инструктор йоги.",
+            "technical": "Говори точно и технично как инженер, четко произноси термины."
         }
