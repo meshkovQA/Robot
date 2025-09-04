@@ -9,7 +9,7 @@
     "temperature": 0.7,
     "whisper_model": "gpt-4o-transcribe",
     "tts_model": "gpt-4o-mini-tts",
-    "voice": "alloy",
+    "voice": "marin",
     "tts_instructions": "Тебя зовут Винди, говори дружелюбно как робот-помощник. Будь выразительным и естественным.",
     "audio": {
         "sample_rate": 44100,

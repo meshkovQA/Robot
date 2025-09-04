@@ -624,8 +624,8 @@ class SpeechHandler:
 
     def set_voice(self, voice_id):
         """Установить голос для TTS"""
-        available_voices = ["alloy", "echo",
-                            "fable", "onyx", "nova", "shimmer"]
+        available_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer",
+                            "marin", "cedar"]  # ←← ДОБАВЛЕНЫ НОВЫЕ ГОЛОСА
 
         if voice_id in available_voices:
             self.tts_voice = voice_id
