@@ -49,34 +49,19 @@ class AIOrchestrater:
         import os
 
         config_path = Path("data/ai_config.json")
-        try:
-            if config_path.exists():
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                logging.info("📄 Конфигурация AI загружена")
-            else:
-                logging.warning("⚠️ Конфигурационный файл AI не найден")
 
-                # Переопределяем API ключ из environment переменной
-                env_api_key = os.getenv('OPENAI_API_KEY')
-                if env_api_key:
-                    config['openai_api_key'] = env_api_key
-                    logging.info(
-                        "🔑 AIOrchestrater. OpenAI API ключ загружен из environment переменной")
-                elif not config.get('openai_api_key'):
-                    logging.warning(
-                        "⚠️ AIOrchestrater. OpenAI API ключ не найден ни в env, ни в конфигурации")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        logging.info("📄 Конфигурация AI загружена")
 
-                return config
+        # Переопределяем API ключ из environment переменной
+        env_api_key = os.getenv('OPENAI_API_KEY')
+        if env_api_key:
+            config['openai_api_key'] = env_api_key
+            logging.info(
+                "🔑 OpenAI API ключ загружен из environment переменной")
 
-        except Exception as e:
-            logging.error(
-                f"❌ AIOrchestrater. Ошибка загрузки конфигурации: {e}")
-            return {
-                "openai_api_key": os.getenv('OPENAI_API_KEY', ""),
-                "speech_enabled": False,
-                "vision_enabled": False
-            }
+        return config
 
     def _load_system_prompts(self):
         """Загрузить системные промпты из JSON файла"""
