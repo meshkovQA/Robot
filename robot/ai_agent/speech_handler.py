@@ -45,13 +45,7 @@ class SpeechHandler:
         # AudioManager будет подключен извне
         self.audio_manager = None
 
-        # Системные промпты (остается как есть)
-        self.system_prompts = {
-            'default': "Ты умный робот-помощник, которого зовут Винди. Отвечай кратко и дружелюбно на русском языке. Ты можешь видеть через камеру, слышать через микрофон и двигаться по дому.",
-            'vision': "Ты робот с камерой. Анализируй изображения и описывай что видишь простым языком.",
-            'status': "Ты робот-диагност. Анализируй техническую информацию и отвечай понятно о состоянии систем.",
-            'context': "Ты умный робот-аналитик. Обрабатывай всю доступную информацию и давай комплексные, но понятные ответы."
-        }
+        self._load_system_prompts()
 
         logging.info("🎤 SpeechHandler инициализирован с новым OpenAI API")
 
@@ -78,6 +72,16 @@ class SpeechHandler:
                           ensure_ascii=False, indent=2)
         except Exception as e:
             logging.error(f"❌ Ошибка сохранения диалогов: {e}")
+
+    def _load_system_prompts(self):
+        """Загрузить системные промпты из JSON файла"""
+        prompts_file = Path("data/system_prompts.json")
+
+        with open(prompts_file, 'r', encoding='utf-8') as f:
+            self.system_prompts = json.load(f)
+
+        logging.info(
+            f"📄 SpeechHandler загрузил {len(self.system_prompts)} промптов")
 
     def transcribe_audio(self, audio_file_path):
         """Распознавание речи через OpenAI Whisper"""
@@ -116,73 +120,54 @@ class SpeechHandler:
             logging.error(f"❌ Ошибка Whisper: {e}")
             return None
 
-    def generate_response(self, user_message, intent='default', context_data=None):
+    def generate_response(self, user_message, context_data=None):
         """Генерация ответа через OpenAI GPT"""
-        try:
-            # Выбираем системный промпт по типу запроса
-            system_prompt = self.system_prompts.get(
-                intent, self.system_prompts['default'])
 
-            # Собираем сообщения для OpenAI
-            messages = [
-                {"role": "system", "content": system_prompt}
-            ]
+        system_prompt = self.system_prompts['default']
 
-            # Добавляем контекст если есть
-            if context_data:
-                context_message = f"Дополнительная информация: {json.dumps(context_data, ensure_ascii=False)}"
-                messages.append({"role": "system", "content": context_message})
+        # Собираем сообщения для OpenAI
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
 
-            # Добавляем историю диалогов (последние 5 сообщений)
-            recent_conversations = self.conversation_history[-5:] if self.conversation_history else [
-            ]
-            for conv in recent_conversations:
-                if conv.get('user_message'):
-                    messages.append(
-                        {"role": "user", "content": conv['user_message']})
-                if conv.get('ai_response'):
-                    messages.append(
-                        {"role": "assistant", "content": conv['ai_response']})
+        # Добавляем контекст если есть
+        if context_data:
+            context_message = f"Дополнительная информация: {json.dumps(context_data, ensure_ascii=False)}"
+            messages.append({"role": "system", "content": context_message})
 
-            # Добавляем текущее сообщение пользователя
-            messages.append({"role": "user", "content": user_message})
+        # Добавляем историю диалогов (последние 5 сообщений)
+        recent_conversations = self.conversation_history[-5:] if self.conversation_history else [
+        ]
+        for conv in recent_conversations:
+            if conv.get('user_message'):
+                messages.append(
+                    {"role": "user", "content": conv['user_message']})
+            if conv.get('ai_response'):
+                messages.append(
+                    {"role": "assistant", "content": conv['ai_response']})
 
-            logging.info(
-                f"🧠 Генерация ответа ({intent}): '{user_message[:50]}...'")
+        # Добавляем текущее сообщение пользователя
+        messages.append({"role": "user", "content": user_message})
 
-            # Отправляем запрос в OpenAI
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                frequency_penalty=0.1,  # Снижаем повторения
-                presence_penalty=0.1    # Поощряем новые темы
-            )
+        # Отправляем запрос в OpenAI
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            frequency_penalty=0.1,  # Снижаем повторения
+            presence_penalty=0.1    # Поощряем новые темы
+        )
 
-            ai_response = response.choices[0].message.content.strip()
+        ai_response = response.choices[0].message.content.strip()
 
-            if ai_response:
-                logging.info(f"✅ Сгенерирован ответ: '{ai_response[:100]}...'")
-                return ai_response
-            else:
-                fallback_response = "Извини, у меня проблемы с пониманием. Попробуй перефразировать вопрос."
-                logging.warning("⚠️ Пустой ответ от GPT, использую fallback")
-                return fallback_response
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка генерации GPT: {e}")
-
-            # Fallback ответы в зависимости от типа запроса
-            fallback_responses = {
-                'vision': "Извини, не могу сейчас проанализировать изображение.",
-                'status': "Не могу получить информацию о системах в данный момент.",
-                'action': "Команда понята, но сейчас не могу её выполнить.",
-                'context': "Не могу провести полный анализ ситуации прямо сейчас.",
-                'default': "Извини, у меня технические проблемы. Попробуй чуть позже."
-            }
-
-            return fallback_responses.get(intent, fallback_responses['default'])
+        if ai_response:
+            logging.info(f"✅ Сгенерирован ответ: '{ai_response[:100]}...'")
+            return ai_response
+        else:
+            fallback_response = "Извини, у меня проблемы с пониманием. Попробуй перефразировать вопрос."
+            logging.warning("⚠️ Пустой ответ от GPT, использую fallback")
+            return fallback_response
 
     def text_to_speech(self, text, voice=None, instructions=None):
         """Синтез речи через OpenAI TTS"""
@@ -502,126 +487,6 @@ class SpeechHandler:
         except Exception as e:
             return {"error": str(e)}
 
-    def test_speech_system(self):
-        """Тест речевой системы"""
-        results = {
-            "openai_api_test": False,
-            "whisper_test": False,
-            "gpt_test": False,
-            "tts_test": False,
-            "audio_hardware_test": False,
-            "details": []
-        }
-
-        try:
-            # 1. Тест подключения к OpenAI API
-            try:
-                response = self.client.models.list()
-                results["openai_api_test"] = True
-                results["details"].append("✅ OpenAI API подключение работает")
-            except Exception as e:
-                results["details"].append(f"❌ OpenAI API: {e}")
-
-            # 2. Тест GPT
-            if results["openai_api_test"]:
-                try:
-                    test_response = self.generate_response(
-                        "Привет, это тест", intent='default')
-                    if test_response and len(test_response) > 5:
-                        results["gpt_test"] = True
-                        results["details"].append("✅ GPT генерация работает")
-                    else:
-                        results["details"].append(
-                            "❌ GPT: пустой или короткий ответ")
-                except Exception as e:
-                    results["details"].append(f"❌ GPT: {e}")
-
-            # 3. Тест TTS
-            if results["openai_api_test"]:
-                try:
-                    test_audio = self.text_to_speech("Тест синтеза речи")
-                    if test_audio and Path(test_audio).exists():
-                        file_size = Path(test_audio).stat().st_size
-                        if file_size > 1000:
-                            results["tts_test"] = True
-                            results["details"].append(
-                                f"✅ TTS работает ({file_size} байт)")
-                        else:
-                            results["details"].append(
-                                f"❌ TTS: слишком маленький файл ({file_size} байт)")
-
-                        # Удаляем тестовый файл
-                        Path(test_audio).unlink(missing_ok=True)
-                    else:
-                        results["details"].append(
-                            "❌ TTS: не удалось создать файл")
-                except Exception as e:
-                    results["details"].append(f"❌ TTS: {e}")
-
-            # 4. Тест аудио hardware
-            if self.audio_manager:
-                try:
-                    audio_test = self.audio_manager.test_audio_system()
-                    if audio_test.get("overall_success"):
-                        results["audio_hardware_test"] = True
-                        results["details"].append("✅ Аудио hardware работает")
-                    else:
-                        results["details"].append(
-                            "⚠️ Проблемы с аудио hardware")
-                        results["details"].extend(
-                            audio_test.get("details", []))
-                except Exception as e:
-                    results["details"].append(f"❌ Аудио hardware тест: {e}")
-            else:
-                results["details"].append("⚠️ AudioManager не подключен")
-
-            # 5. Общий результат
-            total_tests = 4  # Исключаем Whisper, так как нужен аудио файл
-            passed_tests = sum([
-                results["openai_api_test"],
-                results["gpt_test"],
-                results["tts_test"],
-                results["audio_hardware_test"]
-            ])
-
-            results["overall_success"] = passed_tests >= 3
-            results["score"] = f"{passed_tests}/{total_tests}"
-
-            logging.info(f"🧪 Тест речевой системы: {results['score']}")
-
-            return results
-
-        except Exception as e:
-            logging.error(f"❌ Критическая ошибка тестирования: {e}")
-            results["details"].append(f"Критическая ошибка: {e}")
-            return results
-
-    def get_available_voices(self):
-        """Получить список доступных голосов TTS"""
-        return {
-            "voices": [
-                {"id": "alloy", "name": "Alloy",
-                    "description": "Сбалансированный голос"},
-                {"id": "echo", "name": "Echo", "description": "Мужской голос"},
-                {"id": "fable", "name": "Fable", "description": "Британский акцент"},
-                {"id": "onyx", "name": "Onyx",
-                    "description": "Глубокий мужской голос"},
-                {"id": "nova", "name": "Nova",
-                    "description": "Молодой женский голос"},
-                {"id": "shimmer", "name": "Shimmer",
-                    "description": "Мягкий женский голос"},
-                # Новые голоса от OpenAI 2025
-                {"id": "marin", "name": "Marin",
-                    "description": "Новый выразительный голос"},
-                {"id": "cedar", "name": "Cedar",
-                    "description": "Новый естественный голос"}
-            ],
-            "current_voice": self.tts_voice,
-            "models": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
-            "current_model": self.tts_model,
-            "supports_instructions": True
-        }
-
     def set_voice(self, voice_id):
         """Установить голос для TTS"""
         available_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer",
@@ -656,14 +521,3 @@ class SpeechHandler:
         self.config['tts_instructions'] = instructions
         logging.info(f"🎭 Инструкции TTS обновлены: '{instructions[:50]}...'")
         return {"success": True, "instructions": instructions}
-
-    def get_tts_presets(self):
-        """Получить предустановленные стили речи"""
-        return {
-            "robot_friendly": "Говори дружелюбно как робот-помощник. Будь выразительным и естественным.",
-            "professional": "Говори профессионально и четко как деловой ассистент.",
-            "caring": "Говори заботливо и сочувственно как медицинский помощник.",
-            "excited": "Говори энергично и восторженно как игровой персонаж.",
-            "calm": "Говори спокойно и медитативно как инструктор йоги.",
-            "technical": "Говори точно и технично как инженер, четко произноси термины."
-        }
