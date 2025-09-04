@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from .audio_manager import AudioManager
 from .speech_handler import SpeechHandler
+from robot.controllers.rgb_controller import RGBController
 
 
 class WakeWordService:
@@ -306,6 +307,14 @@ class WakeWordService:
                 self.audio_manager.stop_continuous_recording()
             time.sleep(0.5)  # Небольшая пауза
 
+            # Показать визуально, что идёт запись команды — зелёный
+            try:
+                robot = getattr(self.ai_orchestrator, "robot", None)
+                if robot and hasattr(robot, "set_rgb_preset"):
+                    robot.set_rgb_preset("green")
+            except Exception as _:
+                pass
+
             # Записываем команду пользователя
             logging.info("🎤 Записываю команду...")
 
@@ -339,6 +348,14 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка режима команд: {e}")
         finally:
+            # Гасим индикацию записи
+            try:
+                robot = getattr(self.ai_orchestrator, "robot", None)
+                if robot and hasattr(robot, "set_rgb_preset"):
+                    robot.set_rgb_preset("off")
+            except Exception as _:
+                pass
+
             # Всегда возобновляем прослушивание wake word
             self._resume_wake_word_listening()
 
