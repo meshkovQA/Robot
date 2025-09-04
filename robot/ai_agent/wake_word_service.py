@@ -193,31 +193,7 @@ class WakeWordService:
             logging.error(f"❌ Ошибка сохранения аудио: {e}")
             return False
 
-    def _process_wake_word_file(self, audio_file, volume):
-        """Обработка аудио файла на wake word (старая логика)"""
-        try:
-            if not self.speech_handler:
-                return
 
-            text = self.speech_handler.transcribe_audio(audio_file)
-            if not text:
-                return
-
-            text_lower = text.lower().strip()
-            logging.debug(f"👂 Услышал: '{text}'")
-
-            if self._contains_wake_word(text_lower):
-                logging.info(f"🎯 АКТИВАЦИЯ! Обнаружено слово: '{text}'")
-                self._handle_activation(text)
-
-            # Удаляем временный файл
-            try:
-                Path(audio_file).unlink(missing_ok=True)
-            except:
-                pass
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка обработки wake word: {e}")
 
     def _contains_wake_word(self, text):
         """Проверка текста на наличие wake word"""
