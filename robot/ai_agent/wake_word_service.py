@@ -108,6 +108,14 @@ class WakeWordService:
 
             logging.info("🔄 НАЧИНАЮ _wake_word_loop")
 
+            # ОСВОБОЖДАЕМ МИКРОФОН ОТ PyAudio
+            if self.audio_manager and hasattr(self.audio_manager, 'audio') and self.audio_manager.audio:
+                logging.info("🔓 Освобождаю микрофон от PyAudio...")
+                self.audio_manager.audio.terminate()
+                self.audio_manager.audio = None
+                time.sleep(0.5)  # Даем время системе освободить ресурс
+                logging.info("✅ Микрофон освобожден")
+
             while self.is_running:
                 try:
                     logging.info("🔄 Вошел в основной while цикл")
