@@ -138,15 +138,24 @@ class WakeWordService:
                         logging.info(f"🔄 Запускаю команду: {' '.join(cmd)}")
 
                         try:
+                            start_time = time.time()
 
                             result = subprocess.run(
-                                cmd, capture_output=True, timeout=1)
+                                cmd, capture_output=True, timeout=chunk_duration + 2)
+
+                            end_time = time.time()
 
                             logging.info(
-                                f"🔄 Результат выполнения команды: {result}")
+                                f"🔄 Команда выполнена за {end_time - start_time:.2f}с, returncode={result.returncode}")
+
+                            if result.stderr:
+                                logging.warning(
+                                    f"⚠️ arecord stderr: {result.stderr.decode()}")
 
                             if result.returncode == 0 and Path(temp_file).exists():
                                 file_size = Path(temp_file).stat().st_size
+                                logging.info(
+                                    f"🔄 Файл создан: {file_size} байт")
 
                                 if file_size > 500:  # Минимальный размер для 0.5 сек
                                     # Добавляем в буфер
