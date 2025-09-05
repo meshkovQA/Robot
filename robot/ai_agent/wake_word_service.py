@@ -307,11 +307,6 @@ class WakeWordService:
             # Играем звуковой сигнал активации (опционально)
             self._play_activation_sound()
 
-            # Временно останавливаем основное прослушивание
-            if hasattr(self.audio_manager, 'stop_continuous_recording'):
-                self.audio_manager.stop_continuous_recording()
-            time.sleep(0.5)  # Небольшая пауза
-
             # Показать визуально, что идёт запись команды — зелёный
             try:
                 robot = getattr(self.ai_orchestrator, "robot", None)
