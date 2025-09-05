@@ -106,8 +106,11 @@ class WakeWordService:
         """Основной цикл прослушивания wake word через arecord"""
         try:
 
+            logging.info("🔄 НАЧИНАЮ _wake_word_loop")
+
             while self.is_running:
                 try:
+                    logging.info("🔄 Вошел в основной while цикл")
                     self.is_listening = True
                     logging.info("🎤 Начата непрерывная запись (через arecord)")
 
@@ -118,6 +121,7 @@ class WakeWordService:
                     chunk_duration = 0.5  # записываем по 0.5 секунды
 
                     while self.is_running and self.is_listening:
+                        logging.info("🔄 Цикл прослушивания wake word...")
                        # Записываем короткие отрезки (0.5 секунды) для обнаружения wake word
                         temp_file = f"/tmp/wake_chunk_{int(time.time() * 1000)}.wav"
 
@@ -131,10 +135,15 @@ class WakeWordService:
                             '-d', str(chunk_duration),
                             temp_file
                         ]
+                        logging.info(f"🔄 Запускаю команду: {' '.join(cmd)}")
 
                         try:
+
                             result = subprocess.run(
                                 cmd, capture_output=True, timeout=1)
+
+                            logging.info(
+                                f"🔄 Результат выполнения команды: {result}")
 
                             if result.returncode == 0 and Path(temp_file).exists():
                                 file_size = Path(temp_file).stat().st_size
