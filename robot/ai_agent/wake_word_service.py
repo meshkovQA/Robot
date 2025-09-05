@@ -81,9 +81,9 @@ class WakeWordService:
         try:
             logging.info("🔄 НАЧИНАЮ _wake_word_loop")
             buffer_files: list[str] = []
-            buffer_duration = 0.0
-            max_buffer_duration = 3.0
-            chunk_duration = 1.0
+            buffer_duration = 0
+            max_buffer_duration = 3
+            chunk_duration = 1
 
             while self.is_running:
                 if not self.is_listening:
@@ -121,7 +121,7 @@ class WakeWordService:
                                 logging.info(
                                     f"🗣️ Обнаружено wake word: '{text}'")
                                 # ждём короткую паузу, чтобы команда была после wake-word
-                                if self.audio_manager.wait_for_silence(max_wait=1.0, check_interval=0.2):
+                                if self.audio_manager.wait_for_silence(max_wait=1, check_interval=1):
                                     self._handle_activation(text)
                     Path(combined).unlink(missing_ok=True)
 

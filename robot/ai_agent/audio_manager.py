@@ -50,7 +50,7 @@ class AudioManager:
             logging.error(f"arecord error: {e}")
         return False
 
-    def record_chunk(self, duration_seconds=1.0, to_file: str | None = None) -> str | None:
+    def record_chunk(self, duration_seconds=1, to_file: str | None = None) -> str | None:
         """Записать короткий кусок аудио в WAV и вернуть путь."""
         to_file = to_file or f"/tmp/chunk_{int(time.time()*1000)}.wav"
         ok = self._arecord(duration_seconds, to_file)
@@ -93,11 +93,11 @@ class AudioManager:
                 frames = wf.readframes(wf.getnframes())
             audio = np.frombuffer(frames, dtype=np.int16)
             if audio.size == 0:
-                return 0.0, 0.0
+                return 0, 0
             return float(np.abs(audio).mean()), float(np.abs(audio).max())
         except Exception as e:
             logging.error(f"❌ detect_levels error: {e}")
-            return 0.0, 0.0
+            return 0, 0
 
     def is_audio_silent(self, audio_file, threshold=200):
         """Пороговая проверка «тишины» по средней амплитуде."""
@@ -115,7 +115,7 @@ class AudioManager:
         audio_file: str,
         window_samples: int = 1000,
         min_loud_windows: int = 2,
-        mean_threshold: float = 200.0,
+        mean_threshold: float = 200,
     ) -> bool:
         """Грубо отличаем речь от одиночных щелчков/шумов (по окнам)."""
         try:
@@ -135,15 +135,15 @@ class AudioManager:
 
     def wait_for_silence(
         self,
-        max_wait: float = 1.0,
-        check_interval: float = 0.2,
-        silence_threshold: float = 200.0,
+        max_wait: float = 2,
+        check_interval: float = 1,
+        silence_threshold: float = 200,
     ) -> bool:
         """
         Ждём тишину после фразы (для «Винди ... [пауза] ...»).
         Записываем маленькие отрезки и проверяем тишину.
         """
-        waited = 0.0
+        waited = 0
         logging.debug("🤫 Ожидание тишины...")
         while waited < max_wait:
             tmp = self.record_chunk(duration_seconds=check_interval)
@@ -169,9 +169,9 @@ class AudioManager:
         output_file = f"data/temp_recording_{int(time.time())}.wav"
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
-        total = 0.0
-        silent = 0.0
-        chunk_dur = 0.5
+        total = 0
+        silent = 0
+        chunk_dur = 1
         chunks: list[str] = []
         logging.info(f"🎤 Запись до тишины (макс {max_duration}с)")
 
@@ -192,7 +192,7 @@ class AudioManager:
                         Path(chunk).unlink(missing_ok=True)
                         break
                 else:
-                    silent = 0.0
+                    silent = 0
 
                 chunks.append(chunk)
                 total += chunk_dur
