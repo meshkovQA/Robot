@@ -3,6 +3,7 @@
     "vision_model": "gpt-4o",
     "speech_enabled": true,
     "vision_enabled": true,
+    "wake_word_enabled": true,
     "max_conversation_length": 10,
     "max_tokens": 1500,
     "vision_max_tokens": 300,
