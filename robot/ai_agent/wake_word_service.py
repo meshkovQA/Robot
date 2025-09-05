@@ -52,12 +52,9 @@ class WakeWordService:
             self.audio_manager = AudioManager(self.config.get('audio', {}))
 
             # Инициализируем SpeechHandler
-            if self.config.get('openai_api_key'):
-                self.speech_handler = SpeechHandler(self.config)
-                self.speech_handler.audio_manager = self.audio_manager
-                logging.info("✅ WakeWord компоненты готовы")
-            else:
-                logging.warning("⚠️ OpenAI API ключ не настроен")
+            self.speech_handler = SpeechHandler(self.config)
+            self.speech_handler.audio_manager = self.audio_manager
+            logging.info("✅ WakeWord компоненты готовы")
 
         except Exception as e:
             logging.error(f"❌ Ошибка инициализации WakeWord компонентов: {e}")
@@ -70,6 +67,11 @@ class WakeWordService:
 
         if not self.audio_manager:
             logging.error("❌ AudioManager не инициализирован")
+            return False
+
+        if not self.speech_handler:
+            logging.error(
+                "❌ SpeechHandler не инициализирован")
             return False
 
         self.is_running = True
