@@ -21,6 +21,21 @@ class AudioManager:
         self.microphone_index = self.config.get('microphone_index', None)
         self.speaker_index = self.config.get('speaker_index', None)
 
+        # Настройки детекции речи/тишины
+
+        self.wake_cfg = (self.config or {}).get('wake', {})
+        self._min_avg = int(self.wake_cfg.get('min_avg_volume', 500))
+        self._min_peak = int(self.wake_cfg.get('min_peak_volume', 4000))
+        self._cont_min_ms = int(self.wake_cfg.get('continuous_min_ms', 300))
+        self._cont_win_ms = int(self.wake_cfg.get('continuous_window_ms', 20))
+        self._cont_mean = float(self.wake_cfg.get(
+            'continuous_mean_threshold', 300))
+        sil = self.wake_cfg.get('silence_check', {}) if isinstance(
+            self.wake_cfg, dict) else {}
+        self._sil_max_wait = float(sil.get('max_wait_ms', 1200)) / 1000.0
+        self._sil_interval = float(sil.get('check_interval_s', 1))
+        self._sil_threshold = float(sil.get('silence_threshold', 200))
+
         logging.info(f"AudioManager. Микрофон index: {self.microphone_index}")
         logging.info(f"AudioManager. Динамик  index: {self.speaker_index}")
 
@@ -28,6 +43,9 @@ class AudioManager:
 
     def _arecord(self, duration_seconds: float, out_path: str) -> bool:
         """Вспомогательный вызов arecord."""
+
+        # arecord на некоторых системах не принимает дробные значения -d
+        int_seconds = max(1, int(round(float(duration_seconds))))
         cmd = [
             'arecord',
             '-D', f'plughw:{self.microphone_index},0',
@@ -104,51 +122,51 @@ class AudioManager:
         avg, _ = self.detect_levels(audio_file)
         return avg < threshold
 
-    def has_speech(self, audio_file: str, min_avg_volume=300, min_max_volume=2000) -> bool:
-        """Есть ли человеческая речь по простым порогам."""
+    def has_speech(self, audio_file: str, min_avg_volume=None, min_max_volume=None) -> bool:
+        min_avg = self._min_avg if min_avg_volume is None else min_avg_volume
+        min_peak = self._min_peak if min_max_volume is None else min_max_volume
         avg, peak = self.detect_levels(audio_file)
-        logging.debug(f"🔊 avg={avg:.1f}, max={peak:.1f}")
-        return avg > min_avg_volume and peak > min_max_volume
+        logging.debug(
+            f"🔊 avg={avg:.1f}, max={peak:.1f}, thr=({min_avg},{min_peak})")
+        return avg > min_avg and peak > min_peak
 
-    def has_continuous_sound(
-        self,
-        audio_file: str,
-        window_samples: int = 1000,
-        min_loud_windows: int = 2,
-        mean_threshold: float = 200,
-    ) -> bool:
-        """Грубо отличаем речь от одиночных щелчков/шумов (по окнам)."""
+    def has_continuous_sound(self, audio_file: str,
+                             min_ms=None, window_ms=None, mean_threshold=None) -> bool:
+        min_ms = self._cont_min_ms if min_ms is None else int(min_ms)
+        window_ms = self._cont_win_ms if window_ms is None else int(window_ms)
+        mean_threshold = self._cont_mean if mean_threshold is None else float(
+            mean_threshold)
         try:
             with wave.open(audio_file, 'rb') as wf:
+                sr = wf.getframerate()
                 frames = wf.readframes(wf.getnframes())
-                audio = np.frombuffer(frames, dtype=np.int16)
-
-            loud = 0
-            total = max(0, len(audio) - window_samples)
-            for i in range(0, total, window_samples):
-                window = audio[i:i + window_samples]
-                if window.size and float(np.abs(window).mean()) > mean_threshold:
-                    loud += 1
-            return loud >= min_loud_windows
-        except Exception as _:
+            audio = np.frombuffer(frames, dtype=np.int16)
+            win = max(1, int(sr * window_ms / 1000.0))
+            need = max(1, int(min_ms / window_ms))
+            consec = 0
+            for i in range(0, len(audio) - win, win):
+                if float(np.abs(audio[i:i+win]).mean()) > mean_threshold:
+                    consec += 1
+                    if consec >= need:
+                        return True
+                else:
+                    consec = 0
+            return False
+        except Exception:
             return False
 
-    def wait_for_silence(
-        self,
-        max_wait: float = 2,
-        check_interval: float = 1,
-        silence_threshold: float = 200,
-    ) -> bool:
-        """
-        Ждём тишину после фразы (для «Винди ... [пауза] ...»).
-        Записываем маленькие отрезки и проверяем тишину.
-        """
-        waited = 0
+    def wait_for_silence(self, max_wait=None, check_interval=None, silence_threshold=None) -> bool:
+        max_wait = self._sil_max_wait if max_wait is None else float(max_wait)
+        check_interval = self._sil_interval if check_interval is None else float(
+            check_interval)
+        silence_threshold = self._sil_threshold if silence_threshold is None else float(
+            silence_threshold)
+
+        waited = 0.0
         logging.debug("🤫 Ожидание тишины...")
         while waited < max_wait:
             tmp = self.record_chunk(duration_seconds=check_interval)
             if not tmp:
-                # при ошибке считаем как тишину, чтобы не блокироваться
                 waited += check_interval
                 continue
             try:

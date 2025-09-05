@@ -33,6 +33,24 @@ class WakeWordService:
         self.audio_manager: AudioManager | None = None
         self.speech_handler: SpeechHandler | None = None
 
+        self.wake_cfg = self.config.get('wake', {}) or {}
+
+        self._confirm_second_look = bool(
+            self.wake_cfg.get('confirm_second_look', True))
+
+        match_cfg = self.wake_cfg.get('match', {}) if isinstance(
+            self.wake_cfg, dict) else {}
+        self._match_start_only = bool(match_cfg.get('start_only', True))
+        self._max_prefix_words = int(match_cfg.get('max_prefix_words', 2))
+        self._use_word_boundary = bool(match_cfg.get('word_boundary', True))
+
+        # cooldown
+        self.cooldown_until = 0.0
+        self._cd_after_tts = float(self.wake_cfg.get(
+            'cooldown_after_tts_ms', 2000))/1000.0
+        self._cd_after_activation = float(self.wake_cfg.get(
+            'cooldown_after_activation_ms', 1000))/1000.0
+
         self._initialize_components()
         logging.info("🎤 WakeWordService инициализирован")
         logging.info(f"👂 Слова активации: {', '.join(self.wake_words)}")
@@ -86,6 +104,9 @@ class WakeWordService:
             chunk_duration = 1
 
             while self.is_running:
+                if time.time() < self.cooldown_until:
+                    time.sleep(0.05)
+                    continue
                 if not self.is_listening:
                     time.sleep(0.1)
                     continue
@@ -120,9 +141,10 @@ class WakeWordService:
                             if text and self._contains_wake_word(text.lower()):
                                 logging.info(
                                     f"🗣️ Обнаружено wake word: '{text}'")
-                                # ждём короткую паузу, чтобы команда была после wake-word
-                                if self.audio_manager.wait_for_silence(max_wait=1, check_interval=1):
-                                    self._handle_activation(text)
+
+                                if self.audio_manager.wait_for_silence():
+                                    if self._confirm_wake_word():
+                                        self._handle_activation(text)
                     Path(combined).unlink(missing_ok=True)
 
         except Exception as e:
@@ -135,20 +157,24 @@ class WakeWordService:
 
     # ------------ текстовая логика ------------
 
-    def _contains_wake_word(self, text):
-        """Проверка текста на наличие wake word (в начале предпочтительнее)."""
-        clean_text = re.sub(r'[^\w\s]', '', text).strip()
-        words = clean_text.split()
-        first_words = words[:3] if len(words) >= 3 else words
-
-        for wake_word in self.wake_words:
-            for word in first_words:
-                if wake_word in word or word in wake_word:
+    def _contains_wake_word(self, text: str) -> bool:
+        clean = re.sub(r'[^\w\s]', ' ', text.lower()).strip()
+        if not clean:
+            return False
+        tokens = clean.split()
+        head = " ".join(tokens[:max(1, self._max_prefix_words)])
+        for ww in self.wake_words:
+            ww = ww.lower()
+            if self._use_word_boundary:
+                pat = r'^\b' + \
+                    re.escape(
+                        ww) + r'\b' if self._match_start_only else r'\b' + re.escape(ww) + r'\b'
+                if re.search(pat, head if self._match_start_only else clean):
                     return True
-
-        for wake_word in self.wake_words:
-            if wake_word in clean_text:
-                return True
+            else:
+                to_scan = head if self._match_start_only else clean
+                if ww in to_scan:
+                    return True
         return False
 
     def _extract_command_after_wake_word(self, activation_text):
@@ -180,6 +206,7 @@ class WakeWordService:
             logging.error(f"❌ Ошибка обработки активации: {e}")
         finally:
             time.sleep(3)
+            self.cooldown_until = time.time() + self._cd_after_activation
             self.is_listening = True
 
     def _enter_command_mode(self):
@@ -265,8 +292,8 @@ class WakeWordService:
             logging.error(f"❌ Ошибка озвучивания: {e}")
         finally:
             if self.is_running:
+                self.cooldown_until = time.time() + self._cd_after_tts
                 self.is_listening = True
-                logging.info("🔊 Возобновил прослушивание после TTS")
 
     def _resume_wake_word_listening(self):
         try:
@@ -279,3 +306,15 @@ class WakeWordService:
     # Заглушка для звука активации (оставляем, если захочешь добавить сигнал)
     def _play_activation_sound(self):
         logging.debug("🔔 Звук активации (stub)")
+
+    def _confirm_wake_word(self) -> bool:
+        if not self._confirm_second_look:
+            return True
+        tmp = self.audio_manager.record_chunk(duration_seconds=1)
+        if not tmp:
+            return False
+        try:
+            text2 = self.speech_handler.transcribe_audio(tmp) or ""
+            return self._contains_wake_word(text2)
+        finally:
+            Path(tmp).unlink(missing_ok=True)
