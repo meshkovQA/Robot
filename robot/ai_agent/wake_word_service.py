@@ -150,13 +150,24 @@ class WakeWordService:
                         if self.audio_manager.has_continuous_sound(combined):
                             text = self.speech_handler.transcribe_audio(
                                 combined)
-                            if text and self._contains_wake_word(text.lower()):
+                            if text and self._contains_wake_word(text):
                                 logging.info(
-                                    f"🗣️ Обнаружено wake word: '{text}'")
+                                    "✅ Первичный детект wake word. Фиксирую слушалку и подтверждаю на буфере")
+                                # 1) замораживаем цикл, чтобы он не писал параллельно
+                                self.is_listening = False
 
-                                if self.audio_manager.wait_for_silence():
-                                    if self._confirm_wake_word():
-                                        self._handle_activation(text)
+                                # 2) подтверждаем по последним файлам (без новой записи микрофона)
+                                if self._confirm_wake_word_from_recent(recent_files=recent, primary_text=text):
+                                    logging.info(
+                                        "✅ Подтверждение wake word пройдено")
+                                    # дальше он сам решит: парсить команду из фразы или записать новую
+                                    self._handle_activation(text)
+                                else:
+                                    logging.info(
+                                        "❌ Подтверждение wake word не прошло")
+                                    # разблокируем слушалку только если сервис ещё работает
+                                    if self.is_running:
+                                        self.is_listening = True
                     Path(combined).unlink(missing_ok=True)
 
         except Exception as e:
@@ -201,6 +212,31 @@ class WakeWordService:
                     cmd = ' '.join(filtered)
                     return cmd if len(cmd) > 2 else None
         return None
+
+    def _confirm_wake_word_from_recent(self, recent_files, primary_text: str) -> bool:
+        """
+        Подтверждаем wake word без arecord:
+        - если в основном тексте уже есть триггер — ok;
+        - иначе пробуем распознать самый свежий чанк из recent_files.
+        """
+        try:
+            # если уже явно есть ключевое слово — считаем подтверждённым
+            if self._contains_wake_word(primary_text):
+                return True
+
+            # иначе попробуем последний чанк (1 сек) из окна
+            if not recent_files:
+                return False
+
+            last_chunk = recent_files[-1]
+            text2 = self.speech_handler.transcribe_audio(last_chunk) or ""
+            logging.info(
+                f"🔁 Вторичная проверка wake word на последнем чанке: '{text2}'")
+            return self._contains_wake_word(text2)
+        except Exception as e:
+            logging.error(f"❌ Ошибка second-look: {e}")
+            # в случае ошибки — не подтверждаем
+            return False
 
     # ------------ сценарии после активации ------------
 
