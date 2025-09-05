@@ -218,8 +218,8 @@ class WakeWordService:
                 max_volume = np.abs(audio_data).max()
 
                 # Проверяем пороги
-                min_avg_volume = 100   # Минимальная средняя громкость
-                min_max_volume = 1000  # Минимальная пиковая громкость
+                min_avg_volume = 300   # Минимальная средняя громкость
+                min_max_volume = 2000  # Минимальная пиковая громкость
 
                 has_speech = volume > min_avg_volume and max_volume > min_max_volume
 
@@ -326,6 +326,13 @@ class WakeWordService:
                 duration_seconds=self.activation_timeout
             )
 
+            try:
+                robot = getattr(self.ai_orchestrator, "robot", None)
+                if robot and hasattr(robot, "set_rgb_preset"):
+                    robot.set_rgb_preset("off")
+            except Exception as _:
+                pass
+
             if not audio_file:
                 logging.info("🤫 Команда не услышана")
                 return
@@ -348,13 +355,6 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка режима команд: {e}")
         finally:
-            # Гасим индикацию записи
-            try:
-                robot = getattr(self.ai_orchestrator, "robot", None)
-                if robot and hasattr(robot, "set_rgb_preset"):
-                    robot.set_rgb_preset("off")
-            except Exception as _:
-                pass
 
             # Всегда возобновляем прослушивание wake word
             self._resume_wake_word_listening()
@@ -475,26 +475,34 @@ class WakeWordService:
     def _process_audio_buffer(self, audio_files):
         """Обработка буфера аудио файлов на наличие wake word"""
         try:
-            # Обрабатываем только если накопилось достаточно данных
-            if len(audio_files) < 2:  # Минимум один chunk
+            if len(audio_files) < 2:
                 return
 
-            # Обрабатываем только последние 2-3 файла для эффективности
+            if not self.speech_handler:
+                logging.debug("SpeechHandler недоступен для обработки буфера")
+                return
+
             recent_files = audio_files[-3:] if len(
                 audio_files) >= 3 else audio_files
-
             combined_file = f"/tmp/wake_combined_{int(time.time() * 1000)}.wav"
 
             if self._combine_audio_files(recent_files, combined_file):
+                # ПЕРВАЯ проверка - есть ли вообще звук
                 if self._check_audio_has_speech(combined_file):
-                    text = self.speech_handler.transcribe_audio(
-                        combined_file) if self.speech_handler else None
+                    # ВТОРАЯ проверка - похоже ли на непрерывную речь
+                    if self._has_continuous_sound(combined_file):
+                        text = self.speech_handler.transcribe_audio(
+                            combined_file)
 
-                    if text and self._contains_wake_word(text.lower()):
-                        logging.info(f"🗣️ Обнаружено wake word: '{text}'")
+                        if text and self._contains_wake_word(text.lower()):
+                            logging.info(f"🗣️ Обнаружено wake word: '{text}'")
 
-                        if self._wait_for_silence_after_wake_word():
-                            self._handle_activation(text)
+                            if self._wait_for_silence_after_wake_word():
+                                self._handle_activation(text)
+                    else:
+                        logging.debug("🔇 Звук слишком короткий для речи")
+                else:
+                    logging.debug("🔇 Недостаточно громкий звук")
 
                 Path(combined_file).unlink(missing_ok=True)
 
@@ -608,3 +616,25 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка проверки тишины: {e}")
             return True  # По умолчанию считаем тишиной
+
+    def _has_continuous_sound(self, audio_file):
+        """Проверка на непрерывный звук (речь vs одиночные звуки)"""
+        try:
+            with wave.open(audio_file, 'rb') as wf:
+                frames = wf.readframes(wf.getnframes())
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+
+                # Ищем участки с речью (скользящее окно)
+                window_size = 1000  # 1000 samples
+                loud_windows = 0
+
+                for i in range(0, len(audio_data) - window_size, window_size):
+                    window = audio_data[i:i + window_size]
+                    if np.abs(window).mean() > 200:
+                        loud_windows += 1
+
+                # Речь должна быть в нескольких окнах подряд
+                return loud_windows >= 2
+
+        except:
+            return False
