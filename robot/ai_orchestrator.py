@@ -148,7 +148,7 @@ class AIOrchestrater:
             )
 
             raw = response.choices[0].message.content.strip()
-            valid_intents = {'chat', 'vision', 'action', 'status', 'context'}
+            valid_intents = {'chat', 'vision', 'action'}
 
             # --- Надёжный парсинг JSON из ответа ---
 
@@ -259,12 +259,6 @@ class AIOrchestrater:
             elif intent == 'status':
                 return self._handle_status_request(user_text, audio_file is not None)
 
-            elif intent == 'action':
-                return self._handle_action_request(user_text, audio_file is not None)
-
-            elif intent == 'context':
-                return self._handle_context_request(user_text, audio_file is not None)
-
             else:  # intent == 'chat'
                 return self._handle_chat_request(user_text, audio_file is not None)
 
@@ -361,89 +355,6 @@ class AIOrchestrater:
                 user_text=user_text,
                 ai_response="Не могу получить информацию о состоянии систем",
                 intent='status',
-                is_voice=is_voice,
-                extra_data={"error": str(e)}
-            )
-
-    def _handle_action_request(self, user_text, is_voice=False):
-        """Обработка команд движения и управления"""
-        # TODO: Интеграция с системой управления роботом
-        # Сейчас только заглушка
-
-        action_response = "Понял команду управления, но выполнение движений пока не подключено к ИИ. Используй веб-интерфейс для управления."
-
-        # В будущем здесь будет:
-        # - Парсинг команды движения
-        # - Вызов методов robot_controller
-        # - Контроль безопасности
-
-        tts_instructions = None
-        if is_voice and self.config.get('tts_instructions', {}).get('action'):
-            tts_instructions = self.config['tts_instructions']['action']
-
-        return self._create_response(
-            user_text=user_text,
-            ai_response=action_response,
-            intent='action',
-            is_voice=is_voice,
-            extra_data={"planned_action": "movement_control_not_implemented"},
-            tts_instructions=tts_instructions
-        )
-
-    def _handle_context_request(self, user_text, is_voice=False):
-        """Обработка сложных запросов с полным контекстом"""
-        try:
-            # Собираем полный контекст
-            sensor_context = self.get_sensor_context()
-
-            # Добавляем информацию о том что видит робот
-            vision_info = {}
-            if self.vision:
-                vision_result = self.vision.analyze_current_view()
-                if vision_result.get("success"):
-                    vision_info = {
-                        "current_view": vision_result.get("description", ""),
-                        "detected_objects": vision_result.get("detected_objects", [])
-                    }
-
-            # Формируем полный промпт для LLM
-            full_context = {
-                "sensors_and_systems": sensor_context,
-                "vision": vision_info,
-                "conversation_history": self.conversation_history[-3:] if self.conversation_history else []
-            }
-
-            context_prompt = f"""Ты робот-помощник Винди. Вот полная информация о текущей ситуации:
-
-{json.dumps(full_context, ensure_ascii=False, indent=2)}
-
-Вопрос пользователя: {user_text}
-
-Проанализируй всю доступную информацию и дай развернутый, но понятный ответ о текущей ситуации.
-
-Ответ должен быть только в мужском роде от лица робота."""
-
-            if self.speech:
-                ai_response = self.speech.generate_response(context_prompt)
-            else:
-                ai_response = "Для полного анализа ситуации необходим активный ИИ модуль"
-
-            return self._create_response(
-                user_text=user_text,
-                ai_response=ai_response,
-                intent='context',
-                is_voice=is_voice,
-                extra_data={
-                    "full_context": full_context,
-                    "vision_data": vision_info
-                }
-            )
-
-        except Exception as e:
-            return self._create_response(
-                user_text=user_text,
-                ai_response="Не могу провести полный анализ ситуации",
-                intent='context',
                 is_voice=is_voice,
                 extra_data={"error": str(e)}
             )
