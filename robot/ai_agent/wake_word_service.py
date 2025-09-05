@@ -8,6 +8,10 @@ import re
 from .audio_manager import AudioManager
 from .speech_handler import SpeechHandler
 from robot.controllers.rgb_controller import RGBController
+import subprocess
+import tempfile
+import wave
+import numpy as np
 
 
 class WakeWordService:
@@ -99,17 +103,21 @@ class WakeWordService:
     def _wake_word_loop(self):
         """Основной цикл прослушивания wake word через arecord"""
         try:
-            import subprocess
-            import tempfile
 
             while self.is_running:
                 try:
                     self.is_listening = True
                     logging.info("🎤 Начата непрерывная запись (через arecord)")
 
+                    # Буфер для накопления аудио
+                    audio_buffer = []
+                    buffer_duration = 0
+                    max_buffer_duration = 3.0  # максимум 3 секунды в буфере
+                    chunk_duration = 0.5  # записываем по 0.5 секунды
+
                     while self.is_running and self.is_listening:
-                        # Записываем короткие отрезки (2 секунды) для обнаружения wake word
-                        temp_file = f"/tmp/wake_word_{int(time.time())}.wav"
+                       # Записываем короткие отрезки (0.5 секунды) для обнаружения wake word
+                        temp_file = f"/tmp/wake_chunk_{int(time.time() * 1000)}.wav"
 
                         cmd = [
                             'arecord',
@@ -118,60 +126,54 @@ class WakeWordService:
                             '-r', str(self.audio_manager.sample_rate),
                             '-c', str(self.audio_manager.channels),
                             '-f', 'S16_LE',
-                            '-d', '2',  # 2 секунды
+                            '-d', str(chunk_duration),
                             temp_file
                         ]
 
                         try:
                             result = subprocess.run(
-                                cmd, capture_output=True, timeout=3)
+                                cmd, capture_output=True, timeout=1)
 
                             if result.returncode == 0 and Path(temp_file).exists():
-                                # Проверяем размер файла (должен быть > 1000 байт для 2 сек)
                                 file_size = Path(temp_file).stat().st_size
 
-                                if file_size > 1000:
-                                    # Обрабатываем записанный файл на наличие wake word
-                                    self._process_wake_word_file(temp_file)
+                                if file_size > 500:  # Минимальный размер для 0.5 сек
+                                    # Добавляем в буфер
+                                    audio_buffer.append(temp_file)
+                                    buffer_duration += chunk_duration
 
-                            # Удаляем временный файл
-                            Path(temp_file).unlink(missing_ok=True)
+                                    # Удаляем старые файлы если буфер переполнен
+                                    while buffer_duration > max_buffer_duration:
+                                        old_file = audio_buffer.pop(0)
+                                        Path(old_file).unlink(missing_ok=True)
+                                        buffer_duration -= chunk_duration
+
+                                    # Объединяем буфер и проверяем на wake word
+                                    self._process_audio_buffer(
+                                        audio_buffer.copy())
+                                else:
+                                    Path(temp_file).unlink(missing_ok=True)
+                            else:
+                                Path(temp_file).unlink(missing_ok=True)
 
                         except subprocess.TimeoutExpired:
-                            logging.debug("Timeout записи wake word")
                             Path(temp_file).unlink(missing_ok=True)
                             continue
                         except Exception as e:
-                            logging.error(f"Ошибка записи wake word: {e}")
+                            logging.error(f"Ошибка записи chunk: {e}")
                             Path(temp_file).unlink(missing_ok=True)
-                            time.sleep(1)
+                            time.sleep(0.1)
+
+                    # Очищаем буфер при выходе
+                    for temp_file in audio_buffer:
+                        Path(temp_file).unlink(missing_ok=True)
 
                 except Exception as e:
                     logging.error(f"❌ Ошибка в цикле прослушивания: {e}")
-                    time.sleep(5)  # Пауза перед повтором
+                    time.sleep(5)
 
         finally:
             logging.info("🔚 Цикл WakeWord завершен")
-
-    def _process_wake_word_file(self, audio_file):
-        """Обработка записанного файла на наличие wake word"""
-        try:
-            if not self.speech_handler:
-                return
-
-            # Проверяем уровень звука перед отправкой на распознавание
-            if not self._check_audio_has_speech(audio_file):
-                return
-
-            # Распознаем речь в файле
-            text = self.speech_handler.transcribe_audio(audio_file)
-
-            if text and self._contains_wake_word(text.lower()):
-                logging.info(f"🗣️ Обнаружено слово: '{text}'")
-                self._handle_activation(text)
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка обработки wake word: {e}")
 
     def _check_audio_has_speech(self, audio_file):
         """Проверка наличия речи в аудиофайле по уровню громкости"""
@@ -201,31 +203,6 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка проверки аудио: {e}")
             return True  # В случае ошибки пропускаем проверку
-
-    def _save_audio_stream_to_file(self, audio_data, filename):
-        """Сохранение потока аудио в WAV файл"""
-        try:
-            import wave
-
-            Path(filename).parent.mkdir(exist_ok=True)
-
-            with wave.open(filename, 'wb') as wf:
-                wf.setnchannels(1)  # Моно
-                wf.setsampwidth(2)  # 16-bit
-                wf.setframerate(16000)  # 16kHz
-
-                # Конвертируем данные если нужно
-                if isinstance(audio_data, bytes):
-                    wf.writeframes(audio_data)
-                else:
-                    # Если numpy array
-                    wf.writeframes(audio_data.tobytes())
-
-            return True
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка сохранения аудио: {e}")
-            return False
 
     def _contains_wake_word(self, text):
         """Проверка текста на наличие wake word"""
@@ -471,3 +448,140 @@ class WakeWordService:
 
         except Exception as e:
             logging.error(f"❌ Ошибка возобновления прослушивания: {e}")
+
+    def _process_audio_buffer(self, audio_files):
+        """Обработка буфера аудио файлов на наличие wake word"""
+        try:
+            # Обрабатываем только если накопилось достаточно данных
+            if len(audio_files) < 2:  # Минимум один chunk
+                return
+
+            # Обрабатываем только последние 2-3 файла для эффективности
+            recent_files = audio_files[-3:] if len(
+                audio_files) >= 3 else audio_files
+
+            combined_file = f"/tmp/wake_combined_{int(time.time() * 1000)}.wav"
+
+            if self._combine_audio_files(recent_files, combined_file):
+                if self._check_audio_has_speech(combined_file):
+                    text = self.speech_handler.transcribe_audio(
+                        combined_file) if self.speech_handler else None
+
+                    if text and self._contains_wake_word(text.lower()):
+                        logging.info(f"🗣️ Обнаружено wake word: '{text}'")
+
+                        if self._wait_for_silence_after_wake_word():
+                            self._handle_activation(text)
+
+                Path(combined_file).unlink(missing_ok=True)
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка обработки аудио буфера: {e}")
+
+    def _wait_for_silence_after_wake_word(self):
+        """Ждем тишину после произнесения wake word (максимум 1 секунда)"""
+        try:
+            import subprocess
+
+            silence_threshold = 200  # Порог тишины (ниже - считается тишиной)
+            silence_duration = 0
+            max_silence_wait = 1.0  # Максимум 1 секунда ожидания
+            check_interval = 0.2   # Проверяем каждые 0.2 секунды
+
+            logging.debug("🤫 Проверяю тишину после wake word...")
+
+            while silence_duration < max_silence_wait:
+                # Записываем короткий отрезок для проверки
+                temp_file = f"/tmp/silence_check_{int(time.time() * 1000)}.wav"
+
+                cmd = [
+                    'arecord',
+                    '-D', f'plughw:{self.audio_manager.microphone_index},0',
+                    '-r', str(self.audio_manager.sample_rate),
+                    '-c', str(self.audio_manager.channels),
+                    '-f', 'S16_LE',
+                    '-d', str(check_interval),
+                    temp_file
+                ]
+
+                try:
+                    result = subprocess.run(
+                        cmd, capture_output=True, timeout=0.5)
+
+                    if result.returncode == 0 and Path(temp_file).exists():
+                        # Проверяем уровень звука
+                        if self._is_audio_silent(temp_file, silence_threshold):
+                            silence_duration += check_interval
+                            logging.debug(f"🤫 Тишина {silence_duration:.1f}s")
+                        else:
+                            # Есть звук - продолжается речь
+                            logging.debug("🗣️ Речь продолжается...")
+                            Path(temp_file).unlink(missing_ok=True)
+                            return False
+
+                        Path(temp_file).unlink(missing_ok=True)
+                    else:
+                        Path(temp_file).unlink(missing_ok=True)
+                        time.sleep(check_interval)
+                        silence_duration += check_interval
+
+                except subprocess.TimeoutExpired:
+                    Path(temp_file).unlink(missing_ok=True)
+                    silence_duration += check_interval
+                except Exception as e:
+                    Path(temp_file).unlink(missing_ok=True)
+                    logging.debug(f"Ошибка проверки тишины: {e}")
+                    return True  # В случае ошибки считаем что тишина
+
+            # Если дошли сюда - была достаточная тишина
+            logging.debug("✅ Обнаружена тишина после wake word")
+            return True
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка детекции тишины: {e}")
+            return True  # По умолчанию считаем что тишина есть
+
+    def _combine_audio_files(self, audio_files, output_file):
+        """Объединение нескольких WAV файлов в один"""
+        try:
+            import wave
+
+            with wave.open(output_file, 'wb') as output_wav:
+                # Настройки из первого файла
+                with wave.open(audio_files[0], 'rb') as first_wav:
+                    output_wav.setparams(first_wav.getparams())
+
+                # Записываем данные из всех файлов
+                for audio_file in audio_files:
+                    with wave.open(audio_file, 'rb') as input_wav:
+                        output_wav.writeframes(
+                            input_wav.readframes(input_wav.getnframes()))
+
+            return True
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка объединения аудио файлов: {e}")
+            return False
+
+    def _is_audio_silent(self, audio_file, threshold=200):
+        """Проверка является ли аудио тишиной"""
+        try:
+            import wave
+            import numpy as np
+
+            with wave.open(audio_file, 'rb') as wf:
+                frames = wf.readframes(wf.getnframes())
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+
+                # Вычисляем среднюю громкость
+                volume = np.abs(audio_data).mean()
+
+                is_silent = volume < threshold
+                logging.debug(
+                    f"🔊 Уровень звука: {volume:.1f}, тишина: {is_silent}")
+
+                return is_silent
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка проверки тишины: {e}")
+            return True  # По умолчанию считаем тишиной
