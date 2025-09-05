@@ -43,21 +43,25 @@ class AudioManager:
 
     def _arecord(self, duration_seconds: float, out_path: str) -> bool:
         """Вспомогательный вызов arecord."""
-
+        logging.info(f"🎤 Запись {duration_seconds:.1f}s в {out_path}...")
         # arecord на некоторых системах не принимает дробные значения -d
         int_seconds = max(1, int(round(float(duration_seconds))))
+
         cmd = [
             'arecord',
             '-D', f'plughw:{self.microphone_index},0',
             '-r', str(self.sample_rate),
             '-c', str(self.channels),
             '-f', 'S16_LE',
-            '-d', str(duration_seconds),
+            '-d', str(int_seconds),
             out_path
         ]
+
+        logging.info(f"arecord cmd: {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd, capture_output=True, timeout=duration_seconds + 2)
+            logging.info(f"arecord returncode: {result.returncode}")
             if result.returncode == 0 and Path(out_path).exists():
                 return True
             logging.warning(
