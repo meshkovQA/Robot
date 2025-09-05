@@ -1,5 +1,4 @@
 # robot/ai_agent/audio_manager.py
-import pyaudio
 import wave
 import threading
 import time
@@ -17,70 +16,15 @@ class AudioManager:
         # Настройки аудио
         self.sample_rate = self.config.get('sample_rate', 48000)
         self.channels = self.config.get('channels', 1)
-        self.chunk = self.config.get('chunk_size', 1024)
-        self.format = pyaudio.paInt16
 
         # Устройства
         self.microphone_index = self.config.get('microphone_index', None)
         self.speaker_index = self.config.get('speaker_index', None)
 
-        # PyAudio instance
-        self.audio = None
-        self.is_recording = False
-        self.recording_thread = None
-
-        self._initialize_audio()
-
-    def _initialize_audio(self):
-        """Инициализация PyAudio"""
-        try:
-            self.audio = pyaudio.PyAudio()
-            self._detect_audio_devices()
-            logging.info("✅ AudioManager инициализирован")
-        except Exception as e:
-            logging.error(f"❌ Ошибка инициализации аудио: {e}")
-            self.audio = None
-
-    def _detect_audio_devices(self):
-        """Автоматическое определение аудио устройств"""
-        if not self.audio:
-            return
-
-        logging.info("🔍 Поиск аудио устройств...")
-
-        device_count = self.audio.get_device_count()
-        usb_microphones = []
-        speakers = []
-
-        for i in range(device_count):
-            try:
-                device_info = self.audio.get_device_info_by_index(i)
-                device_name = device_info['name'].lower()
-
-                # Поиск USB микрофонов
-                if ('usb' in device_name or 'microphone' in device_name) and device_info['maxInputChannels'] > 0:
-                    usb_microphones.append((i, device_info['name']))
-                    logging.info(
-                        f"🎤 Найден микрофон: {device_info['name']} (index: {i})")
-
-                # Поиск динамиков/MAX98357
-                if ('max98357' in device_name or 'i2s' in device_name or
-                        device_info['maxOutputChannels'] > 0):
-                    speakers.append((i, device_info['name']))
-                    logging.info(
-                        f"🔊 Найден динамик: {device_info['name']} (index: {i})")
-
-            except Exception as e:
-                continue
-
-        # Автоматический выбор устройств
-        if usb_microphones and self.microphone_index is None:
-            self.microphone_index = usb_microphones[0][0]
-            logging.info(f"✅ Выбран микрофон: {usb_microphones[0][1]}")
-
-        if speakers and self.speaker_index is None:
-            self.speaker_index = speakers[0][0]
-            logging.info(f"✅ Выбран динамик: {speakers[0][1]}")
+        logging.info(
+            f"AudioManager. Используем микрофон index: {self.microphone_index}")
+        logging.info(
+            f"AudioManager. Используем динамик index: {self.speaker_index}")
 
     def record_audio(self, duration_seconds=5, output_file=None):
         """Запись аудио с микрофона через arecord (более надежно для USB Audio)"""
@@ -103,17 +47,10 @@ class AudioManager:
                 output_file
             ]
 
-            result = subprocess.run(cmd, capture_output=True,
-                                    text=True, timeout=duration_seconds + 5)
+            result = subprocess.run(cmd, capture_output=True,)
 
-            if result.returncode == 0 and Path(output_file).exists():
-                file_size = Path(output_file).stat().st_size
-                logging.info(
-                    f"✅ Запись сохранена: {output_file} ({file_size} байт)")
+            if result.returncode == 0:
                 return output_file
-            else:
-                logging.error(f"❌ Ошибка arecord: {result.stderr}")
-                return None
 
         except Exception as e:
             logging.error(f"❌ Ошибка записи аудио: {e}")
