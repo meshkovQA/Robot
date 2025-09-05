@@ -19,6 +19,7 @@ class WakeWordService:
         self.ai_orchestrator = ai_orchestrator
 
         # Настройки wake word
+        self._pre_roll_files = []
         self.wake_words = config.get('wake_words', ['винди', 'windy', 'венди'])
         self.activation_timeout = config.get(
             'activation_timeout', 10)  # секунд на команду
@@ -105,6 +106,7 @@ class WakeWordService:
 
             while self.is_running:
                 logging.info("👂 Жду wake word...")
+                now = time.time()
                 if time.time() < self.cooldown_until:
                     logging.info(
                         f"⏳ Ожидание окончания кулдауна: {self.cooldown_until - time.time():.1f}с")
@@ -161,6 +163,8 @@ class WakeWordService:
                                     logging.info(
                                         "✅ Подтверждение wake word пройдено")
                                     # дальше он сам решит: парсить команду из фразы или записать новую
+                                    # сохранить последние 2–3 чанка
+                                    self._pre_roll_files = recent[:]
                                     self._handle_activation(text)
                                 else:
                                     logging.info(
@@ -269,8 +273,10 @@ class WakeWordService:
 
             audio_file = self.audio_manager.record_until_silence(
                 max_duration=self.activation_timeout,
-                silence_timeout=1.5
+                silence_timeout=1.8,
+                pre_roll_files=self._pre_roll_files
             )
+            self._pre_roll_files = []
 
             try:
                 robot = getattr(self.ai_orchestrator, "robot", None)
@@ -287,8 +293,16 @@ class WakeWordService:
             Path(audio_file).unlink(missing_ok=True)
 
             if command_text:
+                cleaned = command_text.strip().strip(".!?,…").lower()
+                if len(cleaned) < 2 or cleaned in {"всё", "все", "ок", "угу", "ага", "да", "нет"}:
+                    logging.info(
+                        f"🤷 Пустая/служебная команда: {command_text!r} — не отправляю в AI")
+                    # можно мягко подсказать:
+                    # self._speak_response("Я на связи. Скажи, что сделать?")
+                    return
                 logging.info(f"👤 Команда: '{command_text}'")
                 self._process_voice_command(command_text)
+
             else:
                 logging.info("🤫 Не удалось распознать команду")
 
@@ -340,7 +354,8 @@ class WakeWordService:
             logging.error(f"❌ Ошибка озвучивания: {e}")
         finally:
             if self.is_running:
-                self.cooldown_until = time.time() + self._cd_after_tts
+                # очистим кольцевой буфер прослушки (если он у тебя хранится в полях — у тебя локальный, так что ок)
+                self.cooldown_until = time.time() + max(self._cd_after_tts, 2.5)  # 2.5с глухое окно
                 self.is_listening = True
 
     def _resume_wake_word_listening(self):

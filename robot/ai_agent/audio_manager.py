@@ -186,8 +186,11 @@ class AudioManager:
 
     # ---------- операции записи более высокого уровня ----------
 
-    def record_until_silence(self, max_duration=10, silence_timeout=1.5):
-        """Запись до тишины, возвращает путь к итоговому WAV."""
+    def record_until_silence(self, max_duration=10, silence_timeout=1.5, pre_roll_files: list[str] | None = None):
+        """
+        Пишем до тишины. Ждём начала речи (не выходим на стартовой тишине).
+        Можно добавить pre_roll (список путей WAV), чтобы прихватить кусочек ДО активации.
+        """
         output_file = f"data/temp_recording_{int(time.time())}.wav"
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
@@ -195,35 +198,62 @@ class AudioManager:
         silent = 0
         chunk_dur = 1
         chunks: list[str] = []
+
+        started_speaking = False
+        max_initial_silence = 3  # не больше 3с стартовой тишины
+
         logging.info(f"🎤 Запись до тишины (макс {max_duration}с)")
 
         try:
+            # добавим pre-roll, если дали
+            if pre_roll_files:
+                for pr in pre_roll_files[-2:]:  # максимум 2 файла (~2с)
+                    if Path(pr).exists():
+                        # не удаляем тут, удалим после склейки
+                        chunks.append(pr)
+
             while total < max_duration:
                 chunk = self.record_chunk(duration_seconds=chunk_dur)
                 if not chunk:
                     # считаем как тишину/пропуск
                     silent += chunk_dur
                     total += chunk_dur
-                    if silent >= silence_timeout:
+                    # если речь ещё не началась — не завершаем раньше времени
+                    if not started_speaking and silent >= max_initial_silence:
+                        logging.info(
+                            "🤫 Слишком долго нет речи — выхожу без записи")
+                        break
+                    if started_speaking and silent >= silence_timeout:
+                        logging.info(f"✅ Остановка: тишина {silent:.1f}s")
                         break
                     continue
 
                 if self.is_audio_silent(chunk):
                     silent += chunk_dur
-                    if silent >= silence_timeout:
+                    # до начала речи не завершаем, после — да
+                    if started_speaking and silent >= silence_timeout:
                         Path(chunk).unlink(missing_ok=True)
+                        logging.info(f"✅ Остановка: тишина {silent:.1f}s")
                         break
                 else:
                     silent = 0
+                    started_speaking = True
 
                 chunks.append(chunk)
                 total += chunk_dur
 
-            if chunks and self.combine_audio_files(chunks, output_file):
+            # если вообще не началась речь и нет нормальных чанков — вернём None
+            real_chunks = [c for c in chunks if Path(c).exists()]
+            if not started_speaking or not real_chunks:
+                return None
+
+            if self.combine_audio_files(real_chunks, output_file):
                 return output_file
             return None
         finally:
+            # удаляем только те чанки, которые создавали мы (pre-roll оставим: они уже были во временных /tmp и скоро исчезнут)
             for f in chunks:
+                # pre-roll мог быть переиспользован — ничего страшного, удалим безопасно
                 Path(f).unlink(missing_ok=True)
 
     def combine_audio_files(self, audio_files, output_file):
