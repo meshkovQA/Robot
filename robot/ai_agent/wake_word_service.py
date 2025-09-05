@@ -104,35 +104,47 @@ class WakeWordService:
             chunk_duration = 1
 
             while self.is_running:
+                logging.info("👂 Жду wake word...")
                 if time.time() < self.cooldown_until:
+                    logging.info(
+                        f"⏳ Ожидание окончания кулдауна: {self.cooldown_until - time.time():.1f}с")
                     time.sleep(0.05)
                     continue
                 if not self.is_listening:
+                    logging.info("👂 Ожидание активации...")
                     time.sleep(0.1)
                     continue
 
                 # пишем короткий чанк через AudioManager
                 tmp = self.audio_manager.record_chunk(
                     duration_seconds=chunk_duration)
+                logging.info(f"🎧 Записан чанк: {tmp}")
                 if not tmp:
                     continue
 
                 buffer_files.append(tmp)
                 buffer_duration += chunk_duration
 
+                logging.info(
+                    f"🗣️ Буферизация: {buffer_duration}/{max_buffer_duration}с")
+
                 # держим окно ~3с
                 while buffer_duration > max_buffer_duration and buffer_files:
+                    logging.info(f"🗑️ Удаляем старый буфер: {buffer_files[0]}")
                     old = buffer_files.pop(0)
                     Path(old).unlink(missing_ok=True)
+                    logging.info(f"🗑️ Удалён файл: {old}")
                     buffer_duration -= chunk_duration
 
                 # соберём последние куски в один файл и быстро проверим
                 recent = buffer_files[-3:] if len(
                     buffer_files) >= 3 else buffer_files[:]
+                logging.info(f"🔊 Комбинируем {len(recent)} файлов для анализа")
                 combined = f"/tmp/wake_combined_{int(time.time()*1000)}.wav"
 
                 if self.audio_manager.combine_audio_files(recent, combined):
                     # 1) есть ли речь
+                    logging.info(f"🗣️ Анализируем файл: {combined}")
                     if self.audio_manager.has_speech(combined):
                         # 2) похожа ли на речь (не одиночный шум)
                         if self.audio_manager.has_continuous_sound(combined):
