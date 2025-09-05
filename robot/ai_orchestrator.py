@@ -131,53 +131,38 @@ class AIOrchestrater:
                     "⚠️ WakeWordService пропущен: нет OpenAI API ключа")
 
     def analyze_user_intent(self, user_text):
-        """Определение намерения пользователя через ключевые слова и LLM"""
-        try:
-            system_prompt = self.system_prompts['intent_analysis']
+        """Определение намерения пользователя через ключевые слова"""
+        user_text_lower = user_text.lower().strip()
 
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Запрос: '{user_text}'\nОтветь строго JSON: {{\"intent\":\"...\"}}"}
-            ]
+        # Ключевые слова для определения намерения 'vision'
+        vision_keywords = [
+            'что ты видишь', 'опиши', 'описать', 'камера',
+            'что перед тобой', 'анализируй изображение',
+            'что на экране'
+        ]
 
-            response = self.openai_client.chat.completions.create(
-                model=self.config.get('intent_analysis_model', 'gpt-4o'),
-                messages=messages,
-                max_tokens=self.config.get('intent_analysis_max_tokens', 10),
-                temperature=self.config.get('intent_analysis_temperature', 0.1)
-            )
+        # Ключевые слова для определения намерения 'status'
+        status_keywords = [
+            'статус', 'состояние', 'датчики', 'диагностика', 'проверь себя', 'самодиагностика'
+        ]
 
-            raw = response.choices[0].message.content.strip()
-            valid_intents = {'chat', 'vision', 'action'}
+        # Проверяем на намерение 'vision'
+        for keyword in vision_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'vision' по ключевому слову: '{keyword}'")
+                return 'vision'
 
-            # --- Надёжный парсинг JSON из ответа ---
+        # Проверяем на намерение 'status'
+        for keyword in status_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'status' по ключевому слову: '{keyword}'")
+                return 'status'
 
-            intent = None
-            try:
-                # Убираем возможные обёртки ```json ... ```
-                if raw.startswith("```"):
-                    raw = raw.strip().strip("`")
-                # после среза может остаться префикс 'json'
-                    if raw.lower().startswith("json"):
-                        raw = raw[4:].lstrip()
-                import json as _json
-                data = _json.loads(raw)
-                intent = str(data.get("intent", "")).strip().lower()
-            except Exception:
-                # Фолбэк: если пришло просто слово/строка — снимаем кавычки
-                intent = raw.strip('"\'').lower()
-
-            if intent in valid_intents:
-                logging.info(f"🎯 LLM определил намерение: {intent}")
-                return intent
-            else:
-                logging.warning(
-                    f"⚠️ Некорректное намерение от LLM: '{intent}', raw: '{raw}'")
-                return 'chat'
-
-        except Exception as e:
-            logging.error(f"❌ Ошибка анализа намерений через LLM: {e}")
-            return 'chat'  # По умолчанию
+        # Если никакие ключевые слова не найдены - это обычный чат
+        logging.info("🎯 Определено намерение 'chat' (по умолчанию)")
+        return 'chat'
 
     def get_sensor_context(self):
         """Получить контекст с датчиков и систем робота"""
