@@ -28,6 +28,26 @@
     ],
     "activation_timeout": 10,
     "sensitivity_threshold": 800,
+    "wake": {
+        "min_avg_volume": 500,
+        "min_peak_volume": 4000,
+        "continuous_min_ms": 300,
+        "continuous_window_ms": 20,
+        "continuous_mean_threshold": 300,
+        "confirm_second_look": true,
+        "cooldown_after_tts_ms": 2000,
+        "cooldown_after_activation_ms": 1000,
+        "silence_check": {
+            "max_wait_ms": 1200,
+            "check_interval_s": 1,
+            "silence_threshold": 200
+        },
+        "match": {
+            "start_only": true,
+            "max_prefix_words": 2,
+            "word_boundary": true
+        }
+    },
     "intent_analysis_model": "gpt-4o",
     "intent_analysis_max_tokens": 10,
     "intent_analysis_temperature": 0.1,
