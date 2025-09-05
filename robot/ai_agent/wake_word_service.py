@@ -106,23 +106,24 @@ class WakeWordService:
         """Основной цикл прослушивания wake word через arecord"""
         try:
 
-            logging.info("🔄 НАЧИНАЮ _wake_word_loop")
+            logging.debug("🔄 НАЧИНАЮ _wake_word_loop")
 
             while self.is_running:
                 try:
-                    logging.info("🔄 Вошел в основной while цикл")
+                    logging.debug("🔄 Вошел в основной while цикл")
                     self.is_listening = True
-                    logging.info("🎤 Начата непрерывная запись (через arecord)")
+                    logging.debug(
+                        "🎤 Начата непрерывная запись (через arecord)")
 
                     # Буфер для накопления аудио
                     audio_buffer = []
                     buffer_duration = 0
                     max_buffer_duration = 3.0  # максимум 3 секунды в буфере
-                    chunk_duration = 0.5  # записываем по 0.5 секунды
+                    chunk_duration = 1  # записываем по 1 секунде
 
                     while self.is_running and self.is_listening:
-                        logging.info("🔄 Цикл прослушивания wake word...")
-                       # Записываем короткие отрезки (0.5 секунды) для обнаружения wake word
+                        logging.debug("🔄 Цикл прослушивания wake word...")
+                       # Записываем короткие отрезки (1 секунда) для обнаружения wake word
                         temp_file = f"/tmp/wake_chunk_{int(time.time() * 1000)}.wav"
 
                         cmd = [
@@ -135,14 +136,14 @@ class WakeWordService:
                             '-d', str(chunk_duration),
                             temp_file
                         ]
-                        logging.info(f"🔄 Запускаю команду: {' '.join(cmd)}")
+                        logging.debug(f"🔄 Запускаю команду: {' '.join(cmd)}")
 
                         try:
 
                             result = subprocess.run(
                                 cmd, capture_output=True, timeout=1)
 
-                            logging.info(
+                            logging.debug(
                                 f"🔄 Результат выполнения команды: {result}")
 
                             if result.returncode == 0 and Path(temp_file).exists():
