@@ -69,5 +69,9 @@
             "profanity_filter": true,
             "model": "general"
         }
+    },
+    "wake_kws": {
+        "samples_dir": "data/wake_samples",
+        "threshold": 0.82
     }
 }
