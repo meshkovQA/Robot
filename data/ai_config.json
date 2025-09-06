@@ -30,8 +30,8 @@
     "activation_timeout": 10,
     "sensitivity_threshold": 800,
     "wake": {
-        "min_avg_volume": 400,
-        "min_peak_volume": 3000,
+        "min_avg_volume": 500,
+        "min_peak_volume": 2000,
         "continuous_min_ms": 300,
         "continuous_window_ms": 20,
         "continuous_mean_threshold": 300,

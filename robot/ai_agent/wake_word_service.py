@@ -19,11 +19,9 @@ class WakeWordService:
         self.ai_orchestrator = ai_orchestrator
 
         # Настройки wake word
-        self._pre_roll_files = []
         self.wake_words = config.get('wake_words', ['винди', 'windy', 'венди'])
         self.activation_timeout = config.get(
             'activation_timeout', 10)  # секунд на команду
-        self.sensitivity_threshold = config.get('sensitivity_threshold', 800)
 
         # Состояние сервиса
         self.is_running = False
@@ -35,9 +33,6 @@ class WakeWordService:
         self.speech_handler: SpeechHandler | None = None
 
         self.wake_cfg = self.config.get('wake', {}) or {}
-
-        self._confirm_second_look = bool(
-            self.wake_cfg.get('confirm_second_look', True))
 
         match_cfg = self.wake_cfg.get('match', {}) if isinstance(
             self.wake_cfg, dict) else {}
@@ -96,90 +91,59 @@ class WakeWordService:
     # ------------ основной цикл ------------
 
     def _wake_word_loop(self):
-        """Слушаем микрофон чанками, буферим последние ~3с, распознаём и ищем wake-word."""
+        """Слушаем микрофон чанками и проверяем wake-word по последнему чанку без объединения файлов."""
         try:
             logging.info("🔄 НАЧИНАЮ _wake_word_loop")
-            buffer_files: list[str] = []
-            buffer_duration = 0
-            max_buffer_duration = 3
             chunk_duration = 1
 
             while self.is_running:
                 logging.info("👂 Жду wake word...")
-                now = time.time()
                 if time.time() < self.cooldown_until:
                     logging.info(
                         f"⏳ Ожидание окончания кулдауна: {self.cooldown_until - time.time():.1f}с")
                     time.sleep(0.05)
                     continue
+
                 if not self.is_listening:
                     logging.info("👂 Ожидание активации...")
                     time.sleep(0.1)
                     continue
 
-                # пишем короткий чанк через AudioManager
+                # Пишем короткий чанк
                 tmp = self.audio_manager.record_chunk(
                     duration_seconds=chunk_duration)
                 logging.info(f"🎧 Записан чанк: {tmp}")
                 if not tmp:
                     continue
 
-                buffer_files.append(tmp)
-                buffer_duration += chunk_duration
+                # Анализируем ТОЛЬКО этот чанк
+                logging.info(f"🗣️ Анализируем файл: {tmp}")
+                try:
+                    if self.audio_manager.has_speech(tmp) and self.audio_manager.has_continuous_sound(tmp):
+                        text = self.speech_handler.transcribe_audio(tmp)
+                        if text and self._contains_wake_word(text):
+                            logging.info(
+                                "✅ Первичный детект wake word. Фиксирую слушалку и подтверждаю по последнему чанку")
+                            self.is_listening = False
 
-                logging.info(
-                    f"🗣️ Буферизация: {buffer_duration}/{max_buffer_duration}с")
-
-                # держим окно ~3с
-                while buffer_duration > max_buffer_duration and buffer_files:
-                    logging.info(f"🗑️ Удаляем старый буфер: {buffer_files[0]}")
-                    old = buffer_files.pop(0)
-                    Path(old).unlink(missing_ok=True)
-                    logging.info(f"🗑️ Удалён файл: {old}")
-                    buffer_duration -= chunk_duration
-
-                # соберём последние куски в один файл и быстро проверим
-                recent = buffer_files[-3:] if len(
-                    buffer_files) >= 3 else buffer_files[:]
-                logging.info(f"🔊 Комбинируем {len(recent)} файлов для анализа")
-                combined = f"/tmp/wake_combined_{int(time.time()*1000)}.wav"
-
-                if self.audio_manager.combine_audio_files(recent, combined):
-                    # 1) есть ли речь
-                    logging.info(f"🗣️ Анализируем файл: {combined}")
-                    if self.audio_manager.has_speech(combined):
-                        # 2) похожа ли на речь (не одиночный шум)
-                        if self.audio_manager.has_continuous_sound(combined):
-                            text = self.speech_handler.transcribe_audio(
-                                combined)
-                            if text and self._contains_wake_word(text):
+                            # Подтверждаем на том же файле, без дозаписи и без склейки
+                            if self._confirm_wake_word_on_chunk(last_chunk=tmp, primary_text=text):
                                 logging.info(
-                                    "✅ Первичный детект wake word. Фиксирую слушалку и подтверждаю на буфере")
-                                # 1) замораживаем цикл, чтобы он не писал параллельно
-                                self.is_listening = False
-
-                                # 2) подтверждаем по последним файлам (без новой записи микрофона)
-                                if self._confirm_wake_word_from_recent(recent_files=recent, primary_text=text):
-                                    logging.info(
-                                        "✅ Подтверждение wake word пройдено")
-                                    # дальше он сам решит: парсить команду из фразы или записать новую
-                                    # сохранить последние 2–3 чанка
-                                    self._pre_roll_files = recent[:]
-                                    self._handle_activation(text)
-                                else:
-                                    logging.info(
-                                        "❌ Подтверждение wake word не прошло")
-                                    # разблокируем слушалку только если сервис ещё работает
-                                    if self.is_running:
-                                        self.is_listening = True
-                    Path(combined).unlink(missing_ok=True)
+                                    "✅ Подтверждение wake word пройдено")
+                                self._pre_roll_files = []  # преролл не используем
+                                self._handle_activation(text)
+                            else:
+                                logging.info(
+                                    "❌ Подтверждение wake word не прошло")
+                                if self.is_running:
+                                    self.is_listening = True
+                finally:
+                    # Удаляем обработанный чанк
+                    Path(tmp).unlink(missing_ok=True)
 
         except Exception as e:
             logging.error(f"❌ Ошибка в цикле прослушивания: {e}")
         finally:
-            # очистим хвосты
-            for f in buffer_files:
-                Path(f).unlink(missing_ok=True)
             logging.info("🔚 Цикл WakeWord завершен")
 
     # ------------ текстовая логика ------------
@@ -217,31 +181,6 @@ class WakeWordService:
                     return cmd if len(cmd) > 2 else None
         return None
 
-    def _confirm_wake_word_from_recent(self, recent_files, primary_text: str) -> bool:
-        """
-        Подтверждаем wake word без arecord:
-        - если в основном тексте уже есть триггер — ok;
-        - иначе пробуем распознать самый свежий чанк из recent_files.
-        """
-        try:
-            # если уже явно есть ключевое слово — считаем подтверждённым
-            if self._contains_wake_word(primary_text):
-                return True
-
-            # иначе попробуем последний чанк (1 сек) из окна
-            if not recent_files:
-                return False
-
-            last_chunk = recent_files[-1]
-            text2 = self.speech_handler.transcribe_audio(last_chunk) or ""
-            logging.info(
-                f"🔁 Вторичная проверка wake word на последнем чанке: '{text2}'")
-            return self._contains_wake_word(text2)
-        except Exception as e:
-            logging.error(f"❌ Ошибка second-look: {e}")
-            # в случае ошибки — не подтверждаем
-            return False
-
     # ------------ сценарии после активации ------------
 
     def _handle_activation(self, activation_text):
@@ -263,7 +202,7 @@ class WakeWordService:
 
     def _enter_command_mode(self):
         try:
-            # визуализация записи (опционально)
+            # Визуализация записи (по желанию)
             try:
                 robot = getattr(self.ai_orchestrator, "robot", None)
                 if robot and hasattr(robot, "set_rgb_preset"):
@@ -271,12 +210,12 @@ class WakeWordService:
             except Exception:
                 pass
 
+            # Пишем команду без преролла
             audio_file = self.audio_manager.record_until_silence(
                 max_duration=self.activation_timeout,
                 silence_timeout=1.8,
-                pre_roll_files=self._pre_roll_files
+                pre_roll_files=None  # ключевой момент: НЕ передаём преролл
             )
-            self._pre_roll_files = []
 
             try:
                 robot = getattr(self.ai_orchestrator, "robot", None)
@@ -297,12 +236,9 @@ class WakeWordService:
                 if len(cleaned) < 2 or cleaned in {"всё", "все", "ок", "угу", "ага", "да", "нет"}:
                     logging.info(
                         f"🤷 Пустая/служебная команда: {command_text!r} — не отправляю в AI")
-                    # можно мягко подсказать:
-                    # self._speak_response("Я на связи. Скажи, что сделать?")
                     return
                 logging.info(f"👤 Команда: '{command_text}'")
                 self._process_voice_command(command_text)
-
             else:
                 logging.info("🤫 Не удалось распознать команду")
 
@@ -370,14 +306,19 @@ class WakeWordService:
     def _play_activation_sound(self):
         logging.debug("🔔 Звук активации (stub)")
 
-    def _confirm_wake_word(self) -> bool:
-        if not self._confirm_second_look:
-            return True
-        tmp = self.audio_manager.record_chunk(duration_seconds=1)
-        if not tmp:
-            return False
+    def _confirm_wake_word_on_chunk(self, last_chunk: str, primary_text: str) -> bool:
+        """
+        Подтверждаем wake word по тому же последнему чанку (без объединения и без дозаписи).
+        """
         try:
-            text2 = self.speech_handler.transcribe_audio(tmp) or ""
+            # Уже есть ключевое слово — этого достаточно
+            if self._contains_wake_word(primary_text):
+                return True
+
+            # Ещё раз распознаём тот же файл и проверяем триггер
+            text2 = self.speech_handler.transcribe_audio(last_chunk) or ""
+            logging.info(f"🔁 Вторичная проверка wake word: '{text2}'")
             return self._contains_wake_word(text2)
-        finally:
-            Path(tmp).unlink(missing_ok=True)
+        except Exception as e:
+            logging.error(f"❌ Ошибка second-look: {e}")
+            return False
