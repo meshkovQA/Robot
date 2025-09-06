@@ -30,18 +30,18 @@
     "activation_timeout": 10,
     "sensitivity_threshold": 800,
     "wake": {
-        "min_avg_volume": 500,
-        "min_peak_volume": 2000,
-        "continuous_min_ms": 300,
+        "min_avg_volume": 200,
+        "min_peak_volume": 800,
+        "continuous_min_ms": 150,
         "continuous_window_ms": 20,
-        "continuous_mean_threshold": 300,
+        "continuous_mean_threshold": 180,
         "confirm_second_look": true,
         "cooldown_after_tts_ms": 2000,
         "cooldown_after_activation_ms": 1000,
         "silence_check": {
             "max_wait_ms": 1200,
             "check_interval_s": 1,
-            "silence_threshold": 200
+            "silence_threshold": 160
         },
         "match": {
             "start_only": true,
