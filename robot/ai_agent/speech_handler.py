@@ -109,20 +109,26 @@ class SpeechHandler:
             f"📄 SpeechHandler загрузил {len(self.system_prompts)} промптов")
 
     def transcribe_audio(self, wav_path: str) -> str | None:
-        """
-        Единая точка. Если в конфиге выбран provider=yandex — используем его.
-        Иначе — твой текущий метод с OpenAI (оставляем как фолбэк).
-        """
+        logging.info(f"STT provider={self._provider} file={wav_path}")
         try:
             if self._provider == "yandex" and self._yandex_client:
-                return self._yandex_client.recognize_wav(wav_path) or None
+                text = self._yandex_client.recognize_wav(wav_path) or None
+                if text:
+                    logging.info(f"✅ Распознано (Yandex): '{text}'")
+                return text
             # --- фолбэк на OpenAI:
-            return self._transcribe_with_openai(wav_path)
+            text = self._transcribe_with_openai(wav_path)
+            if text:
+                logging.info(f"✅ Распознано (OpenAI): '{text}'")
+            return text
         except Exception as e:
             logging.error(
                 f"STT error ({self._provider}). Fallback to OpenAI. Reason: {e}")
             try:
-                return self._transcribe_with_openai(wav_path)
+                text = self._transcribe_with_openai(wav_path)
+                if text:
+                    logging.info(f"✅ Распознано (OpenAI фолбэк): '{text}'")
+                return text
             except Exception as e2:
                 logging.error(f"OpenAI STT failed: {e2}")
                 return None

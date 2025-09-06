@@ -1,9 +1,12 @@
 # robot/ai_agent/yandex_stt_client.py
 from __future__ import annotations
+
+from flask import logging
 from yandex.cloud.ai.stt.v3 import stt_service_pb2_grpc
 from yandex.cloud.ai.stt.v3 import stt_pb2
 import grpc
 from typing import Optional
+import logging
 
 
 # импортируй сгенерированные proto из твоего пути
@@ -69,19 +72,29 @@ class YandexSTTClient:
                 yield stt_pb2.StreamingRequest(chunk=stt_pb2.AudioChunk(data=data))
 
     def recognize_wav(self, wav_path: str) -> str:
-        """
-        Синхронно вернёт последнюю финальную гипотезу для коротких файлов.
-        Для твоих 1-сек чанков и коротких команд — идеально.
-        """
+        logging.info(f"Yandex STT: start recognize {wav_path}")
         responses = self._stub.RecognizeStreaming(
-            self._req_stream(wav_path), metadata=(self._metadata,))
+            self._req_stream(wav_path), metadata=self._metadata
+        )
         final_text = ""
         for r in responses:
-            ev = r.WhichOneof('Event')
-            if ev == 'final' and r.final.alternatives:
-                # берём текст без «литературной правки» (или можно final_refinement ниже)
-                final_text = r.final.alternatives[0].text or final_text
-            elif ev == 'final_refinement' and r.final_refinement.normalized_text.alternatives:
-                # если пришла финальная «литературная» правка — используем её
-                final_text = r.final_refinement.normalized_text.alternatives[0].text or final_text
-        return final_text.strip()
+            ev = r.WhichOneof("Event")
+            logging.debug(f"Yandex STT event={ev}")
+            if ev == "partial" and r.partial.alternatives:
+                logging.debug(
+                    f"Yandex STT partial: {r.partial.alternatives[0].text}")
+            elif ev == "final" and r.final.alternatives:
+                hypothesis = r.final.alternatives[0].text or ""
+                logging.info(f"Yandex STT final: '{hypothesis}'")
+                final_text = hypothesis or final_text
+            elif ev == "final_refinement" and r.final_refinement.normalized_text.alternatives:
+                refined = r.final_refinement.normalized_text.alternatives[0].text or ""
+                logging.info(f"Yandex STT refined: '{refined}'")
+                final_text = refined or final_text
+
+        final_text = (final_text or "").strip()
+        if final_text:
+            logging.info(f"✅ Yandex STT recognized: '{final_text}'")
+        else:
+            logging.warning("⚠️ Yandex STT вернул пустой текст")
+        return final_text
