@@ -1,9 +1,12 @@
+# robot/ai_agent/yandex_stt_client.py
+from __future__ import annotations
+from yandex.cloud.ai.stt.v3 import stt_service_pb2_grpc
+from yandex.cloud.ai.stt.v3 import stt_pb2
 import grpc
 from typing import Optional
 
+
 # импортируй сгенерированные proto из твоего пути
-from third_party.cloudapi_py.yandex.cloud.ai.stt.v3 import stt_pb2
-from third_party.cloudapi_py.yandex.cloud.ai.stt.v3 import stt_service_pb2_grpc
 
 _YC_ENDPOINT = "stt.api.cloud.yandex.net:443"
 _CHUNK_SIZE = 4000  # байт; можно 8-16К

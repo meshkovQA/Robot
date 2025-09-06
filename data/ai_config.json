@@ -62,7 +62,7 @@
         "provider": "yandex",
         "yandex": {
             "auth": "api_key",
-            "api_key": "${YANDEX_API_KEY}",
+            "api_key": "",
             "iam_token": "",
             "sample_rate": 48000,
             "channels": 1,
