@@ -10,21 +10,19 @@ import numpy as np
 
 
 def _read_wav_mono_float(wav_path: str) -> Tuple[np.ndarray, int]:
-    """Чтение WAV PCM16 -> mono float32 [-1..1], возвращает (samples, sr)."""
     with wave.open(wav_path, "rb") as wf:
         n_ch = wf.getnchannels()
         sr = wf.getframerate()
         n = wf.getnframes()
         raw = wf.readframes(n)
-    audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     if n_ch == 2:
-        audio = audio.reshape(-1, 2).mean(axis=1)
-    audio = np.nan_to_num(audio)
-    return audio, int(sr)
+        x = x.reshape(-1, 2).mean(axis=1)
+    x = np.nan_to_num(x)
+    return x, int(sr)
 
 
 def _center_crop(audio: np.ndarray, sr: int, target_sec: float = 1.0) -> np.ndarray:
-    """Берём центральное окно ~target_sec (если короче — паддинг нулями)."""
     target = int(target_sec * sr)
     if len(audio) == 0:
         return np.zeros(target, dtype=np.float32)
@@ -38,45 +36,37 @@ def _center_crop(audio: np.ndarray, sr: int, target_sec: float = 1.0) -> np.ndar
 
 
 def _embed_1s(audio_1s: np.ndarray, sr: int) -> np.ndarray:
-    """
-    Простая компактная эмбеддинга:
-    - Ханново окно
-    - RFFT (n=4096)
-    - усредняем по 64 диапазона частот
-    - log(1 + mag), L2-нормализация
-    """
+    # простая спектральная эмбеддинга + нормализация
     nfft = 4096
     x = audio_1s.astype(np.float32)
     if len(x) == 0:
         return np.zeros(64, dtype=np.float32)
 
-    # окно той же длины, что и сигнал, если меньше nfft — нули дорисует rfft
-    w = np.hanning(len(x)).astype(np.float32)
-    xw = x * w
-    spec = np.fft.rfft(xw, n=nfft)
+    # лёгкая АЧХ: подчёркиваем 200–2500 Гц (речь)
+    # делаем через маску в спектре
+    spec = np.fft.rfft(x * np.hanning(len(x)), n=nfft)
     mag = np.abs(spec).astype(np.float32)
 
-    # делим спектр на 64 "короба" и берём среднее в каждом
+    freqs = np.fft.rfftfreq(nfft, d=1.0 / sr)
+    mask = ((freqs >= 200) & (freqs <= 2500)).astype(np.float32)
+    mag *= (0.7 + 0.3 * mask)  # слегка подавляем внеполосные частоты
+
     bands = 64
-    # чтобы ровно делилось, обрежем с конца
     usable = (len(mag) // bands) * bands
     if usable == 0:
         v = np.zeros(bands, dtype=np.float32)
     else:
-        mag = mag[:usable]
-        v = mag.reshape(bands, -1).mean(axis=1)
+        m = mag[:usable].reshape(bands, -1).mean(axis=1)
+        v = np.log1p(m)
 
-    v = np.log1p(v)  # log-компрессия
-    norm = np.linalg.norm(v) + 1e-8
-    v = v / norm
+    v /= (np.linalg.norm(v) + 1e-8)
     return v.astype(np.float32)
 
 
 def _wav_to_embedding(wav_path: str) -> Optional[np.ndarray]:
     try:
         audio, sr = _read_wav_mono_float(wav_path)
-        # берём ~1с центр — устойчивее к начальным/конечным паузам
-        a1 = _center_crop(audio, sr, target_sec=1.0)
+        a1 = _center_crop(audio, sr, 1.0)
         emb = _embed_1s(a1, sr)
         return emb
     except Exception as e:
@@ -87,72 +77,99 @@ def _wav_to_embedding(wav_path: str) -> Optional[np.ndarray]:
 
 class SimpleKWS:
     """
-    Простейший KWS по косинусному сходству эмбеддингов.
-    - enroll_*: загружаем эталоны слова (несколько WAV)
-    - score(wav): максимум косинусного сходства с эталонами
-    - detect(wav): (bool, score) по порогу
+    KWS на косинусном сходстве эмбеддингов.
+    - enroll_dir / enroll_file: добавляет ПОЛОЖИТЕЛЬНЫЕ шаблоны
+    - enroll_neg_dir / enroll_neg_file: добавляет ОТРИЦАТЕЛЬНЫЕ (антишаблоны)
+    - score(): возвращает (pos_max, neg_max, margin)
+    - detect(): bool по margin и порогу
     """
 
-    def __init__(self, threshold: float = 0.82):
+    def __init__(self, threshold: float = 0.82, margin_alpha: float = 1.0):
         self.threshold = float(threshold)
-        self._templates: List[np.ndarray] = []
-        logging.info("SimpleKWS: threshold=%.3f", self.threshold)
+        # вес "штрафа" за похожесть на антишаблоны
+        self.alpha = float(margin_alpha)
+        self._pos: List[np.ndarray] = []
+        self._neg: List[np.ndarray] = []
+        logging.info("SimpleKWS: threshold=%.3f, alpha=%.2f",
+                     self.threshold, self.alpha)
 
-    # ---------- обучение / загрузка шаблонов ----------
+    # --------- загрузка шаблонов ----------
     def enroll_dir(self, directory: str) -> int:
         p = Path(directory)
         if not p.exists():
             logging.warning("SimpleKWS: каталог с шаблонами не найден: %s", p)
             return 0
-
         wavs = sorted([*p.glob("*.wav"), *p.glob("*.WAV")])
         loaded = 0
         for w in wavs:
             emb = _wav_to_embedding(str(w))
             if emb is not None:
-                self._templates.append(emb)
+                self._pos.append(emb)
                 loaded += 1
-                logging.info("SimpleKWS: добавлен шаблон %s", w.name)
-
+                logging.info("SimpleKWS: добавлен POS шаблон %s", w.name)
         if loaded == 0:
             logging.warning("SimpleKWS: не найдено валидных WAV в %s", p)
         else:
-            logging.info("SimpleKWS: загружено шаблонов: %d", loaded)
+            logging.info("SimpleKWS: загружено POS шаблонов: %d", loaded)
         return loaded
 
     def enroll_file(self, wav_path: str) -> bool:
         emb = _wav_to_embedding(wav_path)
         if emb is None:
             return False
-        self._templates.append(emb)
-        logging.info("SimpleKWS: добавлен шаблон из файла %s", wav_path)
+        self._pos.append(emb)
+        logging.info("SimpleKWS: добавлен POS шаблон из файла %s", wav_path)
         return True
 
-    # ---------- инференс ----------
-    def score(self, wav_path: str) -> float:
+    def enroll_neg_dir(self, directory: str) -> int:
+        p = Path(directory)
+        if not p.exists():
+            return 0
+        wavs = sorted([*p.glob("*.wav"), *p.glob("*.WAV")])
+        loaded = 0
+        for w in wavs:
+            emb = _wav_to_embedding(str(w))
+            if emb is not None:
+                self._neg.append(emb)
+                loaded += 1
+                logging.info("SimpleKWS: добавлен NEG шаблон %s", w.name)
+        if loaded:
+            logging.info("SimpleKWS: загружено NEG шаблонов: %d", loaded)
+        return loaded
+
+    def enroll_neg_file(self, wav_path: str) -> bool:
+        emb = _wav_to_embedding(wav_path)
+        if emb is None:
+            return False
+        self._neg.append(emb)
+        logging.info("SimpleKWS: добавлен NEG шаблон из файла %s", wav_path)
+        return True
+
+    # --------- инференс ----------
+    def score(self, wav_path: str) -> Tuple[float, float, float]:
         """
-        Возвращает максимум косинусного сходства [0..1] с шаблонами.
-        Если шаблонов нет — вернёт 0.0.
+        Возвращает (pos_max, neg_max, margin=pos_max - alpha*neg_max).
+        Если нет шаблонов pos -> 0,0,0.
         """
-        if not self._templates:
-            logging.warning("SimpleKWS: нет шаблонов — score=0.0")
-            return 0.0
+        if not self._pos:
+            logging.warning("SimpleKWS: нет POS шаблонов — score=0")
+            return 0.0, 0.0, 0.0
 
         emb = _wav_to_embedding(wav_path)
         if emb is None:
-            return 0.0
+            return 0.0, 0.0, 0.0
 
-        # косинус: dot(emb, tmpl) (оба L2-нормированы)
-        sims = [float(np.dot(emb, t)) for t in self._templates]
-        smax = max(sims) if sims else 0.0
-        logging.info("SimpleKWS: score=%.3f (templates=%d)",
-                     smax, len(self._templates))
-        return smax
+        pos = max((float(np.dot(emb, t)) for t in self._pos), default=0.0)
+        neg = max((float(np.dot(emb, t))
+                  for t in self._neg), default=0.0) if self._neg else 0.0
+        margin = pos - self.alpha * neg
+        logging.info("SimpleKWS: pos=%.3f neg=%.3f margin=%.3f thr=%.3f",
+                     pos, neg, margin, self.threshold)
+        return pos, neg, margin
 
-    def detect(self, wav_path: str) -> Tuple[bool, float]:
-        """Удобный помощник: (passed, score)."""
-        s = self.score(wav_path)
-        ok = s >= self.threshold
-        logging.info(
-            "SimpleKWS: detect -> %s (score=%.3f, thr=%.3f)", ok, s, self.threshold)
-        return ok, s
+    def detect(self, wav_path: str) -> Tuple[bool, float, float, float]:
+        pos, neg, margin = self.score(wav_path)
+        ok = margin >= self.threshold
+        logging.info("SimpleKWS: detect -> %s (pos=%.3f, neg=%.3f, margin=%.3f ≥ thr=%.3f)",
+                     ok, pos, neg, margin, self.threshold)
+        return ok, pos, neg, margin

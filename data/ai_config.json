@@ -71,7 +71,11 @@
         }
     },
     "wake_kws": {
+        "threshold": 0.87,
+        "margin_alpha": 1.2,
+        "min_hits": 2,
+        "window_sec": 1.6,
         "samples_dir": "data/wake_samples",
-        "threshold": 0.82
+        "negatives_dir": "data/wake_negatives"
     }
 }
