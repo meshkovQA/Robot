@@ -133,7 +133,7 @@ class SpeechHandler:
                 logging.error(f"OpenAI STT failed: {e2}")
                 return None
 
-    def transcribe_with_openai(self, audio_file_path):
+    def _transcribe_with_openai(self, audio_file_path):
         """Распознавание речи через OpenAI Whisper"""
         if not Path(audio_file_path).exists():
             logging.error(f"❌ Аудио файл не найден: {audio_file_path}")
