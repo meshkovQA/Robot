@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import time
+from .yandex_stt_client import YandexSTTClient
 
 
 class SpeechHandler:
@@ -17,6 +18,30 @@ class SpeechHandler:
 
     def __init__(self, config):
         self.config = config
+
+        self._provider = (self.config.get("speech", {})
+                          or {}).get("provider", "openai")
+
+        yc = (self.config.get("speech", {}) or {}).get("yandex", {}) or {}
+        self._yandex_client = None
+
+        try:
+            if self._provider == "yandex":
+                auth = (yc.get("auth") or "api_key").lower()
+                api_key = os.getenv(
+                    "YANDEX_API_KEY") if auth == "api_key" else None
+                iam_token = yc.get("iam_token") if auth == "iam" else None
+                self._yandex_client = YandexSTTClient(
+                    api_key=api_key,
+                    iam_token=iam_token,
+                    sample_rate=yc.get("sample_rate", 48000),
+                    channels=yc.get("channels", 1),
+                    profanity_filter=bool(yc.get("profanity_filter", True)),
+                    model=yc.get("model", "general"),
+                )
+                logging.info("Yandex STT client initialized")
+        except Exception as e:
+            logging.error(f"Yandex STT init error: {e}")
 
         # Получаем ключ только из environment переменной
         self.api_key = os.getenv('OPENAI_API_KEY')
@@ -83,7 +108,26 @@ class SpeechHandler:
         logging.info(
             f"📄 SpeechHandler загрузил {len(self.system_prompts)} промптов")
 
-    def transcribe_audio(self, audio_file_path):
+    def transcribe_audio(self, wav_path: str) -> str | None:
+        """
+        Единая точка. Если в конфиге выбран provider=yandex — используем его.
+        Иначе — твой текущий метод с OpenAI (оставляем как фолбэк).
+        """
+        try:
+            if self._provider == "yandex" and self._yandex_client:
+                return self._yandex_client.recognize_wav(wav_path) or None
+            # --- фолбэк на OpenAI:
+            return self._transcribe_with_openai(wav_path)
+        except Exception as e:
+            logging.error(
+                f"STT error ({self._provider}). Fallback to OpenAI. Reason: {e}")
+            try:
+                return self._transcribe_with_openai(wav_path)
+            except Exception as e2:
+                logging.error(f"OpenAI STT failed: {e2}")
+                return None
+
+    def transcribe_with_openai(self, audio_file_path):
         """Распознавание речи через OpenAI Whisper"""
         if not Path(audio_file_path).exists():
             logging.error(f"❌ Аудио файл не найден: {audio_file_path}")
