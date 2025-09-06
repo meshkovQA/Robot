@@ -14,3 +14,4 @@ grpcio
 grpcio-tools
 protobuf
 googleapis-common-protos
+python_speech_features
