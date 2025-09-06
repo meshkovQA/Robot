@@ -1,12 +1,11 @@
 # robot/ai_agent/yandex_stt_client.py
 from __future__ import annotations
-
-from flask import logging
 from yandex.cloud.ai.stt.v3 import stt_service_pb2_grpc
 from yandex.cloud.ai.stt.v3 import stt_pb2
 import grpc
 from typing import Optional
 import logging
+import os
 
 
 # импортируй сгенерированные proto из твоего пути
@@ -23,10 +22,14 @@ class YandexSTTClient:
             raise ValueError(
                 "Provide either api_key or iam_token for Yandex STT")
 
-        self._metadata = (
-            ('authorization', f'Api-Key {api_key}') if api_key
-            else ('authorization', f'Bearer {iam_token}')
-        )
+        auth_header = ('authorization', f'Api-Key {api_key}') if api_key else (
+            'authorization', f'Bearer {iam_token}')
+        self._metadata = [auth_header]
+
+        folder_id = (os.getenv('YC_FOLDER_ID') or '').strip()
+        if folder_id:
+            self._metadata.append(('x-folder-id', folder_id))
+
         self._sample_rate = int(sample_rate)
         self._channels = int(channels)
         self._profanity = bool(profanity_filter)
@@ -74,8 +77,7 @@ class YandexSTTClient:
     def recognize_wav(self, wav_path: str) -> str:
         logging.info(f"Yandex STT: start recognize {wav_path}")
         responses = self._stub.RecognizeStreaming(
-            self._req_stream(wav_path), metadata=self._metadata
-        )
+            self._req_stream(wav_path), metadata=self._metadata)
         final_text = ""
         for r in responses:
             ev = r.WhichOneof("Event")
