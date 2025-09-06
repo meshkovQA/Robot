@@ -10,4 +10,6 @@ ultralytics
 torch
 torchvision
 openai
-pyaudio
+grpcio
+grpcio-tools
+protobuf

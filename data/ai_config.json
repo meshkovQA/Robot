@@ -57,5 +57,17 @@
         "chat": "Говори живо и эмоционально, как настоящий друг. Используй интонации.",
         "status": "Говори четко и информативно, как технический специалист.",
         "vision": "Говори описательно и образно, помогая представить картину."
+    },
+    "speech": {
+        "provider": "yandex",
+        "yandex": {
+            "auth": "api_key",
+            "api_key": "${YANDEX_API_KEY}",
+            "iam_token": "",
+            "sample_rate": 48000,
+            "channels": 1,
+            "profanity_filter": true,
+            "model": "general"
+        }
     }
 }
