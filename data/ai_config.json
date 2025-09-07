@@ -77,5 +77,14 @@
         "window_sec": 1.6,
         "samples_dir": "data/wake_samples",
         "negatives_dir": "data/wake_negatives"
+    },
+    "wake_word_backend": "vosk",
+    "vosk_kws": {
+        "enabled": true,
+        "model_dir": null,
+        "sample_rate": 16000,
+        "chunk_ms": 30,
+        "min_conf": 0.60,
+        "confirm_window_ms": 700
     }
 }
