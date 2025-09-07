@@ -42,10 +42,9 @@ if ! python -c "import vosk" >/dev/null 2>&1; then
   pip install vosk
 fi
 
-# 2) Где хранить модели (вне git-дерева, чтобы переживали reset)
-MODELS_ROOT="/opt/robot/models/vosk"
+# 2) Папка моделей внутри проекта (в репозитории, без sudo)
+MODELS_ROOT="$PROJECT_DIR/data/vosk"
 mkdir -p "$MODELS_ROOT"
-chmod 755 "$MODELS_ROOT"
 
 # 3) Какая модель нужна
 VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
@@ -56,7 +55,14 @@ VOSK_LINK="$MODELS_ROOT/current"
 # 4) Скачиваем при необходимости
 if [[ ! -d "$VOSK_DIR" ]]; then
   echo -e "${YELLOW}⬇️ Скачиваю Vosk-модель (ru small 0.22)...${NC}"
-  command -v wget >/dev/null 2>&1 || sudo apt-get update -y && sudo apt-get install -y wget unzip
+  if ! command -v wget >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y wget
+  fi
+  if ! command -v unzip >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y unzip
+  fi
   wget -q --show-progress -O "$VOSK_ZIP" "$VOSK_URL"
   echo -e "${YELLOW}📦 Распаковываю...${NC}"
   unzip -q "$VOSK_ZIP" -d "$MODELS_ROOT"
@@ -65,22 +71,10 @@ fi
 # 5) Симлинк на актуальную модель
 if [[ -d "$VOSK_DIR" ]]; then
   ln -sfn "$VOSK_DIR" "$VOSK_LINK"
-  chmod -R a+rX "$VOSK_DIR"
   echo -e "${GREEN}✅ Vosk-модель готова: $VOSK_LINK${NC}"
 else
   echo -e "${RED}❌ Не удалось подготовить модель Vosk${NC}"
 fi
-
-# 6) Подсказываем сервису, где модель (через env-файл systemd, если используешь)
-# Если у тебя есть /etc/systemd/system/robot-web.service.d/env.conf — обновим VOSK_MODEL_DIR
-ENV_DIR="/etc/systemd/system/${SERVICE_NAME}.d"
-ENV_FILE="$ENV_DIR/env.conf"
-sudo mkdir -p "$ENV_DIR"
-sudo bash -c "cat > '$ENV_FILE' <<EOF
-[Service]
-Environment=VOSK_MODEL_DIR=$VOSK_LINK
-EOF"
-sudo systemctl daemon-reload
 # --- VOSK MODEL SYNC END -----------------------------------------------------
 
 # Быстрая проверка синтаксиса
