@@ -186,75 +186,155 @@ class AudioManager:
 
     # ---------- операции записи более высокого уровня ----------
 
-    def record_until_silence(self, max_duration=10, silence_timeout=1.5, pre_roll_files: list[str] | None = None):
+    def record_until_silence(
+        self,
+        max_duration=10,
+        silence_timeout=1.5,
+        pre_roll_files: list[str] | None = None,
+        chunk_ms: int = 100,
+        pre_roll_sec: float = 0.3
+    ):
         """
-        Пишем до тишины. Ждём начала речи (не выходим на стартовой тишине).
-        Можно добавить pre_roll (список путей WAV), чтобы прихватить кусочек ДО активации.
+        Потоковая запись до тишины (после wake).
+        - Запускает arecord БЕЗ -d, читает stdout маленькими блоками.
+        - Стартуем запись, когда обнаружена речь (avg>_min_avg и peak>_min_peak).
+        - Останавливаем, когда подряд набралось silence_timeout секунд тишины.
+        - Добавляем небольшой preroll (последние pre_roll_sec перед началом речи).
         """
+        import subprocess
+        import wave
+        from collections import deque
+
         output_file = f"data/temp_recording_{int(time.time())}.wav"
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
-        total = 0
-        silent = 0
-        chunk_dur = 1
-        chunks: list[str] = []
+        # Порог «тишины» и гейты берем из конфигурации (как и раньше)
+        silence_threshold = float(self._sil_threshold)
+        min_avg = float(self._min_avg)
+        min_peak = float(self._min_peak)
 
+        # Подготовка WAV-выхода
+        wf_out = wave.open(output_file, 'wb')
+        wf_out.setnchannels(int(self.channels))
+        wf_out.setsampwidth(2)  # S16_LE
+        wf_out.setframerate(int(self.sample_rate))
+
+        # Настройка arecord на RAW поток
+        cmd = [
+            'arecord',
+            '-D', f'plughw:{self.microphone_index},0',
+            '-r', str(self.sample_rate),
+            '-c', str(self.channels),
+            '-f', 'S16_LE',
+            '-t', 'raw'
+        ]
+        logging.info("🎤 Потоковая запись до тишины: %s", " ".join(cmd))
+
+        proc = None
         started_speaking = False
-        max_initial_silence = 3  # не больше 3с стартовой тишины
+        silence_run = 0.0
+        total_time = 0.0
+        max_initial_silence = 3.0  # не ждём бесконечно
+        initial_sil = 0.0
 
-        logging.info(f"🎤 Запись до тишины (макс {max_duration}с)")
+        bytes_per_sample = 2
+        frame_bytes = int(self.sample_rate * (chunk_ms / 1000.0)
+                          ) * bytes_per_sample * int(self.channels)
+        chunk_sec = chunk_ms / 1000.0
+
+        # Кольцевой буфер для preroll (держим N последних блоков до старта речи)
+        preroll_chunks = deque(maxlen=max(1, int(pre_roll_sec / chunk_sec)))
 
         try:
-            # добавим pre-roll, если дали
-            if pre_roll_files:
-                for pr in pre_roll_files[-2:]:  # максимум 2 файла (~2с)
-                    if Path(pr).exists():
-                        # не удаляем тут, удалим после склейки
-                        chunks.append(pr)
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            stdout = proc.stdout
+            if stdout is None:
+                raise RuntimeError("arecord stdout is None")
 
-            while total < max_duration:
-                chunk = self.record_chunk(duration_seconds=chunk_dur)
-                if not chunk:
-                    # считаем как тишину/пропуск
-                    silent += chunk_dur
-                    total += chunk_dur
-                    # если речь ещё не началась — не завершаем раньше времени
-                    if not started_speaking and silent >= max_initial_silence:
-                        logging.info(
-                            "🤫 Слишком долго нет речи — выхожу без записи")
-                        break
-                    if started_speaking and silent >= silence_timeout:
-                        logging.info(f"✅ Остановка: тишина {silent:.1f}s")
-                        break
+            while total_time < max_duration:
+                data = stdout.read(frame_bytes)
+                if not data:
+                    # подстрахуемся небольшим сном и продолжим
+                    time.sleep(0.005)
                     continue
 
-                if self.is_audio_silent(chunk):
-                    silent += chunk_dur
-                    # до начала речи не завершаем, после — да
-                    if started_speaking and silent >= silence_timeout:
-                        Path(chunk).unlink(missing_ok=True)
-                        logging.info(f"✅ Остановка: тишина {silent:.1f}s")
-                        break
+                # Оценка амплитуд на лету
+                audio_i16 = np.frombuffer(data, dtype=np.int16)
+                if audio_i16.size == 0:
+                    total_time += chunk_sec
+                    continue
+                avg = float(np.abs(audio_i16).mean())
+                peak = float(np.abs(audio_i16).max())
+
+                if not started_speaking:
+                    # накапливаем preroll
+                    preroll_chunks.append(data)
+
+                    if avg > min_avg and peak > min_peak:
+                        # старт речи — пишем preroll (если был)
+                        if preroll_chunks:
+                            for ch in preroll_chunks:
+                                wf_out.writeframesraw(ch)
+                        wf_out.writeframesraw(data)
+                        started_speaking = True
+                        silence_run = 0.0
+                    else:
+                        # ещё тишина до начала речи
+                        initial_sil += chunk_sec
+                        if initial_sil >= max_initial_silence:
+                            logging.info(
+                                "🤫 Слишком долго нет речи — выхожу без записи")
+                            break
                 else:
-                    silent = 0
-                    started_speaking = True
+                    # уже пишем: обновляем счетчик тишины и пишем кадр
+                    wf_out.writeframesraw(data)
+                    if avg < silence_threshold:
+                        silence_run += chunk_sec
+                        if silence_run >= silence_timeout:
+                            logging.info(
+                                "✅ Остановка: тишина %.1fs", silence_run)
+                            break
+                    else:
+                        silence_run = 0.0
 
-                chunks.append(chunk)
-                total += chunk_dur
+                total_time += chunk_sec
 
-            # если вообще не началась речь и нет нормальных чанков — вернём None
-            real_chunks = [c for c in chunks if Path(c).exists()]
-            if not started_speaking or not real_chunks:
+            wf_out.close()
+
+            # Если речь так и не началась — удалим пустой файл
+            if not started_speaking:
+                try:
+                    Path(output_file).unlink(missing_ok=True)
+                except Exception:
+                    pass
                 return None
 
-            if self.combine_audio_files(real_chunks, output_file):
-                return output_file
+            return output_file
+
+        except Exception as e:
+            logging.error("❌ Ошибка потоковой записи: %s", e)
+            try:
+                wf_out.close()
+            except Exception:
+                pass
+            try:
+                Path(output_file).unlink(missing_ok=True)
+            except Exception:
+                pass
             return None
+
         finally:
-            # удаляем только те чанки, которые создавали мы (pre-roll оставим: они уже были во временных /tmp и скоро исчезнут)
-            for f in chunks:
-                # pre-roll мог быть переиспользован — ничего страшного, удалим безопасно
-                Path(f).unlink(missing_ok=True)
+            # Аккуратно завершим arecord
+            try:
+                if proc and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=0.3)
+                    except Exception:
+                        proc.kill()
+            except Exception:
+                pass
 
     def combine_audio_files(self, audio_files, output_file):
         """Объединение нескольких WAV файлов в один."""
