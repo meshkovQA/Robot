@@ -20,12 +20,8 @@
     },
     "wake_words": [
         "винди",
-        "windy",
         "венди",
-        "вендя",
-        "виндя",
-        "винде",
-        "винд"
+        "винде"
     ],
     "activation_timeout": 10,
     "sensitivity_threshold": 800,
