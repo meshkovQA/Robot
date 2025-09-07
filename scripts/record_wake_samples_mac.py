@@ -5,7 +5,7 @@ import wave
 from pathlib import Path
 import time
 
-DEVICE_INDEX = 4          # <-- твой Usb_Mic на macOS
+DEVICE_INDEX = 3          # <-- твой Usb_Mic на macOS
 SAMPLE_RATE = 48000       # как в конфиге робота
 CHANNELS = 1
 DURATION = 1.0            # 1 секунда на сэмпл
