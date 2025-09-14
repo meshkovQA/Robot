@@ -8,6 +8,7 @@ import logging
 import smbus2
 from typing import Dict, Any, Optional
 
+
 logger = logging.getLogger(__name__)
 
 # Команды LCD 1602
@@ -325,8 +326,8 @@ class RobotLCDDisplay:
         return direction_map.get(direction, "Stop")
 
     def _get_obstacle_text(self, obstacles: Dict[str, bool]) -> str:
-        """Получение текста о препятствиях"""
-        if obstacles.get("center_front", False):
+        # было: if obstacles.get("center_front", False):
+        if obstacles.get("front_center", False):
             return "Obstacle: Front"
         elif obstacles.get("left_front", False):
             return "Obstacle: L-F"
@@ -404,12 +405,28 @@ class RobotLCDDisplay:
                     time.sleep(self.update_interval)
                     continue
 
-                # читаем статус
-                is_moving = status.get("is_moving", False)
-                direction = status.get("movement_direction", 0)
-                temperature = status.get("temperature")
-                humidity = status.get("humidity")
+                # 🔧 ИСПРАВЛЕНИЕ: Правильное извлечение данных
+
+                # Отладка: выведите структуру данных
+                if self.debug:
+                    logger.debug(f"LCD Status keys: {list(status.keys())}")
+
+                # Движение и препятствия
+                motion = status.get("motion", {})
+                is_moving = motion.get("is_moving", False)
+                direction = motion.get("direction", 0)
                 obstacles = status.get("obstacles", {})
+
+                # ✅ ПРАВИЛЬНО: извлекаем из секции environment
+                environment = status.get("environment", {})
+                temperature = environment.get("temperature")
+                humidity = environment.get("humidity")
+
+                # Отладка значений температуры и влажности
+                if self.debug:
+                    logger.debug(f"LCD environment: {environment}")
+                    logger.debug(
+                        f"LCD temp: {temperature}, humidity: {humidity}")
 
                 # первая строка: препятствие приоритетнее
                 if any(obstacles.values()):
