@@ -88,7 +88,6 @@
               </div>
 
               <!-- Кнопки управления в сетке -->
-<!-- Кнопки управления в сетке -->
               <br>
               <div class="control-grid text-center">
                 <!-- Вперёд -->
@@ -184,6 +183,70 @@
             </div>
           </div>
 
+          <!-- Данные энкодеров (новая секция) -->
+          <div class="card mb-3">
+            <div class="card-header py-2">
+              <strong>⚡ Энкодеры / Скорость</strong>
+            </div>
+            <div class="card-body">
+              <!-- Скорости колес -->
+              <div class="row g-1 text-center mb-2">
+                <div class="col-6">
+                  <div id="left-wheel-sensor" class="compact-sensor sensor-card border rounded p-1">
+                    <div class="fw-bold text-info" id="left-wheel-speed">0.00</div>
+                    <small class="text-muted">Левое (м/с)</small>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div id="right-wheel-sensor" class="compact-sensor sensor-card border rounded p-1">
+                    <div class="fw-bold text-info" id="right-wheel-speed">0.00</div>
+                    <small class="text-muted">Правое (м/с)</small>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Общие показатели -->
+              <div class="row g-1 text-center">
+                <div class="col-6">
+                  <div id="linear-velocity-sensor" class="compact-sensor sensor-card border rounded p-1">
+                    <div class="fw-bold text-success" id="linear-velocity">0.00</div>
+                    <small class="text-muted">Лин. (м/с)</small>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div id="angular-velocity-sensor" class="compact-sensor sensor-card border rounded p-1">
+                    <div class="fw-bold text-warning" id="angular-velocity">0.00</div>
+                    <small class="text-muted">Угл. (рад/с)</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Управление по скорости -->
+              <div class="mt-3">
+                <label class="form-label small mb-1">
+                  Целевая скорость 
+                  <span class="badge text-bg-info ms-2" id="target-velocity-value">0.0 м/с</span>
+                </label>
+                <input type="range" class="form-range mb-2" id="velocity-slider" 
+                      min="-0.3" max="0.3" value="0" step="0.05">
+                <div class="d-flex gap-1 justify-content-center">
+                  <button class="btn btn-sm btn-outline-success" onclick="setTargetVelocity(0.1)">
+                    0.1 м/с
+                  </button>
+                  <button class="btn btn-sm btn-outline-primary" onclick="setTargetVelocity(0.2)">
+                    0.2 м/с
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="setTargetVelocity(0)">
+                    Стоп
+                  </button>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="setTargetVelocity(-0.1)">
+                    -0.1 м/с
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Управление камерой -->
           <div class="card">
             <div class="card-header py-2">
@@ -270,6 +333,11 @@
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#files-pane" type="button" role="tab">
               📁 Файлы
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="arm-tab" data-bs-toggle="tab" data-bs-target="#arm-pane" type="button" role="tab">
+              🦾 Роборука
             </button>
           </li>
         </ul>
@@ -464,6 +532,157 @@
                   <button class="btn btn-primary" onclick="refreshFiles()">🔄 Обновить</button>
                   <button class="btn btn-danger" onclick="clearOldFiles()">🗑️ Очистить старые</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Роборука -->
+          <div class="tab-pane fade" id="arm-pane" role="tabpanel">
+            <div class="card">
+              <div class="card-header d-flex align-items-center py-2">
+                🦾 Управление роборукой
+                <span id="arm-status-indicator" class="status-indicator ms-2"></span>
+              </div>
+              <div class="card-body">
+                
+                <!-- Быстрые команды -->
+                <div class="row g-2 mb-3">
+                  <div class="col-md-4">
+                    <button class="btn btn-primary w-100" onclick="resetArm()">
+                      🏠 Исходное положение
+                    </button>
+                  </div>
+                  <div class="col-md-4">
+                    <button class="btn btn-success w-100" onclick="openGripper()">
+                      ✋ Открыть захват
+                    </button>
+                  </div>
+                  <div class="col-md-4">
+                    <button class="btn btn-warning w-100" onclick="closeGripper()">
+                      ✊ Закрыть захват
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Управление отдельными сервоприводами -->
+                <div class="row g-3">
+                  <!-- Base (поворот основания) -->
+                  <div class="col-md-6">
+                    <div class="border rounded p-2">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong class="small">🔄 Основание</strong>
+                        <span class="badge text-bg-secondary" id="servo-0-angle">90°</span>
+                      </div>
+                      <input type="range" class="form-range mb-2" id="servo-0-slider" 
+                            min="0" max="180" value="90" step="5" 
+                            oninput="updateServoAngle(0, this.value)">
+                      <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(0, -10)">-10°</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(0, 10)">+10°</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Shoulder (плечо) -->
+                  <div class="col-md-6">
+                    <div class="border rounded p-2">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong class="small">💪 Плечо</strong>
+                        <span class="badge text-bg-secondary" id="servo-1-angle">90°</span>
+                      </div>
+                      <input type="range" class="form-range mb-2" id="servo-1-slider" 
+                            min="10" max="140" value="90" step="5" 
+                            oninput="updateServoAngle(1, this.value)">
+                      <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(1, -10)">-10°</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(1, 10)">+10°</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Elbow (локоть) -->
+                  <div class="col-md-6">
+                    <div class="border rounded p-2">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong class="small">💪 Локоть</strong>
+                        <span class="badge text-bg-secondary" id="servo-2-angle">90°</span>
+                      </div>
+                      <input type="range" class="form-range mb-2" id="servo-2-slider" 
+                            min="50" max="180" value="90" step="5" 
+                            oninput="updateServoAngle(2, this.value)">
+                      <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(2, -10)">-10°</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(2, 10)">+10°</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Wrist (запястье) -->
+                  <div class="col-md-6">
+                    <div class="border rounded p-2">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong class="small">✋ Запястье</strong>
+                        <span class="badge text-bg-secondary" id="servo-3-angle">90°</span>
+                      </div>
+                      <input type="range" class="form-range mb-2" id="servo-3-slider" 
+                            min="0" max="180" value="90" step="5" 
+                            oninput="updateServoAngle(3, this.value)">
+                      <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(3, -10)">-10°</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(3, 10)">+10°</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Gripper (захват) -->
+                  <div class="col-md-12">
+                    <div class="border rounded p-2">
+                      <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong class="small">🤏 Захват</strong>
+                        <span class="badge text-bg-secondary" id="servo-4-angle">90°</span>
+                      </div>
+                      <input type="range" class="form-range mb-2" id="servo-4-slider" 
+                            min="65" max="120" value="90" step="2" 
+                            oninput="updateServoAngle(4, this.value)">
+                      <div class="d-flex gap-1 justify-content-center">
+                        <button class="btn btn-sm btn-success" onclick="openGripper()">✋ Открыть</button>
+                        <button class="btn btn-sm btn-warning" onclick="closeGripper()">✊ Закрыть</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(4, -5)">-5°</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="moveServoRelative(4, 5)">+5°</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Статус роборуки -->
+                <div class="mt-3 p-2 bg-light rounded">
+                  <div class="row g-2 text-center">
+                    <div class="col-2">
+                      <div class="fw-bold small" id="arm-servo-0-display">90°</div>
+                      <small class="text-muted">База</small>
+                    </div>
+                    <div class="col-2">
+                      <div class="fw-bold small" id="arm-servo-1-display">90°</div>
+                      <small class="text-muted">Плечо</small>
+                    </div>
+                    <div class="col-2">
+                      <div class="fw-bold small" id="arm-servo-2-display">90°</div>
+                      <small class="text-muted">Локоть</small>
+                    </div>
+                    <div class="col-2">
+                      <div class="fw-bold small" id="arm-servo-3-display">90°</div>
+                      <small class="text-muted">Запястье</small>
+                    </div>
+                    <div class="col-2">
+                      <div class="fw-bold small" id="arm-servo-4-display">90°</div>
+                      <small class="text-muted">Захват</small>
+                    </div>
+                    <div class="col-2">
+                      <span id="arm-last-update" class="small text-muted">--:--</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>

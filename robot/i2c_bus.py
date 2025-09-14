@@ -100,17 +100,19 @@ class FastI2CController:
         if self._thr.is_alive():
             self._thr.join(timeout=1.0)
 
-    def write_command_sync(self, data: list[int], timeout: float = 0.3) -> bool:
+    def write_command_sync(self, data: list[int], address: Optional[int] = None, timeout: float = 0.3) -> bool:
         """
-        Синхронная отправка командного блока на UNO.
-        Протокол не меняем: первый байт data — это "reg", остальные — payload.
+        Синхронная отправка командного блока.
+        address: адрес устройства (None = UNO по умолчанию, ARDUINO_MEGA_ADDRESS для MEGA)
+        data: данные для отправки
         """
+        target_addr = address if address is not None else ARDUINO_ADDRESS
         res = _SyncResult()
         try:
-            self._cmd_q.put_nowait(("write", (ARDUINO_ADDRESS, data), res))
+            self._cmd_q.put_nowait(("write", (target_addr, data), res))
         except queue.Full:
             logger.warning("I2C command queue full; executing inline")
-            ok = self._do_write(ARDUINO_ADDRESS, data)
+            ok = self._do_write(target_addr, data)
             # короткий cooldown после записи
             time.sleep(max(0.015, I2C_INTER_DEVICE_DELAY_MS / 1000.0))
             return ok
@@ -119,6 +121,14 @@ class FastI2CController:
             logger.warning("I2C write timeout (queued)")
             return False
         return res.result()
+
+    def write_uno_command(self, data: list[int], timeout: float = 0.3) -> bool:
+        """Отправка команды на UNO"""
+        return self.write_command_sync(data, ARDUINO_ADDRESS, timeout)
+
+    def write_mega_command(self, data: list[int], timeout: float = 0.3) -> bool:
+        """Отправка команды на MEGA"""
+        return self.write_command_sync(data, ARDUINO_MEGA_ADDRESS, timeout)
 
     def get_cache(self) -> Dict[str, Any]:
         """Вернуть копию кэша датчиков/углов/климата."""
@@ -206,70 +216,119 @@ class FastI2CController:
         return True
 
     def _read_uno(self) -> Optional[Dict[str, Any]]:
+        """
+        Чтение данных от Arduino UNO согласно реальному коду Arduino:
+        12 байт: pan(2) + tilt(2) + temp*10(2) + hum*10(2) + left_speed*100(2) + right_speed*100(2)
+        """
         if not self.bus:
-            # Эмуляция
-            return {"center_front": 50, "right_rear": 60, "pan": 90, "tilt": 90, "temp": 23.4, "hum": 45.0}
+            # Эмуляция с новыми полями
+            return {
+                "pan": 90, "tilt": 90,
+                "temp": 23.4, "hum": 45.0,
+                "left_wheel_speed": 0.0, "right_wheel_speed": 0.0
+            }
 
-        raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 12)
-        if len(raw) != 12:
+        try:
+            raw = self.bus.read_i2c_block_data(ARDUINO_ADDRESS, 0x10, 12)
+            if len(raw) != 12:
+                logger.warning("UNO вернул %d байт вместо 12", len(raw))
+                return None
+
+            # Парсинг данных согласно структуре Arduino UNO
+            pan = (raw[1] << 8) | raw[0]
+            tilt = (raw[3] << 8) | raw[2]
+            t10 = (raw[5] << 8) | raw[4]
+            h10 = (raw[7] << 8) | raw[6]
+            l100 = (raw[9] << 8) | raw[8]   # left wheel speed * 100
+            r100 = (raw[11] << 8) | raw[10]  # right wheel speed * 100
+
+            # Преобразование signed int16 для температуры, влажности и скоростей
+            if t10 >= 32768:
+                t10 -= 65536
+            if h10 >= 32768:
+                h10 -= 65536
+            if l100 >= 32768:
+                l100 -= 65536
+            if r100 >= 32768:
+                r100 -= 65536
+
+            # Обработка температуры и влажности (из кода Arduino: -32768 = NAN)
+            temp = None if t10 == -32768 else t10 / 10.0
+            hum = None if h10 == -32768 else h10 / 10.0
+
+            # Обработка скоростей энкодеров (м/с)
+            left_wheel_speed = l100 / 100.0
+            right_wheel_speed = r100 / 100.0
+
+            # Валидация углов камеры
+            if not (CAMERA_PAN_MIN <= pan <= CAMERA_PAN_MAX):
+                pan = None
+            if not (CAMERA_TILT_MIN <= tilt <= CAMERA_TILT_MAX):
+                tilt = None
+
+            logger.debug("UNO: pan=%s, tilt=%s, temp=%s, hum=%s, left_speed=%.3f, right_speed=%.3f",
+                         pan, tilt, temp, hum, left_wheel_speed, right_wheel_speed)
+
+            return {
+                "pan": pan, "tilt": tilt,
+                "temp": temp, "hum": hum,
+                "left_wheel_speed": left_wheel_speed,
+                "right_wheel_speed": right_wheel_speed
+            }
+
+        except Exception as e:
+            logger.error("Ошибка чтения данных с UNO: %s", e)
             return None
-
-        center = (raw[1] << 8) | raw[0]
-        rrear = (raw[3] << 8) | raw[2]
-        pan = (raw[5] << 8) | raw[4]
-        tilt = (raw[7] << 8) | raw[6]
-        t10 = (raw[9] << 8) | raw[8]
-        h10 = (raw[11] << 8) | raw[10]
-
-        def san(v: int) -> int:
-            # 0 и > SENSOR_MAX_VALID считаем ошибкой — типичные мусорные чтения
-            if v == 0 or v > SENSOR_MAX_VALID:
-                return SENSOR_ERR
-            return v
-
-        center = san(center)
-        rrear = san(rrear)
-
-        # int16 -> float*10
-        if t10 >= 32768:
-            t10 -= 65536
-        if h10 >= 32768:
-            h10 -= 65536
-        temp = None if t10 == -32768 else t10 / 10.0
-        hum = None if h10 == -32768 else h10 / 10.0
-
-        # Валидация углов: 0 — допустим, но проверяем границы
-        if not (CAMERA_PAN_MIN <= pan <= CAMERA_PAN_MAX):
-            pan = None
-        if not (CAMERA_TILT_MIN <= tilt <= CAMERA_TILT_MAX):
-            tilt = None
-
-        logger.debug("UNO: center=%s, rrear=%s, pan=%s, tilt=%s, temp=%s, hum=%s",
-                     center, rrear, pan, tilt, temp, hum)
-        return {"center_front": center, "right_rear": rrear, "pan": pan, "tilt": tilt, "temp": temp, "hum": hum}
 
     def _read_mega(self) -> Optional[Dict[str, Any]]:
+        """
+        Чтение данных от Arduino MEGA согласно реальному коду Arduino:
+        10 байт: left_front(2) + right_front(2) + left_rear(2) + front_center(2) + rear_right(2)
+        """
         if not self.bus:
-            # Эмуляция
-            return {"left_front": 55, "right_front": 58, "left_rear": 62}
+            # Эмуляция с обновленными полями
+            return {
+                "left_front": 55, "right_front": 58, "left_rear": 62,
+                "front_center": 50, "rear_right": 60
+            }
 
-        raw = self.bus.read_i2c_block_data(ARDUINO_MEGA_ADDRESS, 0x10, 6)
-        if len(raw) != 6:
+        try:
+            raw = self.bus.read_i2c_block_data(ARDUINO_MEGA_ADDRESS, 0x10, 10)
+            if len(raw) != 10:
+                logger.warning("MEGA вернул %d байт вместо 10", len(raw))
+                return None
+
+            # Парсинг данных согласно структуре Arduino MEGA (порядок как в sendSensorData())
+            left_front = (raw[1] << 8) | raw[0]      # v0
+            right_front = (raw[3] << 8) | raw[2]     # v1
+            left_rear = (raw[5] << 8) | raw[4]       # v2
+            front_center = (raw[7] << 8) | raw[6]    # v3
+            rear_right = (raw[9] << 8) | raw[8]      # v4
+
+            def sanitize_sensor(v: int) -> int:
+                # Согласно коду Arduino: если расстояние 0 или >400, возвращается 999
+                # Также проверяем на наш SENSOR_MAX_VALID
+                if v == 0 or v > SENSOR_MAX_VALID:
+                    return SENSOR_ERR
+                return v
+
+            left_front = sanitize_sensor(left_front)
+            right_front = sanitize_sensor(right_front)
+            left_rear = sanitize_sensor(left_rear)
+            front_center = sanitize_sensor(front_center)
+            rear_right = sanitize_sensor(rear_right)
+
+            logger.debug("MEGA: lfront=%s, rfront=%s, lrear=%s, fcenter=%s, rrear=%s",
+                         left_front, right_front, left_rear, front_center, rear_right)
+
+            return {
+                "left_front": left_front,
+                "right_front": right_front,
+                "left_rear": left_rear,
+                "front_center": front_center,
+                "rear_right": rear_right
+            }
+
+        except Exception as e:
+            logger.error("Ошибка чтения данных с MEGA: %s", e)
             return None
-
-        lfront = (raw[1] << 8) | raw[0]
-        rfront = (raw[3] << 8) | raw[2]
-        lrear = (raw[5] << 8) | raw[4]
-
-        def san(v: int) -> int:
-            if v == 0 or v > SENSOR_MAX_VALID:
-                return SENSOR_ERR
-            return v
-
-        lfront = san(lfront)
-        rfront = san(rfront)
-        lrear = san(lrear)
-
-        logger.debug("MEGA: lfront=%s, rfront=%s, lrear=%s",
-                     lfront, rfront, lrear)
-        return {"left_front": lfront, "right_front": rfront, "left_rear": lrear}

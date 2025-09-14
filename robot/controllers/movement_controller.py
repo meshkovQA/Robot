@@ -1,6 +1,5 @@
 # robot/controllers/movement_controller.py
 import logging
-import threading
 from typing import TYPE_CHECKING
 
 from robot.config import (
@@ -26,20 +25,25 @@ class MovementController:
 
     def move_forward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
-        center_front_dist, *_ = self.controller.read_uno_sensors()
-        left_front_dist, right_front_dist, _ = self.controller.read_mega_sensors()
 
-        if center_front_dist != SENSOR_ERR and center_front_dist < SENSOR_FWD_STOP_CM:
+        # Получаем датчики для проверки препятствий спереди
+        distances = self.controller.sensors.get_distance_sensors()
+        front_center = distances["front_center"]
+        left_front = distances["left_front"]
+        right_front = distances["right_front"]
+
+        # Проверки препятствий спереди
+        if front_center != SENSOR_ERR and front_center < SENSOR_FWD_STOP_CM:
             logger.warning("Вперёд нельзя: препятствие по центру на %d см (порог %d см)",
-                           center_front_dist, SENSOR_FWD_STOP_CM)
+                           front_center, SENSOR_FWD_STOP_CM)
             return False
-        if left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_SIDE_STOP_CM:
+        if left_front != SENSOR_ERR and left_front < SENSOR_SIDE_STOP_CM:
             logger.warning("Вперёд нельзя: препятствие слева на %d см (порог %d см)",
-                           left_front_dist, SENSOR_SIDE_STOP_CM)
+                           left_front, SENSOR_SIDE_STOP_CM)
             return False
-        if right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_SIDE_STOP_CM:
+        if right_front != SENSOR_ERR and right_front < SENSOR_SIDE_STOP_CM:
             logger.warning("Вперёд нельзя: препятствие справа на %d см (порог %d см)",
-                           right_front_dist, SENSOR_SIDE_STOP_CM)
+                           right_front, SENSOR_SIDE_STOP_CM)
             return False
 
         ok = self.controller._send_movement_command(speed, 1)
@@ -52,16 +56,20 @@ class MovementController:
 
     def move_backward(self, speed: int) -> bool:
         speed = _clip_speed(speed)
-        _, right_rear_dist, *_ = self.controller.read_uno_sensors()
-        _, _, left_rear_dist = self.controller.read_mega_sensors()
 
-        if right_rear_dist != SENSOR_ERR and right_rear_dist < SENSOR_BWD_STOP_CM:
+        # Получаем датчики для проверки препятствий сзади
+        distances = self.controller.sensors.get_distance_sensors()
+        rear_right = distances["rear_right"]
+        left_rear = distances["left_rear"]
+
+        # Проверки препятствий сзади
+        if rear_right != SENSOR_ERR and rear_right < SENSOR_BWD_STOP_CM:
             logger.warning("Назад нельзя: препятствие справа сзади на %d см (порог %d см)",
-                           right_rear_dist, SENSOR_BWD_STOP_CM)
+                           rear_right, SENSOR_BWD_STOP_CM)
             return False
-        if left_rear_dist != SENSOR_ERR and left_rear_dist < SENSOR_BWD_STOP_CM:
+        if left_rear != SENSOR_ERR and left_rear < SENSOR_BWD_STOP_CM:
             logger.warning("Назад нельзя: препятствие слева сзади на %d см (порог %d см)",
-                           left_rear_dist, SENSOR_BWD_STOP_CM)
+                           left_rear, SENSOR_BWD_STOP_CM)
             return False
 
         ok = self.controller._send_movement_command(speed, 2)
@@ -74,10 +82,14 @@ class MovementController:
 
     def tank_turn_left(self, speed: int) -> bool:
         speed = _clip_speed(speed)
-        left_front_dist, right_front_dist, _ = self.controller.read_mega_sensors()
-        if right_front_dist != SENSOR_ERR and right_front_dist < SENSOR_SIDE_STOP_CM:
+
+        # При повороте влево правая сторона может задеть препятствие
+        distances = self.controller.sensors.get_distance_sensors()
+        right_front = distances["right_front"]
+
+        if right_front != SENSOR_ERR and right_front < SENSOR_SIDE_STOP_CM:
             logger.warning("Поворот влево нельзя: препятствие справа на %d см (порог %d см)",
-                           right_front_dist, SENSOR_SIDE_STOP_CM)
+                           right_front, SENSOR_SIDE_STOP_CM)
             return False
 
         with self.controller._lock:
@@ -92,10 +104,14 @@ class MovementController:
 
     def tank_turn_right(self, speed: int) -> bool:
         speed = _clip_speed(speed)
-        left_front_dist, right_front_dist, _ = self.controller.read_mega_sensors()
-        if left_front_dist != SENSOR_ERR and left_front_dist < SENSOR_SIDE_STOP_CM:
+
+        # При повороте вправо левая сторона может задеть препятствие
+        distances = self.controller.sensors.get_distance_sensors()
+        left_front = distances["left_front"]
+
+        if left_front != SENSOR_ERR and left_front < SENSOR_SIDE_STOP_CM:
             logger.warning("Поворот вправо нельзя: препятствие слева на %d см (порог %d см)",
-                           left_front_dist, SENSOR_SIDE_STOP_CM)
+                           left_front, SENSOR_SIDE_STOP_CM)
             return False
 
         with self.controller._lock:

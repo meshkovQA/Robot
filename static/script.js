@@ -351,45 +351,225 @@ document.addEventListener('visibilitychange', function () {
     }
 });
 
+
+// === НОВЫЕ ФУНКЦИИ ДЛЯ ЭНКОДЕРОВ И РОБОРУКИ ===
+
+// Обновление отображения энкодеров
+function updateEncoderDisplay(encoders) {
+    if (!encoders) return;
+
+    // Скорости колес
+    updateElement('left-wheel-speed', (encoders.left_wheel_speed || 0).toFixed(3));
+    updateElement('right-wheel-speed', (encoders.right_wheel_speed || 0).toFixed(3));
+
+    // Общие показатели скорости
+    updateElement('linear-velocity', (encoders.average_speed || 0).toFixed(3));
+
+    // Рассчитываем угловую скорость (приблизительно)
+    const wheelbase = 0.2; // метры, расстояние между колесами
+    const angularVel = ((encoders.right_wheel_speed || 0) - (encoders.left_wheel_speed || 0)) / wheelbase;
+    updateElement('angular-velocity', angularVel.toFixed(3));
+
+    // Цветовые индикации
+    updateEncoderColors(encoders);
+}
+
+// Обновление отображения роборуки  
+function updateArmDisplay(arm) {
+    if (!arm || !arm.current_angles) return;
+
+    // Обновляем углы сервоприводов
+    for (let i = 0; i < 5; i++) {
+        if (arm.current_angles[i] !== undefined) {
+            updateElement(`servo-${i}-angle`, `${arm.current_angles[i]}°`);
+            updateElement(`arm-servo-${i}-display`, `${arm.current_angles[i]}°`);
+
+            // Обновляем слайдеры если они не используются
+            const slider = document.getElementById(`servo-${i}-slider`);
+            if (slider && !slider.matches(':focus')) {
+                slider.value = arm.current_angles[i];
+            }
+        }
+    }
+
+    // Индикатор статуса роборуки
+    const statusIndicator = document.getElementById('arm-status-indicator');
+    if (statusIndicator) {
+        statusIndicator.className = arm.available ? 'status-indicator status-active' : 'status-indicator status-inactive';
+    }
+
+    updateElement('arm-last-update', new Date().toLocaleTimeString());
+}
+
+// Цветовые индикации энкодеров
+function updateEncoderColors(encoders) {
+    const leftSpeed = Math.abs(encoders.left_wheel_speed || 0);
+    const rightSpeed = Math.abs(encoders.right_wheel_speed || 0);
+
+    // Обновляем цвета в зависимости от скорости
+    updateElementColor('left-wheel-sensor', getSpeedColor(leftSpeed));
+    updateElementColor('right-wheel-sensor', getSpeedColor(rightSpeed));
+    updateElementColor('linear-velocity-sensor', getSpeedColor(Math.abs(encoders.average_speed || 0)));
+
+    // Угловая скорость (разность скоростей колес)
+    const speedDiff = Math.abs(encoders.speed_difference || 0);
+    updateElementColor('angular-velocity-sensor', getTurnColor(speedDiff));
+}
+
+// Цвет в зависимости от скорости
+function getSpeedColor(speed) {
+    if (speed > 0.15) return 'text-success';      // быстро (зеленый)
+    if (speed > 0.05) return 'text-warning';     // средне (желтый)  
+    if (speed > 0.01) return 'text-info';        // медленно (синий)
+    return 'text-muted';                         // остановлен (серый)
+}
+
+// Цвет для поворота
+function getTurnColor(speedDiff) {
+    if (speedDiff > 0.1) return 'text-danger';   // сильный поворот (красный)
+    if (speedDiff > 0.05) return 'text-warning'; // средний поворот (желтый)
+    return 'text-success';                       // прямо (зеленый)
+}
+
+// Обновление цвета элемента
+function updateElementColor(elementId, colorClass) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        // Сохраняем базовые классы, меняем только цвет текста
+        const baseClasses = element.className.replace(/text-\w+/g, '').trim();
+        element.className = `${baseClasses} ${colorClass}`.trim();
+    }
+}
+
+// Вспомогательная функция для обновления элементов
+function updateElement(elementId, value) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+// Обновление датчиков с новой структурой
+function updateSensorDisplayNew(sensors) {
+    if (!sensors) return;
+
+    // Обновляем все 5 датчиков
+    updateSensorDisplay('left-front', sensors.left_front);
+    updateSensorDisplay('right-front', sensors.right_front);
+    updateSensorDisplay('left-rear', sensors.left_rear);
+    updateSensorDisplay('center-front', sensors.front_center);  // новое название
+    updateSensorDisplay('right-rear', sensors.rear_right);     // новое название
+
+    // Обновляем цвета индикаторов
+    updateSensorColorsNew(sensors);
+}
+
+// Обновленная функция цветов датчиков (для новой структуры)
+function updateSensorColorsNew(sensors) {
+    const sensorElements = [
+        { id: 'left-front-sensor', value: sensors.left_front, threshold: 20 },
+        { id: 'right-front-sensor', value: sensors.right_front, threshold: 20 },
+        { id: 'left-rear-sensor', value: sensors.left_rear, threshold: 25 },
+        { id: 'center-front-sensor', value: sensors.front_center, threshold: 15 },
+        { id: 'right-rear-sensor', value: sensors.rear_right, threshold: 25 }
+    ];
+
+    sensorElements.forEach(({ id, value, threshold }) => {
+        const element = document.getElementById(id);
+        if (element && value !== undefined) {
+            let colorClass;
+            if (value === 999) {
+                colorClass = 'text-muted';      // ошибка датчика
+            } else if (value < threshold) {
+                colorClass = 'text-danger';     // препятствие близко
+            } else if (value < threshold * 2) {
+                colorClass = 'text-warning';    // предупреждение
+            } else {
+                colorClass = 'text-success';    // свободно
+            }
+
+            // Обновляем только цвет значения
+            const valueElement = element.querySelector('.fw-bold') || element.querySelector('#' + id.replace('-sensor', '-distance'));
+            if (valueElement) {
+                valueElement.className = valueElement.className.replace(/text-\w+/g, '').trim() + ` ${colorClass}`;
+            }
+        }
+    });
+}
+
+
 // Новый обработчик одного «среза» статуса
 function applyRobotStatus(status) {
     if (!status) return;
 
     updateConnectionStatus(true);
-    updateMovementStatusIndicator(status.is_moving);
+    updateMovementStatusIndicator(status.is_moving || (status.motion && status.motion.is_moving));
 
-    // направление
-    const directionText = getDirectionText(status.movement_direction, status.is_moving);
-    updateMovementState(status.is_moving, directionText);
+    // === ОБРАБОТКА НОВОЙ СТРУКТУРЫ ДАННЫХ ===
 
-    // дистанции
-    updateSensorDisplay('center-front', status.center_front_distance);
-    updateSensorDisplay('left-front', status.left_front_distance);
-    updateSensorDisplay('right-front', status.right_front_distance);
-    updateSensorDisplay('right-rear', status.right_rear_distance);
-    updateSensorDisplay('left-rear', status.left_rear_distance);
+    // Движение (новая структура)
+    const motion = status.motion || status;
+    const isMoving = motion.is_moving || status.is_moving;
+    const direction = motion.direction || status.movement_direction;
 
-    // окружение
-    updateEnvDisplay(status.temperature, status.humidity);
+    const directionText = getDirectionText(direction, isMoving);
+    updateMovementState(isMoving, directionText);
 
-    // препятствия (исправляем ошибку: раньше передавалось status.obstacles.front || rear — таких полей нет)
+    // === ДАТЧИКИ РАССТОЯНИЯ (новая структура) ===
+    if (status.distance_sensors) {
+        updateSensorDisplayNew(status.distance_sensors);
+    } else {
+        // Обратная совместимость со старой структурой
+        updateSensorDisplay('center-front', status.center_front_distance);
+        updateSensorDisplay('left-front', status.left_front_distance);
+        updateSensorDisplay('right-front', status.right_front_distance);
+        updateSensorDisplay('right-rear', status.right_rear_distance);
+        updateSensorDisplay('left-rear', status.left_rear_distance);
+    }
+
+    // === КЛИМАТИЧЕСКИЕ ДАННЫЕ ===
+    if (status.environment) {
+        updateEnvDisplay(status.environment.temperature, status.environment.humidity);
+    } else {
+        // Обратная совместимость
+        updateEnvDisplay(status.temperature, status.humidity);
+    }
+
+    // === НОВЫЕ ДАННЫЕ: ЭНКОДЕРЫ ===
+    if (status.encoders) {
+        updateEncoderDisplay(status.encoders);
+    }
+
+    // === НОВЫЕ ДАННЫЕ: РОБОРУКА ===
+    if (status.arm) {
+        updateArmDisplay(status.arm);
+    }
+
+    // === ПРЕПЯТСТВИЯ ===
     const obstacles = status.obstacles || {};
     updateObstacleWarnings(obstacles);
     const anyObstacle = Object.values(obstacles).some(Boolean);
     updateObstacleStatus(anyObstacle);
+
+    // === ОСТАЛЬНОЕ (без изменений) ===
 
     // IMU (защита от отсутствия модуля)
     if (window.imuControl && typeof window.imuControl.updateIMUData === 'function') {
         window.imuControl.updateIMUData(status);
     }
 
-    // время обновления — просто время
+    // время обновления
     const el = document.getElementById('last-update');
     if (el) el.textContent = new Date().toLocaleTimeString();
 
-    // углы камеры, если есть контрол
+    // углы камеры
     if (window.cameraControl && typeof window.cameraControl.updateAnglesFromStatus === 'function') {
         window.cameraControl.updateAnglesFromStatus(status);
+    }
+
+    // Интеграция с новыми компонентами энкодеров/роборуки
+    if (typeof window.handleEncoderArmData === 'function') {
+        window.handleEncoderArmData({ robot: status });
     }
 
     lastUpdateTime = Date.now();
@@ -437,6 +617,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Переходим на SSE, без частого fetch('/api/status')
     startTelemetrySSE_All();
+
+    if (typeof initVelocitySlider === 'function') {
+        initVelocitySlider();
+    }
+    if (typeof initArmSliders === 'function') {
+        initArmSliders();
+    }
+
+    console.log('✅ Система управления энкодерами и роборукой инициализирована');
 
     showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
 });

@@ -572,6 +572,227 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
                             tilt_angle == limits["tilt"]["default"])
         })
 
+    # ==================== ЭНКОДЕРЫ И СКОРОСТЬ ====================
+
+    @bp.route("/encoders/status", methods=["GET"])
+    def encoders_status():
+        """Получить данные энкодеров и скорости"""
+        try:
+            left_speed, right_speed = robot.get_wheel_speeds()
+            velocity_data = robot.get_robot_velocity()
+
+            return ok({
+                "encoders": {
+                    "left_wheel_speed": left_speed,      # м/с
+                    "right_wheel_speed": right_speed,    # м/с
+                    # м/с
+                    "linear_velocity": velocity_data["linear_velocity"],
+                    # рад/с
+                    "angular_velocity": velocity_data["angular_velocity"],
+                    "speed_difference": velocity_data["speed_difference"],
+                },
+                "status": {
+                    "is_moving": abs(left_speed) > 0.01 or abs(right_speed) > 0.01,
+                    "direction": "forward" if velocity_data["linear_velocity"] > 0.01
+                    else "backward" if velocity_data["linear_velocity"] < -0.01
+                    else "stopped",
+                    "turning": "left" if velocity_data["angular_velocity"] > 0.1
+                    else "right" if velocity_data["angular_velocity"] < -0.1
+                    else "straight"
+                }
+            })
+        except Exception as e:
+            return err(f"Ошибка получения данных энкодеров: {e}")
+
+    @bp.route("/move/target_velocity", methods=["POST"])
+    def set_target_velocity():
+        """
+        Установить целевую линейную скорость (в м/с)
+        Робот будет пытаться поддерживать эту скорость
+        """
+        data = request.get_json() or {}
+        target_velocity = data.get("velocity", 0.0)  # м/с
+
+        try:
+            target_velocity = float(target_velocity)
+        except (TypeError, ValueError):
+            return err("Неверный формат скорости", 400)
+
+        # Ограничиваем скорость (примерно 0.5 м/с максимум для безопасности)
+        target_velocity = max(-0.5, min(0.5, target_velocity))
+
+        # Преобразуем м/с в PWM скорость (примерный коэффициент)
+        # Предполагаем что 0.3 м/с ≈ 150 PWM
+        # коэффициент нужно будет откалибровать
+        pwm_speed = int(abs(target_velocity) * 500)
+        pwm_speed = max(SPEED_MIN, min(SPEED_MAX, pwm_speed))
+
+        if target_velocity > 0.01:
+            success = robot.move_forward(pwm_speed)
+            direction = "forward"
+        elif target_velocity < -0.01:
+            success = robot.move_backward(pwm_speed)
+            direction = "backward"
+        else:
+            success = robot.stop()
+            direction = "stop"
+
+        current_left, current_right = robot.get_wheel_speeds()
+        actual_velocity = (current_left + current_right) / 2.0
+
+        return ok({
+            "command": "set_target_velocity",
+            "target_velocity": target_velocity,
+            "actual_velocity": actual_velocity,
+            "pwm_speed": pwm_speed,
+            "direction": direction,
+            "success": success,
+            "encoders": {
+                "left_wheel_speed": current_left,
+                "right_wheel_speed": current_right
+            }
+        })
+
+    # ==================== УПРАВЛЕНИЕ РОБОРУКОЙ ====================
+
+    @bp.route("/arm/status", methods=["GET"])
+    def arm_status():
+        """Получить статус роборуки"""
+        try:
+            status = robot.get_arm_status()
+            return ok(status)
+        except Exception as e:
+            return err(f"Ошибка получения статуса роборуки: {e}")
+
+    @bp.route("/arm/servo", methods=["POST"])
+    def arm_set_servo():
+        """Установить угол одного сервопривода"""
+        data = request.get_json() or {}
+        servo_id = data.get("servo_id")
+        angle = data.get("angle")
+
+        if servo_id is None or angle is None:
+            return err("Не указаны servo_id и angle", 400)
+
+        try:
+            servo_id = int(servo_id)
+            angle = int(angle)
+        except (TypeError, ValueError):
+            return err("Неверный формат данных", 400)
+
+        if servo_id < 0 or servo_id > 4:
+            return err("servo_id должен быть от 0 до 4", 400)
+
+        success = robot.set_arm_servo(servo_id, angle)
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "set_arm_servo",
+            "servo_id": servo_id,
+            "requested_angle": angle,
+            "actual_angle": current_angles[servo_id] if success else None,
+            "success": success,
+            "current_angles": current_angles
+        })
+
+    @bp.route("/arm/angles", methods=["POST"])
+    def arm_set_angles():
+        """Установить углы всех сервоприводов"""
+        data = request.get_json() or {}
+        angles = data.get("angles")
+
+        if not angles or len(angles) != 5:
+            return err("Должен быть массив из 5 углов", 400)
+
+        try:
+            angles = [int(angle) for angle in angles]
+        except (TypeError, ValueError):
+            return err("Неверный формат углов", 400)
+
+        success = robot.set_arm_angles(angles)
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "set_arm_angles",
+            "requested_angles": angles,
+            "actual_angles": current_angles,
+            "success": success
+        })
+
+    @bp.route("/arm/reset", methods=["POST"])
+    def arm_reset():
+        """Сброс роборуки в исходное положение"""
+        success = robot.reset_arm()
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "arm_reset",
+            "success": success,
+            "current_angles": current_angles
+        })
+
+    @bp.route("/arm/servo/relative", methods=["POST"])
+    def arm_move_servo_relative():
+        """Переместить сервопривод относительно текущего положения"""
+        data = request.get_json() or {}
+        servo_id = data.get("servo_id")
+        delta = data.get("delta")
+
+        if servo_id is None or delta is None:
+            return err("Не указаны servo_id и delta", 400)
+
+        try:
+            servo_id = int(servo_id)
+            delta = int(delta)
+        except (TypeError, ValueError):
+            return err("Неверный формат данных", 400)
+
+        success = robot.move_arm_servo_relative(servo_id, delta)
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "move_servo_relative",
+            "servo_id": servo_id,
+            "delta": delta,
+            "success": success,
+            "current_angles": current_angles
+        })
+
+    @bp.route("/arm/gripper/open", methods=["POST"])
+    def arm_open_gripper():
+        """Открыть захват"""
+        success = robot.open_gripper()
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "open_gripper",
+            "success": success,
+            "gripper_angle": current_angles[4],  # gripper = servo 4
+            "current_angles": current_angles
+        })
+
+    @bp.route("/arm/gripper/close", methods=["POST"])
+    def arm_close_gripper():
+        """Закрыть захват"""
+        success = robot.close_gripper()
+        current_angles = robot.arm.get_current_angles()
+
+        return ok({
+            "command": "close_gripper",
+            "success": success,
+            "gripper_angle": current_angles[4],  # gripper = servo 4
+            "current_angles": current_angles
+        })
+
+    @bp.route("/arm/limits", methods=["GET"])
+    def arm_limits():
+        """Получить лимиты углов роборуки"""
+        try:
+            limits = robot.arm.get_all_servo_limits()
+            return ok({"limits": limits})
+        except Exception as e:
+            return err(f"Ошибка получения лимитов: {e}")
+
     # ==================== КАМЕРА API ====================
 
     @bp.route("/camera/status", methods=["GET"])

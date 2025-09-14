@@ -143,3 +143,372 @@
 .btn-sm {
     font-size: 0.8rem;
 }
+
+
+/* ==================== СТИЛИ ДЛЯ ЭНКОДЕРОВ ==================== */
+
+/* Карточки энкодеров */
+.encoder-card {
+    transition: all 0.3s ease;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.encoder-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Индикаторы скорости */
+.speed-indicator {
+    font-size: 1.1em;
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+.speed-indicator.speed-fast {
+    color: #198754;
+}
+
+/* зеленый - быстро */
+.speed-indicator.speed-medium {
+    color: #fd7e14;
+}
+
+/* оранжевый - средне */
+.speed-indicator.speed-slow {
+    color: #0dcaf0;
+}
+
+/* голубой - медленно */
+.speed-indicator.speed-stop {
+    color: #6c757d;
+}
+
+/* серый - остановлен */
+
+/* Слайдер скорости */
+.velocity-control {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+}
+
+.velocity-slider {
+    background: linear-gradient(to right, #dc3545, #ffc107, #198754);
+    height: 6px;
+    border-radius: 3px;
+}
+
+.velocity-slider::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #0d6efd;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.velocity-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    background: #0b5ed7;
+}
+
+/* Кнопки быстрой установки скорости */
+.velocity-buttons {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.velocity-btn {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.velocity-btn:hover {
+    transform: scale(1.05);
+}
+
+/* ==================== СТИЛИ ДЛЯ РОБОРУКИ ==================== */
+
+/* Контейнер роборуки */
+.arm-control-container {
+    background: linear-gradient(135deg, #f8f9fa, #fff);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Карточки сервоприводов */
+.servo-card {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.servo-card:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+    transform: translateY(-1px);
+}
+
+.servo-card.active {
+    border-color: #198754;
+    background: linear-gradient(135deg, #f8fff8, #ffffff);
+}
+
+/* Заголовки сервоприводов */
+.servo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.servo-name {
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.servo-angle-badge {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 0.8rem;
+    min-width: 45px;
+    text-align: center;
+}
+
+/* Слайдеры сервоприводов */
+.servo-slider {
+    margin: 8px 0;
+    height: 6px;
+    border-radius: 3px;
+}
+
+.servo-slider::-webkit-slider-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #dc3545, #ffc107, #198754);
+}
+
+.servo-slider::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #0d6efd;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.servo-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    background: #0b5ed7;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Кнопки управления сервоприводами */
+.servo-buttons {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+}
+
+.servo-btn {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    min-width: 35px;
+    transition: all 0.2s ease;
+}
+
+.servo-btn:hover {
+    transform: scale(1.05);
+}
+
+/* Специальные стили для захвата */
+.gripper-control {
+    background: linear-gradient(135deg, #fff3cd, #ffffff);
+    border: 2px solid #ffc107;
+}
+
+.gripper-control:hover {
+    border-color: #ffca2c;
+    background: linear-gradient(135deg, #fff8db, #ffffff);
+}
+
+/* Кнопки управления захватом */
+.gripper-btn {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin: 0 2px;
+    transition: all 0.2s ease;
+}
+
+.gripper-btn.open {
+    background-color: #198754;
+    border-color: #198754;
+    color: white;
+}
+
+.gripper-btn.close {
+    background-color: #fd7e14;
+    border-color: #fd7e14;
+    color: white;
+}
+
+/* Статус панель роборуки */
+.arm-status-panel {
+    background: linear-gradient(135deg, #e3f2fd, #f8f9fa);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 16px;
+    border-left: 4px solid #2196f3;
+}
+
+.arm-status-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    text-align: center;
+}
+
+.arm-status-item {
+    padding: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    transition: background 0.3s ease;
+}
+
+.arm-status-item:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
+.arm-status-value {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #0d6efd;
+    font-size: 0.9rem;
+}
+
+.arm-status-label {
+    color: #6c757d;
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+/* Кнопки быстрых команд роборуки */
+.arm-quick-commands {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.arm-quick-btn {
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.9rem;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.arm-quick-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.arm-quick-btn.home {
+    background: linear-gradient(135deg, #0d6efd, #0b5ed7);
+    border-color: #0d6efd;
+}
+
+.arm-quick-btn.open {
+    background: linear-gradient(135deg, #198754, #157347);
+    border-color: #198754;
+}
+
+.arm-quick-btn.close {
+    background: linear-gradient(135deg, #fd7e14, #fd6c0f);
+    border-color: #fd7e14;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .arm-status-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+    }
+
+    .arm-quick-commands {
+        flex-direction: column;
+    }
+
+    .arm-quick-btn {
+        min-width: auto;
+    }
+
+    .velocity-buttons {
+        gap: 2px;
+    }
+
+    .velocity-btn {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+    }
+}
+
+/* Анимация для активных элементов */
+.encoder-active {
+    animation: pulse-encoder 2s infinite;
+}
+
+.arm-moving {
+    animation: pulse-arm 1s infinite;
+}
+
+@keyframes pulse-encoder {
+    0% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(13, 110, 253, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+    }
+}
+
+@keyframes pulse-arm {
+    0% {
+        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 4px rgba(25, 135, 84, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
+    }
+}

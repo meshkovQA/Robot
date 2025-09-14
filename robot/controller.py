@@ -1,4 +1,4 @@
-# controller.py (рефакторинг с компонентами)
+# controller.py (обновлен под новую архитектуру Arduino)
 from __future__ import annotations
 
 import time
@@ -21,6 +21,7 @@ from robot.controllers.camera_controller import CameraController
 from robot.controllers.kickstart_manager import KickstartManager
 from robot.controllers.rgb_controller import RGBController
 from robot.controllers.sensor_monitor import SensorMonitor
+from robot.controllers.arm_controller import ArmController
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,6 @@ class RobotCommand:
 def _pack_command(cmd: RobotCommand) -> list[int]:
     """
     8 байт LE: speed(2) + direction(2) + pan(2) + tilt(2).
-    Первый байт уходит как 'reg' в write_i2c_block_data — протокол не меняем.
     """
     data: list[int] = []
     sv = int(cmd.speed) & 0xFFFF
@@ -54,10 +54,7 @@ def _pack_command(cmd: RobotCommand) -> list[int]:
 
 
 class RobotController:
-    """
-    Основной контроллер робота с компонентной архитектурой.
-    Сохраняет прежний API, но использует компоненты внутри.
-    """
+    """Основной контроллер робота с обновленной архитектурой"""
 
     def __init__(self, bus: Optional[I2CBus] = None):
         self.bus = bus if bus is not None else open_bus()
@@ -78,8 +75,9 @@ class RobotController:
         self.kickstart = KickstartManager(self)
         self.rgb = RGBController(self)
         self.sensors = SensorMonitor(self)
+        self.arm = ArmController(self)  # Новый компонент роборуки
 
-        # --- IMU (инициализация перенесена из компонента) ---
+        # IMU
         self._imu: Optional[MPU6500] = None
         if IMU_ENABLED:
             try:
@@ -90,7 +88,7 @@ class RobotController:
                 logger.error("IMU init error: %s", e)
                 self._imu = None
 
-        # --- LCD дисплей ---
+        # LCD дисплей
         self.lcd_display = None
         if LCD_ENABLED:
             try:
@@ -103,7 +101,7 @@ class RobotController:
                     debug=LCD_DEBUG
                 )
                 self.lcd_display.start()
-                logger.info("LCD дисплей запускается (ленивый режим)")
+                logger.info("LCD дисплей запущен")
             except Exception as e:
                 logger.error(f"Ошибка при создании LCD дисплея: {e}")
                 self.lcd_display = None
@@ -141,8 +139,9 @@ class RobotController:
     # -------- Команды и статус --------
 
     def send_command(self, cmd: RobotCommand) -> bool:
+        """Отправка команды движения на UNO"""
         data = _pack_command(cmd)
-        ok = self.fast_i2c.write_command_sync(data, timeout=0.3)
+        ok = self.fast_i2c.write_uno_command(data, timeout=0.3)
         if ok:
             with self._lock:
                 self.last_command_time = time.time()
@@ -150,49 +149,78 @@ class RobotController:
                 self.current_tilt_angle = cmd.tilt_angle
         return ok
 
-    def read_uno_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
-        return self.sensors.read_uno_sensors()
-
-    def read_mega_sensors(self) -> Tuple[int, int, int]:
-        return self.sensors.read_mega_sensors()
-
-    def read_sensors(self) -> Tuple[int, int, Optional[float], Optional[float]]:
-        return self.sensors.read_sensors()
-
-    def get_camera_angles(self) -> Tuple[int, int]:
-        return self.camera.get_camera_angles()
-
     def get_status(self) -> dict:
-        center_front_dist, right_rear_dist, temp, hum = self.read_uno_sensors()
-        left_front_dist, right_front_dist, left_rear_dist = self.read_mega_sensors()
+        """Получение статуса робота с новой архитектурой"""
+
+        # Климатические данные с UNO
+        temp, hum = self.sensors.get_climate_data()
+
+        # Все датчики расстояния с MEGA
+        distance_sensors = self.sensors.get_distance_sensors()
+
+        # Данные энкодеров с UNO
+        left_speed, right_speed = self.sensors.get_wheel_speeds()
+
+        # Углы камеры
         pan_angle, tilt_angle = self.get_camera_angles()
+
+        # Данные IMU
         imu_block = self.sensors.get_imu_data()
+
+        # Статус роборуки
+        arm_status = self.arm.get_status()
 
         with self._lock:
             status = {
-                "center_front_distance": center_front_dist,
-                "left_front_distance": left_front_dist,
-                "right_front_distance": right_front_dist,
-                "right_rear_distance": right_rear_dist,
-                "left_rear_distance": left_rear_dist,
+                # Датчики расстояния (все с MEGA)
+                "distance_sensors": distance_sensors,
+
+                # Препятствия
                 "obstacles": {
-                    "center_front": center_front_dist != SENSOR_ERR and center_front_dist < 20,
-                    "right_rear": right_rear_dist != SENSOR_ERR and right_rear_dist < 20,
-                    "left_front": left_front_dist != SENSOR_ERR and left_front_dist < 15,
-                    "right_front": right_front_dist != SENSOR_ERR and right_front_dist < 15,
-                    "left_rear": left_rear_dist != SENSOR_ERR and left_rear_dist < 20,
+                    name: (dist != SENSOR_ERR and dist < 20)
+                    for name, dist in distance_sensors.items()
                 },
-                "temperature": temp,
-                "humidity": hum,
+
+                # Климатические данные (с UNO)
+                "environment": {
+                    "temperature": temp,
+                    "humidity": hum,
+                },
+
+                # Данные энкодеров (с UNO)
+                "encoders": {
+                    "left_wheel_speed": left_speed,   # м/с
+                    "right_wheel_speed": right_speed,  # м/с
+                    "average_speed": (left_speed + right_speed) / 2.0,
+                    "speed_difference": abs(left_speed - right_speed),
+                },
+
+                # IMU данные
                 "imu": imu_block,
-                "current_speed": self.current_speed,
-                "effective_speed": self.get_effective_speed(),
-                "kickstart_active": self.is_kickstart_active(),
-                "camera": {"pan_angle": pan_angle, "tilt_angle": tilt_angle},
-                "is_moving": self.is_moving,
-                "movement_direction": self.movement_direction,
-                "last_command_time": self.last_command_time,
-                "timestamp": time.time(),
+
+                # Состояние движения
+                "motion": {
+                    "current_speed": self.current_speed,
+                    "effective_speed": self.get_effective_speed(),
+                    "is_moving": self.is_moving,
+                    "direction": self.movement_direction,
+                    "kickstart_active": self.is_kickstart_active(),
+                },
+
+                # Камера
+                "camera": {
+                    "pan_angle": pan_angle,
+                    "tilt_angle": tilt_angle
+                },
+
+                # Роборука
+                "arm": arm_status,
+
+                # Системная информация
+                "system": {
+                    "last_command_time": self.last_command_time,
+                    "timestamp": time.time(),
+                },
             }
 
             # Автоматически обновляем LCD текущим статусом
@@ -201,7 +229,7 @@ class RobotController:
 
             return status
 
-    # -------- API движения (делегирует в MovementController) --------
+    # -------- API движения --------
 
     def move_forward(self, speed: int) -> bool:
         return self.movement.move_forward(speed)
@@ -221,7 +249,7 @@ class RobotController:
     def stop(self) -> bool:
         return self.movement.stop()
 
-    # -------- API камеры (делегирует в CameraController) --------
+    # -------- API камеры --------
 
     def set_camera_pan(self, angle: int) -> bool:
         return self.camera.set_camera_pan(angle)
@@ -247,10 +275,13 @@ class RobotController:
     def tilt_down(self, step: int | None = None) -> bool:
         return self.camera.tilt_down(step)
 
+    def get_camera_angles(self) -> Tuple[int, int]:
+        return self.camera.get_camera_angles()
+
     def get_camera_limits(self) -> dict:
         return self.camera.get_camera_limits()
 
-    # -------- API RGB (делегирует в RGBController) --------
+    # -------- API RGB --------
 
     def set_rgb_color(self, red: int, green: int, blue: int) -> bool:
         return self.rgb.set_rgb_color(red, green, blue)
@@ -258,7 +289,30 @@ class RobotController:
     def set_rgb_preset(self, preset_name: str) -> bool:
         return self.rgb.set_rgb_preset(preset_name)
 
-    # -------- API кикстарта (делегирует в KickstartManager) --------
+    # -------- API роборуки --------
+
+    def set_arm_servo(self, servo_id: int, angle: int) -> bool:
+        return self.arm.set_servo_angle(servo_id, angle)
+
+    def set_arm_angles(self, angles: list[int]) -> bool:
+        return self.arm.set_all_angles(angles)
+
+    def reset_arm(self) -> bool:
+        return self.arm.reset_to_home()
+
+    def move_arm_servo_relative(self, servo_id: int, delta: int) -> bool:
+        return self.arm.move_servo_relative(servo_id, delta)
+
+    def open_gripper(self) -> bool:
+        return self.arm.open_gripper()
+
+    def close_gripper(self) -> bool:
+        return self.arm.close_gripper()
+
+    def get_arm_status(self) -> dict:
+        return self.arm.get_status()
+
+    # -------- API кикстарта --------
 
     def is_kickstart_active(self) -> bool:
         return self.kickstart.is_active()
@@ -266,10 +320,35 @@ class RobotController:
     def get_effective_speed(self) -> int:
         return self.kickstart.get_effective_speed()
 
+    # -------- API энкодеров --------
+
+    def get_wheel_speeds(self) -> Tuple[float, float]:
+        """Получить скорости колес с энкодеров (м/с)"""
+        return self.sensors.get_wheel_speeds()
+
+    def get_robot_velocity(self) -> dict:
+        """Получить данные о скорости робота"""
+        left_speed, right_speed = self.get_wheel_speeds()
+
+        # Вычисляем линейную и угловую скорость
+        # Предполагаем расстояние между колесами (wheelbase) = 20 см = 0.2 м
+        wheelbase = 0.2  # метры
+
+        linear_velocity = (left_speed + right_speed) / 2.0  # м/с
+        angular_velocity = (right_speed - left_speed) / wheelbase  # рад/с
+
+        return {
+            "left_wheel_speed": left_speed,      # м/с
+            "right_wheel_speed": right_speed,    # м/с
+            "linear_velocity": linear_velocity,   # м/с (вперед/назад)
+            "angular_velocity": angular_velocity,  # рад/с (поворот)
+            "speed_difference": abs(left_speed - right_speed),
+        }
+
     # -------- Системные методы --------
 
     def reconnect_bus(self) -> bool:
-        """Переподключение I2C: перезапускаем bus и арбитра."""
+        """Переподключение I2C"""
         try:
             if self.bus:
                 try:
