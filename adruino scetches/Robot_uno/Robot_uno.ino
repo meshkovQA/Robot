@@ -213,16 +213,50 @@ void setupCameraServos() {
 
 // ---------------- Мотор-команды ---------------------
 void executeCommand() {
-  int sp = constrain(currentCommand.speed, -255, 255);
-  sp = correctMotorSpeed(sp);
-
+  int rawSpeed = constrain(currentCommand.speed, -255, 255);
+  
   switch (currentCommand.direction) {
-    case 0: stopAllMotors(); break;
-    case 1: setLeftRaw(+abs(sp)); setRightRaw(+abs(sp)); break;
-    case 2: setLeftRaw(-abs(sp)); setRightRaw(-abs(sp)); break;
-    case 3: setLeftRaw(-abs(sp == 0 ? 150 : sp)); setRightRaw(+abs(sp == 0 ? 150 : sp)); break;
-    case 4: setLeftRaw(+abs(sp == 0 ? 150 : sp)); setRightRaw(-abs(sp == 0 ? 150 : sp)); break;
-    default: stopAllMotors(); break;
+    case 0: // Стоп
+      stopAllMotors(); 
+      break;
+      
+    case 1: // Вперед
+      {
+        int correctedSpeed = correctMotorSpeed(rawSpeed);
+        setLeftRaw(correctedSpeed); 
+        setRightRaw(correctedSpeed); 
+        break;
+      }
+      
+    case 2: // Назад  
+      {
+        int correctedSpeed = correctMotorSpeed(rawSpeed);
+        setLeftRaw(-correctedSpeed); 
+        setRightRaw(-correctedSpeed); 
+        break;
+      }
+      
+    case 3: // Поворот влево (танк)
+      {
+        int turnSpeed = (rawSpeed == 0) ? 150 : rawSpeed;
+        int correctedSpeed = correctMotorSpeed(turnSpeed);
+        setLeftRaw(-correctedSpeed); 
+        setRightRaw(correctedSpeed); 
+        break;
+      }
+      
+    case 4: // Поворот вправо (танк)
+      {
+        int turnSpeed = (rawSpeed == 0) ? 150 : rawSpeed;
+        int correctedSpeed = correctMotorSpeed(turnSpeed);
+        setLeftRaw(correctedSpeed); 
+        setRightRaw(-correctedSpeed); 
+        break;
+      }
+      
+    default: 
+      stopAllMotors(); 
+      break;
   }
 }
 

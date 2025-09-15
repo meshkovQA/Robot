@@ -33,7 +33,7 @@ class RGBController:
             data = [self.REG_RGB, red, green, blue]
 
             # Отправляем команду через fast_i2c арбитр (он отправит на MEGA)
-            ok = self.controller.fast_i2c.write_command_sync(data, timeout=0.3)
+            ok = self.controller.fast_i2c.write_mega_command(data, timeout=0.3)
 
             if ok:
                 logger.debug("RGB установлен: R=%d, G=%d, B=%d",

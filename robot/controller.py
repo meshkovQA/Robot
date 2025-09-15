@@ -126,8 +126,8 @@ class RobotController:
 
     def _send_movement_command(self, speed: int, direction: int) -> bool:
         """Отправка команды движения с проверкой кикстарта"""
-        if self.kickstart.needs_kickstart(speed, direction):
-            return self.kickstart.apply_kickstart(speed, direction)
+        # if self.kickstart.needs_kickstart(speed, direction):
+        #     return self.kickstart.apply_kickstart(speed, direction)
         cmd = RobotCommand(
             speed=speed,
             direction=direction,
