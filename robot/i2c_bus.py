@@ -208,10 +208,11 @@ class FastI2CController:
             return True
         if len(data) > 1:
             logger.info("I2C block: addr=0x%02X data=%s", addr, data)
-            self.bus.write_i2c_block_data(addr, 0x00, data)
+            self.bus.write_i2c_block_data(
+                addr, data[0], data[1:])  # ← ВЕРНИ ЭТО!
         else:
-            logger.info("I2C byte: addr=0x%02X data=0x%02X", addr, data)
-            self.bus.write_byte(addr, data)
+            logger.info("I2C byte: addr=0x%02X data=0x%02X", addr, data[0])
+            self.bus.write_byte(addr, data[0])
         return True
 
     def _read_uno(self) -> Optional[Dict[str, Any]]:
