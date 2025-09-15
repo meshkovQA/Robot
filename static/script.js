@@ -11,55 +11,86 @@ let currentDirection = 0;
 const speedSlider = document.getElementById('speed-slider');
 const speedValue = document.getElementById('speed-value');
 
+const SPEED_CONVERSION = {
+    // Примерные значения - ТРЕБУЮТ КАЛИБРОВКИ
+    MIN_MPS: 0.05,      // минимальная скорость м/с
+    MAX_MPS: 0.5,       // максимальная скорость м/с
+    MIN_PWM: 50,        // минимальный PWM
+    MAX_PWM: 255        // максимальный PWM
+};
+
+// Преобразование м/с в PWM
+function mpsToEwm(mps) {
+    const ratio = (mps - SPEED_CONVERSION.MIN_MPS) / (SPEED_CONVERSION.MAX_MPS - SPEED_CONVERSION.MIN_MPS);
+    const pwm = SPEED_CONVERSION.MIN_PWM + ratio * (SPEED_CONVERSION.MAX_PWM - SPEED_CONVERSION.MIN_PWM);
+    return Math.round(Math.max(SPEED_CONVERSION.MIN_PWM, Math.min(SPEED_CONVERSION.MAX_PWM, pwm)));
+}
+
+// Преобразование PWM в м/с
+function pwmToMps(pwm) {
+    const ratio = (pwm - SPEED_CONVERSION.MIN_PWM) / (SPEED_CONVERSION.MAX_PWM - SPEED_CONVERSION.MIN_PWM);
+    const mps = SPEED_CONVERSION.MIN_MPS + ratio * (SPEED_CONVERSION.MAX_MPS - SPEED_CONVERSION.MIN_MPS);
+    return Math.max(SPEED_CONVERSION.MIN_MPS, Math.min(SPEED_CONVERSION.MAX_MPS, mps));
+}
+
 // Обработчик ползунка скорости
 speedSlider.addEventListener('input', function () {
-    const speed = parseInt(this.value);
-    speedValue.textContent = speed;
+    const mpsValue = parseFloat(this.value);
+    speedValue.textContent = mpsValue.toFixed(2) + ' м/с';
 
-    // Отправляем новую скорость только если робот движется
-    updateSpeed(speed);
+    // Преобразуем в PWM для отправки команд
+    const pwmValue = mpsToEwm(mpsValue);
+    console.log(`Speed: ${mpsValue.toFixed(2)} м/с → PWM: ${pwmValue}`);
 });
 
 // Функции управления движением
 function moveForward() {
-    const speed = parseInt(speedSlider.value);
-    sendCommand('/api/move/forward', 'POST', { speed: speed })
+    const mpsSpeed = parseFloat(speedSlider.value);
+    const pwmSpeed = mpsToEwm(mpsSpeed);
+
+    sendCommand('/api/move/forward', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success) {
-                showAlert(`Движение вперед (${speed})`, 'success');
+                showAlert(`Движение вперед (${mpsSpeed.toFixed(2)} м/с)`, 'success');
                 updateMovementState(true, 'Движение вперед');
             }
         });
 }
 
 function moveBackward() {
-    const speed = parseInt(speedSlider.value);
-    sendCommand('/api/move/backward', 'POST', { speed: speed })
+    const mpsSpeed = parseFloat(speedSlider.value);
+    const pwmSpeed = mpsToEwm(mpsSpeed);
+
+    sendCommand('/api/move/backward', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success) {
-                showAlert(`Движение назад (${speed})`, 'success');
+                showAlert(`Движение назад (${mpsSpeed.toFixed(2)} м/с)`, 'success');
                 updateMovementState(true, 'Движение назад');
             }
         });
 }
 
 function tankTurnLeft() {
-    const speed = parseInt(speedSlider.value);
-    sendCommand('/api/turn/left', 'POST', { speed: speed })
+    const mpsSpeed = parseFloat(speedSlider.value);
+    const pwmSpeed = mpsToEwm(mpsSpeed);
+
+    sendCommand('/api/turn/left', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success) {
-                showAlert('Поворот влево', 'success');
+                showAlert(`Поворот влево (${mpsSpeed.toFixed(2)} м/с)`, 'success');
                 updateMovementState(false, 'Поворот влево');
             }
         });
 }
 
 function tankTurnRight() {
-    const speed = parseInt(speedSlider.value);
-    sendCommand('/api/turn/right', 'POST', { speed: speed })
+    const mpsSpeed = parseFloat(speedSlider.value);
+    const pwmSpeed = mpsToEwm(mpsSpeed);
+
+    sendCommand('/api/turn/right', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success) {
-                showAlert('Поворот вправо', 'success');
+                showAlert(`Поворот вправо (${mpsSpeed.toFixed(2)} м/с)`, 'success');
                 updateMovementState(false, 'Поворот вправо');
             }
         });
@@ -85,11 +116,12 @@ function emergencyStop() {
         });
 }
 
-function updateSpeed(newSpeed) {
-    sendCommand('/api/speed', 'POST', { speed: newSpeed })
+function updateSpeed(newMpsSpeed) {
+    const pwmSpeed = mpsToEwm(newMpsSpeed);
+    sendCommand('/api/speed', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success && data.is_moving) {
-                showAlert(`Скорость изменена: ${newSpeed}`, 'success');
+                showAlert(`Скорость изменена: ${newMpsSpeed.toFixed(2)} м/с`, 'success');
             }
         });
 }
