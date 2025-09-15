@@ -17,6 +17,18 @@ function mpsToPwm(mps) {
     const minPwm = 50, maxPwm = 255;
 
     // Добавляем небольшую коррекцию
+    const correctedMps = mps * 0.875;
+
+    const ratio = (correctedMps - minMps) / (maxMps - minMps);
+    const pwm = minPwm + ratio * (maxPwm - minPwm);
+    return Math.round(Math.max(minPwm, Math.min(maxPwm, pwm)));
+}
+
+function mpsToEwm(mps) {
+    const minMps = 0.05, maxMps = 0.3;
+    const minPwm = 50, maxPwm = 255;
+
+    // Добавляем ту же коррекцию!
     const correctedMps = mps * 0.875; // 0.175/0.20 = 0.875
 
     const ratio = (correctedMps - minMps) / (maxMps - minMps);
