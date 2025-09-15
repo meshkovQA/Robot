@@ -267,7 +267,6 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('Инициализация управления энкодерами и роборукой...');
 
     // Инициализируем слайдеры
-    initVelocitySlider();
     initArmSliders();
 
     // Загружаем начальные данные
