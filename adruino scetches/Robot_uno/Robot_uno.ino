@@ -22,8 +22,8 @@ Servo panServo;
 Servo tiltServo;
 
 // Плавность камеры
-const int CAM_STEP = 2;          // град./шаг
-const unsigned long CAM_STEP_MS = 15; // мс между шагами
+const int CAM_STEP = 5;                 // град./шаг
+const unsigned long CAM_STEP_MS = 15;   // мс между шагами
 
 // ---------------- Энкодеры -------------------------------
 #define L_ENC_A 2   // внешнее прерывание INT0
@@ -33,8 +33,8 @@ const unsigned long CAM_STEP_MS = 15; // мс между шагами
 
 // Настройки расчёта скорости
 const float CPR  = 1320.0;     // импульсов на оборот вала (A+B)
-const float GEAR = 1.0;       // редуктор
-const float WHEEL_D = 0.065;  // м
+const float GEAR = 1.0;        // редуктор
+const float WHEEL_D = 0.065;   // м
 
 float lastLeftMps = 0, lastRightMps = 0;
 unsigned long lastSpeedCalcMs = 0;
@@ -50,25 +50,18 @@ float dhtTemperature = NAN;
 float dhtHumidity    = NAN;
 unsigned long dhtLastReadMs = 0;
 
-// ---------------- Камера ----------------------------
-int panAngle = 90;     // текущий угол
-int tiltAngle = 90;
-int panTarget = 90;    // целевой угол
-int tiltTarget = 90;
+// ---------------- Камера (volatile) -----------------
+volatile int panAngle  = 90;   // текущий угол
+volatile int tiltAngle = 90;
+volatile int panTarget  = 90;  // целевой угол
+volatile int tiltTarget = 90;
 
-const int PAN_MIN = 0, PAN_MAX = 180;
+const int PAN_MIN = 0,   PAN_MAX = 180;
 const int TILT_MIN = 50, TILT_MAX = 150;
 
-unsigned long camLastStepMs = 0;
-
-// ---------------- Команда от RPi --------------------
-struct Command {
-  int speed;        // -255..255
-  int direction;    // 0=стоп, 1=вперёд, 2=назад, 3=танк_влево, 4=танк_вправо
-  int panAngle;
-  int tiltAngle;
-};
-Command currentCommand = {0, 0, 90, 90};
+// ---------------- Команда от RPi (volatile) ---------
+volatile int currentSpeed = 0;       // -255..255
+volatile int currentDirection = 0;   // 0..4
 
 // «мертвая зона»
 const int MIN_MOTOR_SPEED = 50;
@@ -134,42 +127,54 @@ void stopAllMotors(){
   digitalWrite(RIGHT_MOTOR_IN1, LOW);
 }
 
-// ---------------- I2C -------------------------------
+// ---------------- I2C: приём команды ----------------
+// Формат: [speedLo, speedHi, dirLo, dirHi, panLo, panHi, tiltLo, tiltHi]
 void receiveCommand(int bytes) {
   byte buffer[8];
   int index = 0;
   while (Wire.available() && index < 8) buffer[index++] = Wire.read();
   while (Wire.available()) Wire.read();
+  if (index < 8) return;
 
-  if (index >= 8) {
-    currentCommand.speed     = buffer[0] | (buffer[1] << 8);
-    currentCommand.direction = buffer[2] | (buffer[3] << 8);
-    int newPan  = buffer[4] | (buffer[5] << 8);
-    int newTilt = buffer[6] | (buffer[7] << 8);
+  int16_t sp   = buffer[0] | (buffer[1] << 8);
+  int16_t dir  = buffer[2] | (buffer[3] << 8);
+  int16_t pNew = buffer[4] | (buffer[5] << 8);
+  int16_t tNew = buffer[6] | (buffer[7] << 8);
 
-    if (currentCommand.speed > 32767) currentCommand.speed -= 65536;
+  currentSpeed     = sp;
+  currentDirection = dir;
 
-    if (newPan  >= PAN_MIN  && newPan  <= PAN_MAX)  panTarget  = newPan;
-    if (newTilt >= TILT_MIN && newTilt <= TILT_MAX) tiltTarget = newTilt;
-  }
+  if (pNew >= PAN_MIN  && pNew <= PAN_MAX)  panTarget  = pNew;
+  if (tNew >= TILT_MIN && tNew <= TILT_MAX) tiltTarget = tNew;
 }
 
+// ---------------- I2C: отдача телеметрии ------------
 void sendSensorData() {
+  // Снимок значений в локальные переменные
+  int pA = panAngle;
+  int tA = tiltAngle;
+
+  float t = dhtTemperature;
+  float h = dhtHumidity;
+
+  float lM = lastLeftMps;
+  float rM = lastRightMps;
+
   // pan, tilt, t10, h10, vL*100, vR*100  => 12 байт
   byte dataToSend[12];
 
-  dataToSend[0] = panAngle & 0xFF;
-  dataToSend[1] = (panAngle >> 8) & 0xFF;
-  dataToSend[2] = tiltAngle & 0xFF;
-  dataToSend[3] = (tiltAngle >> 8) & 0xFF;
+  dataToSend[0] = pA & 0xFF;
+  dataToSend[1] = (pA >> 8) & 0xFF;
+  dataToSend[2] = tA & 0xFF;
+  dataToSend[3] = (tA >> 8) & 0xFF;
 
-  int16_t t10 = (isnan(dhtTemperature) ? -32768 : (int16_t)(dhtTemperature * 10));
-  int16_t h10 = (isnan(dhtHumidity)    ? -32768 : (int16_t)(dhtHumidity    * 10));
+  int16_t t10 = (isnan(t) ? -32768 : (int16_t)(t * 10));
+  int16_t h10 = (isnan(h) ? -32768 : (int16_t)(h * 10));
   dataToSend[4] = t10 & 0xFF;  dataToSend[5] = (t10 >> 8) & 0xFF;
   dataToSend[6] = h10 & 0xFF;  dataToSend[7] = (h10 >> 8) & 0xFF;
 
-  int16_t l100 = (int16_t)(lastLeftMps  * 100);
-  int16_t r100 = (int16_t)(lastRightMps * 100);
+  int16_t l100 = (int16_t)(lM * 100);
+  int16_t r100 = (int16_t)(rM * 100);
   dataToSend[8]  = l100 & 0xFF;  dataToSend[9]  = (l100 >> 8) & 0xFF;
   dataToSend[10] = r100 & 0xFF;  dataToSend[11] = (r100 >> 8) & 0xFF;
 
@@ -178,29 +183,44 @@ void sendSensorData() {
 
 // --------- Плавное обновление камеры ----------
 void updateCameraSmooth() {
+  static unsigned long camLastStepMs = 0;
   unsigned long now = millis();
   if (now - camLastStepMs < CAM_STEP_MS) return;
   camLastStepMs = now;
 
-  if (panAngle != panTarget) {
-    int dir = (panTarget > panAngle) ? 1 : -1;
-    panAngle += dir * CAM_STEP;
-    if ((dir > 0 && panAngle > panTarget) || (dir < 0 && panAngle < panTarget))
-      panAngle = panTarget;
-    panAngle = constrain(panAngle, PAN_MIN, PAN_MAX);
-    panServo.write(panAngle);
+  // Снимок целей атомарно
+  int pT, tT;
+  noInterrupts();
+  pT = panTarget;
+  tT = tiltTarget;
+  interrupts();
+
+  // PAN
+  int pA = panAngle;              // читаем копию
+  if (pA != pT) {
+    int dir = (pT > pA) ? 1 : -1;
+    int newPan = pA + dir * CAM_STEP;
+    if ((dir > 0 && newPan > pT) || (dir < 0 && newPan < pT)) newPan = pT;
+    newPan = constrain(newPan, PAN_MIN, PAN_MAX);
+
+    panAngle = newPan;            // записываем новый угол
+    panServo.write(newPan);
   }
-  if (tiltAngle != tiltTarget) {
-    int dir = (tiltTarget > tiltAngle) ? 1 : -1;
-    tiltAngle += dir * CAM_STEP;
-    if ((dir > 0 && tiltAngle > tiltTarget) || (dir < 0 && tiltAngle < tiltTarget))
-      tiltAngle = tiltTarget;
-    tiltAngle = constrain(tiltAngle, TILT_MIN, TILT_MAX);
-    tiltServo.write(tiltAngle);
+
+  // TILT
+  int tA = tiltAngle;
+  if (tA != tT) {
+    int dir = (tT > tA) ? 1 : -1;
+    int newTilt = tA + dir * CAM_STEP;
+    if ((dir > 0 && newTilt > tT) || (dir < 0 && newTilt < tT)) newTilt = tT;
+    newTilt = constrain(newTilt, TILT_MIN, TILT_MAX);
+
+    tiltAngle = newTilt;
+    tiltServo.write(newTilt);
   }
 }
 
-// ---------------- Камера ----------------------------
+// ---------------- Камера: инициализация -------------
 void setupCameraServos() {
   panServo.attach(CAMERA_PAN_PIN);
   tiltServo.attach(CAMERA_TILT_PIN);
@@ -213,9 +233,13 @@ void setupCameraServos() {
 
 // ---------------- Мотор-команды ---------------------
 void executeCommand() {
-  int rawSpeed = constrain(currentCommand.speed, -255, 255);
+  // Снимок команды
+  int sp  = currentSpeed;
+  int dir = currentDirection;
+
+  int rawSpeed = constrain(sp, -255, 255);
   
-  switch (currentCommand.direction) {
+  switch (dir) {
     case 0: // Стоп
       stopAllMotors(); 
       break;
@@ -323,6 +347,18 @@ void loop() {
     float C = 3.1415926f * WHEEL_D;
     lastLeftMps  = (l_rpm / 60.0f) * C;
     lastRightMps = (r_rpm / 60.0f) * C;
+  }
+
+  // (опционально) Лёгкий лог раз в секунду — покажет, что pan движется
+  static unsigned long lastLog = 0;
+  if (now - lastLog >= 1000) {
+    lastLog = now;
+    int pA = panAngle, pT = panTarget;
+    int tA = tiltAngle, tT = tiltTarget;
+    Serial.print("PAN "); Serial.print(pA); Serial.print("->"); Serial.print(pT);
+    Serial.print(" | TILT "); Serial.print(tA); Serial.print("->"); Serial.print(tT);
+    Serial.print(" | SPD "); Serial.print(currentSpeed);
+    Serial.print(" | DIR "); Serial.println(currentDirection);
   }
 
   delay(20); // ~50 Гц
