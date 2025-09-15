@@ -24,25 +24,13 @@ function mpsToPwm(mps) {
     return Math.round(Math.max(minPwm, Math.min(maxPwm, pwm)));
 }
 
-function mpsToEwm(mps) {
-    const minMps = 0.05, maxMps = 0.3;
-    const minPwm = 50, maxPwm = 255;
-
-    // Добавляем ту же коррекцию!
-    const correctedMps = mps * 0.875; // 0.175/0.20 = 0.875
-
-    const ratio = (correctedMps - minMps) / (maxMps - minMps);
-    const pwm = minPwm + ratio * (maxPwm - minPwm);
-    return Math.round(Math.max(minPwm, Math.min(maxPwm, pwm)));
-}
-
 // Обработчик ползунка скорости
 speedSlider.addEventListener('input', function () {
     const mpsValue = parseFloat(this.value);
     speedValue.textContent = mpsValue.toFixed(2) + ' м/с';
 
     // Преобразуем в PWM для отправки команд
-    const pwmValue = mpsToEwm(mpsValue);
+    const pwmValue = mpsToPwm(mpsValue);
     console.log(`Speed: ${mpsValue.toFixed(2)} м/с → PWM: ${pwmValue}`);
 });
 
@@ -652,15 +640,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Переходим на SSE, без частого fetch('/api/status')
     startTelemetrySSE_All();
-
-    if (typeof initVelocitySlider === 'function') {
-        initVelocitySlider();
-    }
-    if (typeof initArmSliders === 'function') {
-        initArmSliders();
-    }
-
-    console.log('✅ Система управления энкодерами и роборукой инициализирована');
 
     showAlert('Управление: W/S – вперёд/назад, A/D – повороты, Пробел – стоп', 'success');
 });
