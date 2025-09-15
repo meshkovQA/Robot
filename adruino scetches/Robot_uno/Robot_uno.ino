@@ -16,7 +16,7 @@ bool LEFT_DIR_INVERT  = true;
 bool RIGHT_DIR_INVERT = true;
 
 // ---------------- Сервомоторы камеры --------------------
-#define CAMERA_PAN_PIN A0
+#define CAMERA_PAN_PIN 12
 #define CAMERA_TILT_PIN 10
 Servo panServo;
 Servo tiltServo;
