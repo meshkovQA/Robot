@@ -69,53 +69,6 @@ function getSpeedColorClass(speed, baseClass, isAngular = false) {
     return `compact-sensor sensor-card border rounded p-1 ${baseClass}`;
 }
 
-// Установка целевой скорости
-async function setTargetVelocity(velocity) {
-    try {
-        currentTargetVelocity = parseFloat(velocity);
-
-        const response = await fetch('/api/move/target_velocity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ velocity: currentTargetVelocity })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showAlert(`Установлена скорость: ${currentTargetVelocity.toFixed(2)} м/с`, 'success');
-            updateElement('target-velocity-value', `${currentTargetVelocity.toFixed(1)} м/с`);
-
-            // Обновляем слайдер
-            const slider = document.getElementById('velocity-slider');
-            if (slider) {
-                slider.value = currentTargetVelocity;
-            }
-        } else {
-            showAlert('Ошибка установки скорости', 'danger');
-        }
-    } catch (error) {
-        console.error('Ошибка установки скорости:', error);
-        showAlert('Ошибка связи с роботом', 'danger');
-    }
-}
-
-// Обработчик слайдера скорости
-function initVelocitySlider() {
-    const slider = document.getElementById('velocity-slider');
-    if (slider) {
-        slider.addEventListener('input', (e) => {
-            const velocity = parseFloat(e.target.value);
-            updateElement('target-velocity-value', `${velocity.toFixed(1)} м/с`);
-        });
-
-        slider.addEventListener('change', (e) => {
-            const velocity = parseFloat(e.target.value);
-            setTargetVelocity(velocity);
-        });
-    }
-}
-
 // ==================== УПРАВЛЕНИЕ РОБОРУКОЙ ====================
 
 let currentArmAngles = [90, 90, 90, 90, 90];

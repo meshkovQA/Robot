@@ -16,7 +16,7 @@ from robot.devices.camera import USBCamera, CameraConfig, list_available_cameras
 from robot.controllers.heading_controller import HeadingHoldService
 from robot.ai_vision.simple_ai_detector import SimpleAIDetector
 from robot.api.ai_detector_api import add_ai_detector_routes
-from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, STATIC_DIR, TEMPLATES_DIR
+from robot.config import LOG_LEVEL, LOG_FMT, API_KEY, SPEED_MIN, SPEED_MAX, CAMERA_SAVE_PATH, CAMERA_VIDEO_PATH, CAMERA_AVAILABLE, CAMERA_CONFIG, LIGHT_INIT, STATIC_DIR, TEMPLATES_DIR, DEFAULT_SPEED
 from datetime import datetime
 from pathlib import Path
 
@@ -194,7 +194,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/move/forward", methods=["POST"])
     def move_forward():
         data = request.get_json() or {}
-        speed = int(data.get("speed", 100))
+        speed = int(data.get("speed", DEFAULT_SPEED))
         speed = max(SPEED_MIN, min(SPEED_MAX, speed))
 
         success = robot.move_forward(speed)
@@ -208,7 +208,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/move/backward", methods=["POST"])
     def move_backward():
         data = request.get_json() or {}
-        speed = int(data.get("speed", 100))
+        speed = int(data.get("speed", DEFAULT_SPEED))
         speed = max(SPEED_MIN, min(SPEED_MAX, speed))
 
         success = robot.move_backward(speed)
@@ -222,7 +222,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/turn/left", methods=["POST"])
     def turn_left():
         data = request.get_json() or {}
-        speed = int(data.get("speed", 150))
+        speed = int(data.get("speed", DEFAULT_SPEED))
         speed = max(SPEED_MIN, min(SPEED_MAX, speed))
 
         success = robot.tank_turn_left(speed)
@@ -236,7 +236,7 @@ def create_app(controller: RobotController | None = None, camera_instance: USBCa
     @bp.route("/turn/right", methods=["POST"])
     def turn_right():
         data = request.get_json() or {}
-        speed = int(data.get("speed", 150))
+        speed = int(data.get("speed", DEFAULT_SPEED))
         speed = max(SPEED_MIN, min(SPEED_MAX, speed))
 
         success = robot.tank_turn_right(speed)
