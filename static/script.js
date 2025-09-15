@@ -13,10 +13,13 @@ const speedValue = document.getElementById('speed-value');
 
 // Преобразование м/с в PWM
 function mpsToPwm(mps) {
-    const minMps = 0.05, maxMps = 0.3;  // максимум 0.3 вместо 0.5
+    const minMps = 0.05, maxMps = 0.3;
     const minPwm = 50, maxPwm = 255;
 
-    const ratio = (mps - minMps) / (maxMps - minMps);
+    // Добавляем небольшую коррекцию
+    const correctedMps = mps * 0.875; // 0.175/0.20 = 0.875
+
+    const ratio = (correctedMps - minMps) / (maxMps - minMps);
     const pwm = minPwm + ratio * (maxPwm - minPwm);
     return Math.round(Math.max(minPwm, Math.min(maxPwm, pwm)));
 }
