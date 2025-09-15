@@ -207,8 +207,7 @@ class FastI2CController:
             logger.info("[I2C emu] write to 0x%02X: %s", addr, data)
             return True
         if len(data) > 1:
-            logger.info("I2C block: addr=0x%02X reg=0x%02X data=%s",
-                        addr, data)
+            logger.info("I2C block: addr=0x%02X data=%s", addr, data)
             self.bus.write_i2c_block_data(addr, 0x00, data)
         else:
             logger.info("I2C byte: addr=0x%02X data=0x%02X", addr, data)
