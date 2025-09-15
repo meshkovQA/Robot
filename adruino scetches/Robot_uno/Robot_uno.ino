@@ -32,7 +32,7 @@ const unsigned long CAM_STEP_MS = 15; // мс между шагами
 #define R_ENC_B 9
 
 // Настройки расчёта скорости
-const float CPR  = 360.0;     // импульсов на оборот вала (A+B)
+const float CPR  = 1320.0;     // импульсов на оборот вала (A+B)
 const float GEAR = 1.0;       // редуктор
 const float WHEEL_D = 0.065;  // м
 

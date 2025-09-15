@@ -11,26 +11,14 @@ let currentDirection = 0;
 const speedSlider = document.getElementById('speed-slider');
 const speedValue = document.getElementById('speed-value');
 
-const SPEED_CONVERSION = {
-    // Примерные значения - ТРЕБУЮТ КАЛИБРОВКИ
-    MIN_MPS: 0.05,      // минимальная скорость м/с
-    MAX_MPS: 0.5,       // максимальная скорость м/с
-    MIN_PWM: 50,        // минимальный PWM
-    MAX_PWM: 255        // максимальный PWM
-};
-
 // Преобразование м/с в PWM
-function mpsToEwm(mps) {
-    const ratio = (mps - SPEED_CONVERSION.MIN_MPS) / (SPEED_CONVERSION.MAX_MPS - SPEED_CONVERSION.MIN_MPS);
-    const pwm = SPEED_CONVERSION.MIN_PWM + ratio * (SPEED_CONVERSION.MAX_PWM - SPEED_CONVERSION.MIN_PWM);
-    return Math.round(Math.max(SPEED_CONVERSION.MIN_PWM, Math.min(SPEED_CONVERSION.MAX_PWM, pwm)));
-}
+function mpsToPwm(mps) {
+    const minMps = 0.05, maxMps = 0.3;  // максимум 0.3 вместо 0.5
+    const minPwm = 50, maxPwm = 255;
 
-// Преобразование PWM в м/с
-function pwmToMps(pwm) {
-    const ratio = (pwm - SPEED_CONVERSION.MIN_PWM) / (SPEED_CONVERSION.MAX_PWM - SPEED_CONVERSION.MIN_PWM);
-    const mps = SPEED_CONVERSION.MIN_MPS + ratio * (SPEED_CONVERSION.MAX_MPS - SPEED_CONVERSION.MIN_MPS);
-    return Math.max(SPEED_CONVERSION.MIN_MPS, Math.min(SPEED_CONVERSION.MAX_MPS, mps));
+    const ratio = (mps - minMps) / (maxMps - minMps);
+    const pwm = minPwm + ratio * (maxPwm - minPwm);
+    return Math.round(Math.max(minPwm, Math.min(maxPwm, pwm)));
 }
 
 // Обработчик ползунка скорости
@@ -46,7 +34,7 @@ speedSlider.addEventListener('input', function () {
 // Функции управления движением
 function moveForward() {
     const mpsSpeed = parseFloat(speedSlider.value);
-    const pwmSpeed = mpsToEwm(mpsSpeed);
+    const pwmSpeed = mpsToPwm(mpsSpeed);
 
     sendCommand('/api/move/forward', 'POST', { speed: pwmSpeed })
         .then(data => {
@@ -59,7 +47,7 @@ function moveForward() {
 
 function moveBackward() {
     const mpsSpeed = parseFloat(speedSlider.value);
-    const pwmSpeed = mpsToEwm(mpsSpeed);
+    const pwmSpeed = mpsToPwm(mpsSpeed);
 
     sendCommand('/api/move/backward', 'POST', { speed: pwmSpeed })
         .then(data => {
@@ -72,7 +60,7 @@ function moveBackward() {
 
 function tankTurnLeft() {
     const mpsSpeed = parseFloat(speedSlider.value);
-    const pwmSpeed = mpsToEwm(mpsSpeed);
+    const pwmSpeed = mpsToPwm(mpsSpeed);
 
     sendCommand('/api/turn/left', 'POST', { speed: pwmSpeed })
         .then(data => {
@@ -85,7 +73,7 @@ function tankTurnLeft() {
 
 function tankTurnRight() {
     const mpsSpeed = parseFloat(speedSlider.value);
-    const pwmSpeed = mpsToEwm(mpsSpeed);
+    const pwmSpeed = mpsToPwm(mpsSpeed);
 
     sendCommand('/api/turn/right', 'POST', { speed: pwmSpeed })
         .then(data => {
@@ -117,7 +105,7 @@ function emergencyStop() {
 }
 
 function updateSpeed(newMpsSpeed) {
-    const pwmSpeed = mpsToEwm(newMpsSpeed);
+    const pwmSpeed = mpsToPwm(newMpsSpeed);
     sendCommand('/api/speed', 'POST', { speed: pwmSpeed })
         .then(data => {
             if (data.success && data.is_moving) {
