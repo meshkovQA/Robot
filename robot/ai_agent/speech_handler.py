@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import time
 from .yandex_stt_client import YandexSTTClient
+from .yandex_tts_client import YandexTTSClient
 
 
 class SpeechHandler:
@@ -24,6 +25,7 @@ class SpeechHandler:
 
         yc = (self.config.get("speech", {}) or {}).get("yandex", {}) or {}
         self._yandex_client = None
+        self._yandex_tts = None
 
         try:
             if self._provider == "yandex":
@@ -31,6 +33,8 @@ class SpeechHandler:
                 api_key = os.getenv(
                     "YANDEX_API_KEY") if auth == "api_key" else None
                 iam_token = yc.get("iam_token") if auth == "iam" else None
+                folder_id = yc.get("folder_id")
+
                 self._yandex_client = YandexSTTClient(
                     api_key=api_key,
                     iam_token=iam_token,
@@ -40,6 +44,18 @@ class SpeechHandler:
                     model=yc.get("model", "general"),
                 )
                 logging.info("Yandex STT client initialized")
+
+                # --- TTS читаем полностью из JSON ---
+                self._yandex_tts = YandexTTSClient(
+                    api_key=api_key,
+                    iam_token=iam_token,
+                    folder_id=folder_id,
+                    default_voice=yc.get("tts_voice", "alexander"),
+                    default_role=yc.get("tts_role", "good"),
+                    default_container=yc.get("tts_format", "MP3"),
+                    sample_rate_hz=yc.get("tts_sample_rate", 48000),
+                )
+                logging.info("Yandex TTS client initialized")
         except Exception as e:
             logging.error(f"Yandex STT init error: {e}")
 
@@ -218,60 +234,73 @@ class SpeechHandler:
             return fallback_response
 
     def text_to_speech(self, text, voice=None, instructions=None):
-        """Синтез речи через OpenAI TTS"""
+        """Синтез речи: Yandex (если provider=yandex) или OpenAI (фолбэк)"""
         if not text or not text.strip():
             logging.warning("⚠️ Пустой текст для синтеза")
             return None
 
-        try:
-            # Очищаем текст от лишних символов
-            clean_text = text.strip()
+        # --- Яндекс TTS по JSON-конфигу ---
+        if self._provider == "yandex" and self._yandex_tts:
+            try:
+                yc = (self.config.get("speech", {})
+                      or {}).get("yandex", {}) or {}
+                y_voice = voice or yc.get("tts_voice", "alexander")
+                y_role = yc.get("tts_role", "good")
+                y_fmt = yc.get("tts_format", "MP3")
+                y_speed = yc.get("tts_speed", None)
 
-            # Получаем инструкции для TTS
+                path = self._yandex_tts.synthesize_to_file(
+                    text=text.strip(),
+                    out_dir="data/temp",
+                    file_prefix="tts_yandex_",
+                    voice=y_voice,
+                    role=y_role,
+                    container=y_fmt,
+                    speed=y_speed,
+                )
+                return path
+            except Exception as e:
+                logging.error(f"❌ Ошибка Yandex TTS: {e}")
+                logging.info("→ Фолбэк на OpenAI TTS...")
+
+        # --- OpenAI фолбэк (как у вас) ---
+        try:
+            clean_text = text.strip()
             tts_instructions = instructions
             if tts_instructions is None:
                 tts_instructions = self.config.get('tts_instructions')
             if isinstance(tts_instructions, dict):
                 tts_instructions = tts_instructions.get('default', "")
-
             if not isinstance(tts_instructions, str):
                 tts_instructions = ""
 
-            logging.info(
-                f"📝→🔊 Синтез речи (новая модель): '{clean_text[:50]}...'")
+            logging.info(f"📝→🔊 Синтез речи (OpenAI): '{clean_text[:50]}...'")
 
             response = self.client.audio.speech.create(
-                model=self.tts_model,  # Теперь это gpt-4o-mini-tts
+                model=self.tts_model,
                 voice=voice or self.tts_voice,
                 input=clean_text,
                 response_format="mp3",
                 speed=1.0,
-                # НОВАЯ ФИЧА: инструкции для стиля речи
                 instructions=tts_instructions
             )
 
-            # Сохраняем в файл
             timestamp = int(time.time())
             audio_file = Path(f"data/temp/tts_response_{timestamp}.mp3")
             audio_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Записываем аудио данные
             with open(audio_file, 'wb') as f:
                 for chunk in response.iter_bytes():
                     f.write(chunk)
 
-            # Проверяем размер файла
-            file_size = audio_file.stat().st_size
-            if file_size < 1000:
-                logging.error(
-                    f"❌ Подозрительно маленький TTS файл: {file_size} байт")
+            if audio_file.stat().st_size < 1000:
+                logging.error("❌ Подозрительно маленький TTS файл")
                 return None
 
-            logging.info(f"✅ TTS файл создан: {audio_file} ({file_size} байт)")
+            logging.info(f"✅ OpenAI TTS файл создан: {audio_file}")
             return str(audio_file)
 
         except Exception as e:
-            logging.error(f"❌ Ошибка синтеза TTS: {e}")
+            logging.error(f"❌ Ошибка синтеза TTS (OpenAI): {e}")
             return None
 
     def process_conversation(self, audio_file=None, text_message=None, intent='default', context_data=None):
