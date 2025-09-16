@@ -30,6 +30,15 @@ class WakeWordService:
         self._cd_after_activation = float(self.config.get("wake", {}).get(
             "cooldown_after_activation_ms", 1000)) / 1000.0
 
+        # 🆕 Ducking/паузa Spotify при wake
+        duck_cfg = (self.config.get("wake", {}).get("ducking") or {})
+        self._duck_enabled = bool(duck_cfg.get("enabled", True))
+        self._duck_mode = str(duck_cfg.get("mode", "duck")
+                              )           # "duck" | "pause"
+        self._duck_volume = int(duck_cfg.get("volume_percent", 20))    # 0..100
+        self._restore_mode = str(duck_cfg.get(
+            "restore", "previous"))  # "previous" | "default"
+
         vcfg = (self.config.get("vosk_kws") or {})
         model_dir = vcfg.get("model_dir") or Path(
             "/opt/robot/models/vosk/current")
@@ -44,6 +53,10 @@ class WakeWordService:
             min_conf=float(vcfg.get("min_conf", 0.6)),
         )
         self._confirm_window_ms = int(vcfg.get("confirm_window_ms", 700))
+
+        # Тех. переменные для восстановления состояния Spotify
+        self._spotify_was_playing = False
+        self._spotify_prev_volume = None
 
         self.is_running = False
         self.is_listening = False
@@ -87,6 +100,21 @@ class WakeWordService:
             self.service_thread.join(timeout=5)
         logging.info("⏹️ Остановлен")
 
+    def pause_listening(self):
+        self.is_listening = False
+        try:
+            self._kws.stop()
+        except Exception:
+            pass
+
+    def resume_listening(self):
+        if self.is_running:
+            try:
+                self._kws.start()
+            except Exception:
+                pass
+            self.is_listening = True
+
     def _wake_word_loop(self):
         try:
             logging.info("🔄 НАЧИНАЮ _wake_word_loop (vosk)")
@@ -116,9 +144,14 @@ class WakeWordService:
     def _handle_activation(self):
         try:
             robot = getattr(self.ai_orchestrator, "robot", None)
+
+            # 🆕 Перед активацией приглушаем/паузим Spotify, чтобы запись не ловила музыку
+            self._pre_wake_audio_shaping()
+
             if robot and hasattr(robot, "set_rgb_preset"):
                 robot.set_rgb_preset("green")
 
+            # временно стопаем KWS для устойчивой записи (у тебя уже есть, оставим)
             try:
                 self._kws.stop()
                 time.sleep(0.08)
@@ -160,6 +193,8 @@ class WakeWordService:
         except Exception as e:
             logging.error(f"❌ Ошибка обработки активации: {e}")
         finally:
+            # 🆕 Восстановить Spotify и перезапустить KWS
+            self._post_wake_audio_restore()
             if self.is_running:
                 try:
                     time.sleep(0.08)
@@ -197,7 +232,10 @@ class WakeWordService:
             if not self.speech_handler or not self.audio_manager:
                 logging.warning("⚠️ Компоненты для озвучивания недоступны")
                 return
-            self.is_listening = False
+
+            # 🆕 На время TTS — стоп KWS и отключаем прослушку, потом вернём
+            self.pause_listening()
+
             logging.info("🔊 Озвучиваю: %r", text[:80])
             audio_file = self.speech_handler.text_to_speech(text)
             if audio_file:
@@ -206,17 +244,81 @@ class WakeWordService:
                     logging.error("❌ Не удалось воспроизвести ответ")
             else:
                 logging.error("❌ Не удалось создать аудиофайл")
-            time.sleep(2)
+
+            # небольшая пауза, чтобы хвост аудио не попал в мик
+            time.sleep(0.3)
+
         except Exception as e:
             logging.error(f"❌ Ошибка озвучивания: {e}")
         finally:
+            # включаем cooldown, затем резюмим KWS
             if self.is_running:
-                self.cooldown_until = time.time() + max(self._cd_after_tts, 2.5)
-                self.is_listening = True
+                self.cooldown_until = time.time() + max(self._cd_after_tts, 1.0)
+                self.resume_listening()
+
+        # 🆕 Вспомогательные: управление Spotify при wake
+    def _pre_wake_audio_shaping(self):
+        """Перед записью команды — приглушить или поставить на паузу Spotify"""
+        if not self._duck_enabled:
+            return
+        try:
+            sp = getattr(self.ai_orchestrator, "spotify", None)
+            if not sp:
+                return
+            # запомним состояние
+            self._spotify_was_playing = bool(sp.is_playing)
+            self._spotify_prev_volume = getattr(sp, "current_volume", None)
+
+            if self._duck_mode == "pause":
+                try:
+                    sp.pause()
+                except Exception:
+                    pass
+            else:
+                # 'duck' — опустить громкость
+                try:
+                    # если у агента нет set_volume — добавь его (см. прошлый ответ)
+                    if hasattr(sp, "set_volume"):
+                        sp.set_volume(self._duck_volume)
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.debug(f"Duck/pause skip: {e}")
+
+    def _post_wake_audio_restore(self):
+        """После озвучки — вернуть громкость/музыку"""
+        try:
+            sp = getattr(self.ai_orchestrator, "spotify", None)
+            if not sp:
+                return
+
+            if self._duck_mode == "pause":
+                # реши сам: автоплей после команды или нет
+                # если нужно возобновлять только когда играло до wake:
+                if self._spotify_was_playing:
+                    try:
+                        sp.play()
+                    except Exception:
+                        pass
+            else:
+                # вернуть громкость
+                target = None
+                if self._restore_mode == "previous" and self._spotify_prev_volume is not None:
+                    target = int(self._spotify_prev_volume)
+                else:
+                    target = int(getattr(sp, "default_volume", 50))
+                try:
+                    if hasattr(sp, "set_volume"):
+                        sp.set_volume(target)
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logging.debug(f"Restore skip: {e}")
 
     def _resume_wake_word_listening(self):
         try:
-            time.sleep(2)
+            time.sleep(0.2)
             if self.is_running:
                 self.is_listening = True
         except Exception as e:

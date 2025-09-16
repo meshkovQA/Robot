@@ -20,7 +20,7 @@ class AIOrchestrater:
         """
         Инициализация AI оркестратора
         :param camera: существующий объект камеры
-        :param robot_controller: существующий контроллер робота  
+        :param robot_controller: существующий контроллер робота
         :param ai_detector: существующий SimpleAIDetector
         """
         self.config = self._load_config()
@@ -34,6 +34,7 @@ class AIOrchestrater:
         self.audio_manager = None
         self.wake_word_service = None
         self.openai_client = None
+        self.spotify = None
 
         self.sensor_reporter = SensorStatusReporter()
 
@@ -45,6 +46,12 @@ class AIOrchestrater:
 
         # Загружаем системные промпты
         self._load_system_prompts()
+
+        # Настройки spotify и баргина
+        self._barge_in_enabled = True
+        self._was_spotify_playing = False
+        self._pre_duck_volume = None
+        self._is_tts_playing = False
 
         logging.info("🧠 AI Оркестратор инициализирован")
 
@@ -133,7 +140,7 @@ class AIOrchestrater:
                 logging.warning(
                     "⚠️ WakeWordService пропущен: нет OpenAI API ключа")
 
-            # VisionAnalyzer (для компьютерного зрения с умной логикой)
+        # VisionAnalyzer (для компьютерного зрения с умной логикой)
         if self.config.get('vision_enabled', True):
             try:
                 self.vision = VisionAnalyzer(
@@ -149,6 +156,16 @@ class AIOrchestrater:
         else:
             logging.info("ℹ️ VisionAnalyzer отключен в конфигурации")
             self.vision = None
+
+        # SpotifyAgent (управление музыкой)
+        try:
+            from robot.ai_agent.spotify_agent import SpotifyAgent
+            self.spotify = SpotifyAgent(
+                audio_manager=self.audio_manager, config=self.config)
+            logging.info("✅ SpotifyAgent инициализирован")
+        except Exception as e:
+            self.spotify = None
+            logging.error(f"❌ SpotifyAgent не инициализирован: {e}")
 
     def analyze_user_intent(self, user_text):
         """Определение намерения пользователя через ключевые слова"""
@@ -181,6 +198,12 @@ class AIOrchestrater:
         sensors_specific_keywords = [
             'датчики расстояния', 'препятствия', 'температура', 'влажность',
             'энкодеры', 'скорость колес', 'ориентация', 'наклон', 'роборука'
+        ]
+
+        music_keywords = [
+            'включи музыку', 'выключи музыку', 'поставь на паузу', 'продолжи музыку',
+            'следующая песня', 'предыдущая песня', 'что играет', 'громче', 'тише',
+            'поставь ', 'включи трек ', 'включи песню ', 'воспроизведи '
         ]
 
         # Проверяем на намерение 'vision'
@@ -217,6 +240,13 @@ class AIOrchestrater:
                 logging.info(
                     f"🎯 Определено намерение 'status_specific' по ключевому слову: '{keyword}'")
                 return 'status_specific'
+
+        # Проверяем на намерение 'music'
+        for keyword in music_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'music' по слову: '{keyword}'")
+                return 'music'
 
         # Если никакие ключевые слова не найдены - это обычный чат
         logging.info("🎯 Определено намерение 'chat' (по умолчанию)")
@@ -301,6 +331,9 @@ class AIOrchestrater:
 
             elif intent.startswith('status'):
                 return self._handle_status_request(user_text, audio_file is not None, intent)
+
+            elif intent == 'music':
+                return self._handle_music_request(user_text, audio_file is not None)
 
             else:  # intent == 'chat'
                 return self._handle_chat_request(user_text, audio_file is not None)
@@ -430,6 +463,40 @@ class AIOrchestrater:
                 extra_data={"error": str(e)}
             )
 
+    def _handle_music_request(self, user_text, is_voice=False):
+        if not self.spotify:
+            response_text = "Музыкальный агент недоступен"
+            return self._create_response(user_text, response_text, 'music_error', is_voice)
+
+        txt = user_text.lower().strip()
+
+        # Приоритет: запрос с названием трека
+        for prefix in ['поставь ', 'включи трек ', 'включи песню ', 'воспроизведи ']:
+            if txt.startswith(prefix) and len(txt) > len(prefix):
+                query = user_text[len(prefix):].strip()
+                result_text = self.spotify.search_and_play(query)
+                return self._create_response(user_text, result_text, 'music', is_voice)
+
+        # Простые команды
+        if 'пауза' in txt or 'выключи музыку' in txt:
+            result_text = self.spotify.pause()
+        elif 'продолжи' in txt or 'включи музыку' in txt:
+            result_text = self.spotify.play()
+        elif 'следующ' in txt:
+            result_text = self.spotify.next_track()
+        elif 'предыдущ' in txt:
+            result_text = self.spotify.previous_track()
+        elif 'громче' in txt:
+            result_text = self.spotify.volume_up()
+        elif 'тише' in txt:
+            result_text = self.spotify.volume_down()
+        elif 'что играет' in txt:
+            result_text = self.spotify.current_track_info()
+        else:
+            result_text = "Не распознал музыкальную команду"
+
+        return self._create_response(user_text, result_text, 'music', is_voice)
+
     def _handle_chat_request(self, user_text, is_voice=False):
         """Обработка обычных диалоговых запросов"""
         if not self.speech:
@@ -475,7 +542,15 @@ class AIOrchestrater:
                     ai_response, instructions=tts_instructions)
                 response["audio_file"] = audio_file
 
-                # Воспроизводим сразу для статусных команд
+                # 🔇 временно отключить wake на время TTS
+                if self.wake_word_service:
+                    try:
+                        self._is_tts_playing = True
+                        self.wake_word_service.pause_listening()
+                    except Exception as e:
+                        logging.warning(f"Не удалось паузить wake: {e}")
+
+                    # Воспроизводим сразу для статусных команд
                 if intent.startswith('status'):
                     speech_success = self.speech.audio_manager.play_audio(
                         audio_file)
@@ -489,11 +564,14 @@ class AIOrchestrater:
             except Exception as e:
                 logging.error(f"Ошибка генерации аудио: {e}")
 
-        # Сохраняем в историю
-        self._add_to_history(user_text, ai_response, intent)
-
-        logging.info(f"🤖 Ответ ({intent}): '{ai_response}'")
-        return response
+            finally:
+                # вернуть wake после TTS
+                if self.wake_word_service and self._is_tts_playing:
+                    try:
+                        self.wake_word_service.resume_listening()
+                    except Exception as e:
+                        logging.warning(f"Не удалось резюмировать wake: {e}")
+                    self._is_tts_playing = False
 
     def voice_chat(self, recording_duration=5):
         """Полный цикл голосового общения с физическими устройствами"""
@@ -712,3 +790,49 @@ class AIOrchestrater:
             return {"success": True, "message": "История диалогов очищена"}
         except Exception as e:
             return {"error": str(e)}
+
+    def on_wake_word(self, phrase: str = ""):
+        logging.info(f"👂 Wake word: '{phrase}'")
+        if not self._barge_in_enabled:
+            return
+
+        # 1) временно приостанавливаем wake-детектор, чтобы не зациклиться на своём TTS/эмах
+        try:
+            if self.wake_word_service:
+                self.wake_word_service.pause_listening()
+        except Exception as e:
+            logging.warning(f"Не удалось паузить wake service: {e}")
+
+        # 2) уткаем музыку (или ставим паузу)
+        if self.spotify:
+            try:
+                self._was_spotify_playing = self.spotify.is_playing
+                self._pre_duck_volume = self.spotify.current_volume
+                # Вариант А: просто пауза
+                # self.spotify.pause()
+                # Вариант Б: мягкое приглушение (предпочтительно)
+                self.spotify.duck(target_percent=20)
+            except Exception as e:
+                logging.warning(f"Не удалось приглушить Spotify: {e}")
+
+        # 3) активируем режим «слушаю команду»
+        # здесь ты можешь запустить короткий цикл активного прослушивания (PUSH-TO-TALK feel)
+        # например, 4-6 секунд:
+        try:
+            result = self.voice_chat(recording_duration=5)
+            logging.info(f"Wake interaction result: {result}")
+        finally:
+            # 4) вернуть громкость/музыку и возобновить wake
+            try:
+                if self.spotify:
+                    # если была пауза — решай, возобновлять ли; при duck — вернём громкость
+                    self.spotify.unduck(
+                        previous_percent=self._pre_duck_volume or 50)
+            except Exception as e:
+                logging.warning(f"Не удалось вернуть громкость Spotify: {e}")
+
+            try:
+                if self.wake_word_service:
+                    self.wake_word_service.resume_listening()
+            except Exception as e:
+                logging.warning(f"Не удалось резюмировать wake service: {e}")

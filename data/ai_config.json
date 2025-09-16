@@ -60,6 +60,12 @@
             "start_only": true,
             "max_prefix_words": 2,
             "word_boundary": true
+        },
+        "ducking": {
+            "enabled": true,
+            "mode": "duck",
+            "volume_percent": 20,
+            "restore": "previous"
         }
     },
     "intent_analysis_model": "gpt-4o",
@@ -105,5 +111,33 @@
         "chunk_ms": 30,
         "min_conf": 0.60,
         "confirm_window_ms": 700
+    },
+    "spotify": {
+        "redirect_uri": "http://127.0.0.1:8888/callback",
+        "default_volume": 50,
+        "search_limit": 10,
+        "control_method": "auto",
+        "scopes": [
+            "user-read-playback-state",
+            "user-modify-playback-state",
+            "user-read-currently-playing"
+        ],
+        "voice_commands": {
+            "включи музыку": "play",
+            "выключи музыку": "pause",
+            "поставь на паузу": "pause",
+            "продолжи музыку": "play",
+            "следующая песня": "next_track",
+            "предыдущая песня": "previous_track",
+            "что играет": "current_track_info",
+            "тише": "volume_down",
+            "громче": "volume_up",
+            "поставь": "search_and_play"
+        },
+        "volume_step": 10,
+        "max_search_results": 5,
+        "auto_play_search": false,
+        "timeout": 30,
+        "preferred_device": "This Computer"
     }
 }
