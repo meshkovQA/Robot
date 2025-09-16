@@ -28,8 +28,7 @@ class SpotifyAgent:
         self.config = config or {}
 
         # Spotify настройки из конфига
-        spotify_config = (self.config.get("speech", {})
-                          or {}).get("spotify", {}) or {}
+        spotify_config = self.config.get("spotify", {}) or {}
 
         # Ключи API ТОЛЬКО из переменных окружения (как для Yandex)
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -315,110 +314,51 @@ class SpotifyAgent:
     # Основные команды управления
 
     def play(self) -> str:
-        try:
-            ok, err = self._api("PUT", "/me/player/play", json={})
-            if ok:
-                self.is_playing = True
-                return "Музыка включена"
-        except Exception:
-            pass
-        success, output = self._run_spotify_script("play")
-        if success:
+        ok, err = self._api("PUT", "/me/player/play", json={})
+        if ok:
             self.is_playing = True
-            return "Музыка включена (fallback)"
-        return f"Не удалось включить музыку: {output}"
+            return "Музыка включена"
+        return f"Не удалось включить музыку: {err}"
 
     def pause(self) -> str:
-        try:
-            ok, err = self._api("PUT", "/me/player/pause")
-            if ok:
-                self.is_playing = False
-                return "Музыка поставлена на паузу"
-        except Exception:
-            pass
-        success, output = self._run_spotify_script("pause")
-        if success:
+        ok, err = self._api("PUT", "/me/player/pause")
+        if ok:
             self.is_playing = False
-            return "Музыка поставлена на паузу (fallback)"
-        return f"Не удалось поставить на паузу: {output}"
+            return "Музыка поставлена на паузу"
+        return f"Не удалось поставить на паузу: {err}"
 
     def next_track(self) -> str:
-        try:
-            ok, err = self._api("POST", "/me/player/next")
-            if ok:
-                return "Переключено на следующий трек"
-        except Exception:
-            pass
-        success, output = self._run_spotify_script("next")
-        return "Переключено (fallback)" if success else f"Не удалось переключить трек: {output}"
+        ok, err = self._api("POST", "/me/player/next")
+        return "Переключено на следующий трек" if ok else f"Не удалось переключить: {err}"
 
     def previous_track(self) -> str:
-        try:
-            ok, err = self._api("POST", "/me/player/previous")
-            if ok:
-                return "Переключено на предыдущий трек"
-        except Exception:
-            pass
-        success, output = self._run_spotify_script("previous")
-        return "Переключено (fallback)" if success else f"Не удалось переключить: {output}"
+        ok, err = self._api("POST", "/me/player/previous")
+        return "Переключено на предыдущий трек" if ok else f"Не удалось переключить: {err}"
 
     def set_volume(self, percent: int) -> str:
         percent = max(0, min(100, int(percent)))
-        try:
-            ok, err = self._api(
-                "PUT", f"/me/player/volume?volume_percent={percent}")
-            if ok:
-                self.current_volume = percent
-                return f"Громкость установлена: {percent}%"
-        except Exception:
-            pass
-        ok, out = self._run_spotify_script("set_volume", str(percent))
+        ok, err = self._api(
+            "PUT", f"/me/player/volume?volume_percent={percent}")
         if ok:
             self.current_volume = percent
-            return f"Громкость установлена: {percent}% (fallback)"
-        return f"Не удалось установить громкость: {out}"
+            return f"Громкость установлена: {percent}%"
+        return f"Не удалось установить громкость: {err}"
 
     def volume_up(self) -> str:
-        """Увеличить громкость"""
-        try:
-            success, output = self._run_spotify_script("volume", "up")
-            if success:
-                self.current_volume = min(100, self.current_volume + 10)
-                return f"Громкость увеличена до {self.current_volume}%"
-            else:
-                return f"Не удалось увеличить громкость: {output}"
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка увеличения громкости: {e}")
-            return "Не удалось увеличить громкость"
+        return self.set_volume((self.current_volume or self.default_volume) + 10)
 
     def volume_down(self) -> str:
-        """Уменьшить громкость"""
-        try:
-            success, output = self._run_spotify_script("volume", "down")
-            if success:
-                self.current_volume = max(0, self.current_volume - 10)
-                return f"Громкость уменьшена до {self.current_volume}%"
-            else:
-                return f"Не удалось уменьшить громкость: {output}"
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка уменьшения громкости: {e}")
-            return "Не удалось уменьшить громкость"
+        return self.set_volume((self.current_volume or self.default_volume) - 10)
 
     def current_track_info(self) -> str:
-        try:
-            ok, data = self._api("GET", "/me/player/currently-playing")
-            if ok and data and data.get("item"):
-                item = data["item"]
-                name = item.get("name")
-                artist = ", ".join(a["name"] for a in item.get("artists", []))
-                is_playing = data.get("is_playing", False)
-                return f"Сейчас играет: {name} — {artist} ({'playing' if is_playing else 'paused'})"
-        except Exception:
-            pass
-        success, output = self._run_spotify_script("status")
-        return output if success else "Не удалось получить информацию о треке"
+        ok, data = self._api("GET", "/me/player/currently-playing")
+        if ok and data and data.get("item"):
+            item = data["item"]
+            name = item.get("name")
+            artist = ", ".join(a["name"] for a in item.get("artists", []))
+            is_playing = data.get("is_playing", False)
+            return f"Сейчас играет: {name} — {artist} ({'playing' if is_playing else 'paused'})"
+        return "Не удалось получить информацию о треке"
 
     def search_and_play(self, query: str) -> str:
         try:
@@ -436,100 +376,18 @@ class SpotifyAgent:
             logging.error(f"❌ Ошибка поиска/запуска: {e}")
             return "Не удалось воспроизвести по запросу"
 
-    # Вспомогательные методы
-
-    def _run_spotify_script(self, script_name: str, *args) -> Tuple[bool, str]:
-        """Запуск bash-скрипта для управления Spotify"""
-        try:
-            script_path = Path("scripts/spotify") / f"spotify_{script_name}.sh"
-
-            # Проверяем существование скрипта
-            if not script_path.exists():
-                logger.error(f"❌ Скрипт не найден: {script_path}")
-                return False, f"Скрипт {script_name} не найден"
-
-            # Делаем скрипт исполняемым
-            script_path.chmod(0o755)
-
-            # Запускаем скрипт с аргументами
-            cmd = [str(script_path)] + list(args)
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-
-            output = result.stdout.strip() if result.stdout else ""
-            error = result.stderr.strip() if result.stderr else ""
-
-            if result.returncode == 0:
-                logger.info(
-                    f"✅ Скрипт {script_name} выполнен успешно: {output}")
-                return True, output
-            else:
-                logger.error(
-                    f"❌ Скрипт {script_name} завершился с ошибкой: {error}")
-                return False, error
-
-        except subprocess.TimeoutExpired:
-            logger.error(f"❌ Таймаут выполнения скрипта {script_name}")
-            return False, "Превышено время ожидания"
-        except Exception as e:
-            logger.error(f"❌ Ошибка выполнения скрипта {script_name}: {e}")
-            return False, str(e)
-
-    def _get_current_track(self) -> Optional[str]:
-        """Получение информации о текущем треке"""
-        try:
-            result = subprocess.run(
-                ["playerctl", "--player=spotify", "metadata",
-                    "--format", "{{ title }} - {{ artist }}"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-
-        except:
-            pass
-
-        return None
-
     def search_tracks(self, query: str, limit: int = 10) -> List[Dict]:
-        """Поиск треков через Spotify API"""
+        """Поиск треков через User OAuth (Web API)"""
         try:
-            params = {
-                'q': query,
-                'type': 'track',
-                'limit': limit
-            }
-
-            # Формируем URL с параметрами
-            url = f"{self.api_base}/search"
-
-            if not self._ensure_token():
+            params = {"q": query, "type": "track", "limit": limit}
+            ok, data = self._api("GET", "/search", params=params)
+            if not ok or not data:
                 return []
-
-            headers = {
-                'Authorization': f'Bearer {self.access_token}'
-            }
-
-            response = requests.get(url, headers=headers, params=params)
-
-            if response.status_code == 200:
-                data = response.json()
-                tracks = data.get('tracks', {}).get('items', [])
-                logger.info(f"🔍 Найдено треков: {len(tracks)}")
-                return tracks
-            else:
-                logger.error(f"❌ Ошибка поиска: {response.status_code}")
-                return []
-
+            tracks = data.get("tracks", {}).get("items", [])
+            logging.info(f"🔍 Найдено треков: {len(tracks)}")
+            return tracks
         except Exception as e:
-            logger.error(f"❌ Ошибка поиска треков: {e}")
+            logging.error(f"❌ Ошибка поиска треков: {e}")
             return []
 
     def process_voice_command(self, text: str) -> str:
