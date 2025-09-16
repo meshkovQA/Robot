@@ -24,6 +24,7 @@ class YandexTTSClient:
         default_role: str = "good",
         default_container: str = "MP3",
         sample_rate_hz: int = 48000,
+        unsafe_mode: bool = True,
         timeout: int = 30,
     ):
         if not api_key and not iam_token:
@@ -37,6 +38,7 @@ class YandexTTSClient:
         self.default_container = default_container
         self.sample_rate_hz = sample_rate_hz
         self.timeout = timeout
+        self.unsafe_mode = unsafe_mode
         self._session = requests.Session()
 
     def synthesize_to_file(
@@ -116,8 +118,9 @@ class YandexTTSClient:
             "text": text,
             "hints": hints,
             "outputAudioSpec": {
-                "containerAudio": {"containerAudioType": container}
+                "containerAudio": {"containerAudioType": container},
             },
+            "unsafeMode": bool(self.unsafe_mode)
         }
 
     def _request_and_write(

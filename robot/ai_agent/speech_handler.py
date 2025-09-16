@@ -54,6 +54,8 @@ class SpeechHandler:
                     default_role=yc.get("tts_role", "good"),
                     default_container=yc.get("tts_format", "MP3"),
                     sample_rate_hz=yc.get("tts_sample_rate", 48000),
+                    timeout=30,
+                    unsafe_mode=yc.get("tts_unsafe_mode", True)
                 )
                 logging.info("Yandex TTS client initialized")
         except Exception as e:
@@ -305,7 +307,7 @@ class SpeechHandler:
 
     def process_conversation(self, audio_file=None, text_message=None, intent='default', context_data=None):
         """
-        Полный цикл обработки диалога: 
+        Полный цикл обработки диалога:
         аудио → текст → GPT → TTS (без воспроизведения)
         """
         try:
