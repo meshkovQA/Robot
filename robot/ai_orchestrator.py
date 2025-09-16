@@ -7,6 +7,7 @@ from pathlib import Path
 from robot.ai_agent.speech_handler import SpeechHandler
 from robot.ai_agent.vision_analyzer import VisionAnalyzer
 from robot.ai_agent.audio_manager import AudioManager
+from robot.ai_agent.sensor_status_reporter import SensorStatusReporter
 
 
 class AIOrchestrater:
@@ -33,6 +34,8 @@ class AIOrchestrater:
         self.audio_manager = None
         self.wake_word_service = None
         self.openai_client = None
+
+        self.sensor_reporter = SensorStatusReporter(robot_controller)
 
         self._initialize_agents()
 
@@ -141,9 +144,26 @@ class AIOrchestrater:
             'что на экране'
         ]
 
-        # Ключевые слова для определения намерения 'status'
-        status_keywords = [
-            'статус', 'состояние', 'датчики', 'диагностика', 'проверь себя', 'самодиагностика'
+        # Ключевые слова для полного статуса датчиков
+        full_status_keywords = [
+            'полный статус', 'полная диагностика', 'проверь все системы',
+            'отчет по всем датчикам', 'диагностика всех систем'
+        ]
+
+        # Ключевые слова для быстрого статуса
+        quick_status_keywords = [
+            'быстрый статус', 'краткий статус', 'состояние робота', 'сводка'
+        ]
+
+        # Ключевые слова для предупреждений
+        alerts_keywords = [
+            'есть ли проблемы', 'предупреждения', 'тревоги', 'опасность', 'ошибки', 'неисправности'
+        ]
+
+        # Ключевые слова для конкретных датчиков
+        sensors_specific_keywords = [
+            'датчики расстояния', 'препятствия', 'температура', 'влажность',
+            'энкодеры', 'скорость колес', 'ориентация', 'наклон', 'роборука'
         ]
 
         # Проверяем на намерение 'vision'
@@ -153,12 +173,33 @@ class AIOrchestrater:
                     f"🎯 Определено намерение 'vision' по ключевому слову: '{keyword}'")
                 return 'vision'
 
-        # Проверяем на намерение 'status'
-        for keyword in status_keywords:
+                # Проверяем на намерение 'status_full'
+        for keyword in full_status_keywords:
             if keyword in user_text_lower:
                 logging.info(
-                    f"🎯 Определено намерение 'status' по ключевому слову: '{keyword}'")
-                return 'status'
+                    f"🎯 Определено намерение 'status_full' по ключевому слову: '{keyword}'")
+                return 'status_full'
+
+        # Проверяем на намерение 'status_quick'
+        for keyword in quick_status_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'status_quick' по ключевому слову: '{keyword}'")
+                return 'status_quick'
+
+        # Проверяем на намерение 'status_alerts'
+        for keyword in alerts_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'status_alerts' по ключевому слову: '{keyword}'")
+                return 'status_alerts'
+
+        # Проверяем на намерение 'status_specific'
+        for keyword in sensors_specific_keywords:
+            if keyword in user_text_lower:
+                logging.info(
+                    f"🎯 Определено намерение 'status_specific' по ключевому слову: '{keyword}'")
+                return 'status_specific'
 
         # Если никакие ключевые слова не найдены - это обычный чат
         logging.info("🎯 Определено намерение 'chat' (по умолчанию)")
@@ -282,44 +323,51 @@ class AIOrchestrater:
             tts_instructions=tts_instructions
         )
 
-    def _handle_status_request(self, user_text, is_voice=False):
-        """Обработка запросов о состоянии робота"""
+    def _handle_status_request(self, user_text, is_voice=False, status_type='status'):
+        """Обработка запросов о состоянии робота через sensor_reporter"""
         try:
-            context = self.get_sensor_context()
+            # Определяем тип статуса и генерируем соответствующий отчет
+            if status_type == 'status_full':
+                response_text = self.sensor_reporter.get_full_status_text()
+                logging.info("📊 Сгенерирован полный статус датчиков")
 
-            # Формируем человеко-читаемый статус
-            status_parts = []
+            elif status_type == 'status_quick':
+                response_text = self.sensor_reporter.get_quick_status_text()
+                logging.info("⚡ Сгенерирован быстрый статус")
 
-            if context.get("robot_systems", {}).get("status"):
-                status_parts.append(
-                    f"Основные системы: {context['robot_systems']['status']}")
+            elif status_type == 'status_alerts':
+                response_text = self.sensor_reporter.get_alerts_text()
+                if not response_text.strip():
+                    response_text = "Предупреждений нет, все системы работают нормально"
+                logging.info("🚨 Проверены предупреждения системы")
 
-            if context.get("robot_systems", {}).get("battery_voltage"):
-                battery = context['robot_systems']['battery_voltage']
-                status_parts.append(f"Батарея: {battery}V")
+            elif status_type == 'status_specific':
+                # Определяем какие конкретные датчики запрашиваются
+                user_text_lower = user_text.lower()
 
-            if context.get("camera", {}).get("connected"):
-                status_parts.append("Камера подключена")
+                if 'температур' in user_text_lower or 'влажност' in user_text_lower:
+                    sections = ['environment']
+                elif 'препятств' in user_text_lower or 'расстоян' in user_text_lower:
+                    sections = ['distances']
+                elif 'движени' in user_text_lower or 'скорост' in user_text_lower or 'энкодер' in user_text_lower:
+                    sections = ['motion']
+                elif 'камер' in user_text_lower:
+                    sections = ['camera']
+                elif 'роборук' in user_text_lower or 'рук' in user_text_lower:
+                    sections = ['arm']
+                elif 'наклон' in user_text_lower or 'ориентац' in user_text_lower:
+                    sections = ['imu']
+                else:
+                    sections = None
 
-            if context.get("audio", {}).get("microphone_selected"):
-                status_parts.append("Микрофон активен")
+                response_text = self.sensor_reporter.get_full_status_text(
+                    sections)
+                logging.info(f"🎯 Сгенерирован специфичный статус: {sections}")
 
-            if not status_parts:
-                status_parts.append("Системы работают в штатном режиме")
-
-            basic_status = ". ".join(status_parts)
-
-            # Генерируем развернутый ответ через LLM
-            if self.speech:
-                enhanced_prompt = f"""Статус робота: {basic_status}
-                Подробные данные: {json.dumps(context, ensure_ascii=False)}
-                Вопрос пользователя: {user_text}
-                
-                Ответь как робот-помощник, кратко и понятно о своем состоянии."""
-
-                ai_response = self.speech.generate_response(enhanced_prompt)
             else:
-                ai_response = basic_status
+                # Fallback - быстрый статус
+                response_text = self.sensor_reporter.get_quick_status_text()
+                logging.info("📋 Сгенерирован стандартный статус")
 
             # TTS инструкции из ai_config.json
             tts_instructions = None
@@ -328,18 +376,22 @@ class AIOrchestrater:
 
             return self._create_response(
                 user_text=user_text,
-                ai_response=ai_response,
-                intent='status',
+                ai_response=response_text,
+                intent=status_type,
                 is_voice=is_voice,
-                extra_data={"context_data": context},
+                extra_data={
+                    "status_type": status_type,
+                    "sensor_data_available": self.robot is not None
+                },
                 tts_instructions=tts_instructions
             )
 
         except Exception as e:
+            logging.error(f"❌ Ошибка генерации статуса датчиков: {e}")
             return self._create_response(
                 user_text=user_text,
                 ai_response="Не могу получить информацию о состоянии систем",
-                intent='status',
+                intent='status_error',
                 is_voice=is_voice,
                 extra_data={"error": str(e)}
             )
@@ -389,9 +441,16 @@ class AIOrchestrater:
                     ai_response, instructions=tts_instructions)
                 response["audio_file"] = audio_file
 
-                # Можем сразу воспроизвести
-                # speech_success = self.speech.audio_manager.play_audio(audio_file)
-                # response["speech_played"] = speech_success
+                # Воспроизводим сразу для статусных команд
+                if intent.startswith('status'):
+                    speech_success = self.speech.audio_manager.play_audio(
+                        audio_file)
+                    response["speech_played"] = speech_success
+
+                    if speech_success:
+                        logging.info("🔊 Статус датчиков озвучен")
+                    else:
+                        logging.warning("⚠️ Не удалось озвучить статус")
 
             except Exception as e:
                 logging.error(f"Ошибка генерации аудио: {e}")
@@ -448,6 +507,65 @@ class AIOrchestrater:
             logging.error(f"❌ Ошибка голосового чата: {e}")
             return {"error": str(e)}
 
+    def speak_sensor_status(self, status_type='quick'):
+        """
+        Прямой метод для озвучивания статуса датчиков
+        status_type: 'quick', 'full', 'alerts', или список секций для специфичного статуса
+        """
+        try:
+            if not self.speech or not self.speech.audio_manager:
+                return {"error": "Аудио система недоступна"}
+
+            # Генерируем текст статуса
+            if status_type == 'quick':
+                status_text = self.sensor_reporter.get_quick_status_text()
+            elif status_type == 'full':
+                status_text = self.sensor_reporter.get_full_status_text()
+            elif status_type == 'alerts':
+                status_text = self.sensor_reporter.get_alerts_text()
+                if not status_text.strip():
+                    status_text = "Предупреждений нет"
+            elif isinstance(status_type, list):
+                status_text = self.sensor_reporter.get_full_status_text(
+                    status_type)
+            else:
+                status_text = self.sensor_reporter.get_quick_status_text()
+
+            if not status_text.strip():
+                return {"error": "Нет данных для озвучивания"}
+
+            # Синтезируем и воспроизводим
+            tts_instructions = self.config.get(
+                'tts_instructions', {}).get('status')
+            audio_file = self.speech.text_to_speech(
+                status_text, instructions=tts_instructions)
+
+            if not audio_file:
+                return {"error": "Ошибка синтеза речи"}
+
+            speech_success = self.speech.audio_manager.play_audio(audio_file)
+
+            result = {
+                "success": True,
+                "status_type": status_type,
+                "status_text": status_text,
+                "audio_file": audio_file,
+                "speech_played": speech_success,
+                "timestamp": datetime.now().isoformat()
+            }
+
+            if speech_success:
+                logging.info(f"🔊 Статус датчиков '{status_type}' озвучен")
+            else:
+                logging.warning("⚠️ Не удалось воспроизвести статус")
+                result["error"] = "Ошибка воспроизведения"
+
+            return result
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка озвучивания статуса: {e}")
+            return {"error": str(e)}
+
     def _add_to_history(self, user_text, ai_response, intent):
         """Добавление в историю диалогов"""
         entry = {
@@ -495,6 +613,7 @@ class AIOrchestrater:
                 "initialized": True,
                 "speech_available": self.speech is not None,
                 "vision_available": self.vision is not None,
+                "sensor_reporter_available": self.sensor_reporter is not None,
                 "audio_hardware_available": (
                     self.audio_manager is not None and
                     self.audio_manager.microphone_index is not None and
