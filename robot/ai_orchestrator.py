@@ -133,6 +133,23 @@ class AIOrchestrater:
                 logging.warning(
                     "⚠️ WakeWordService пропущен: нет OpenAI API ключа")
 
+            # VisionAnalyzer (для компьютерного зрения с умной логикой)
+        if self.config.get('vision_enabled', True):
+            try:
+                self.vision = VisionAnalyzer(
+                    config=self.config.get('vision', {}),
+                    camera=self.camera,
+                    ai_detector=self.ai_detector
+                )
+                logging.info(
+                    "✅ VisionAnalyzer с умной логикой инициализирован")
+            except Exception as e:
+                logging.error(f"❌ Ошибка инициализации VisionAnalyzer: {e}")
+                self.vision = None
+        else:
+            logging.info("ℹ️ VisionAnalyzer отключен в конфигурации")
+            self.vision = None
+
     def analyze_user_intent(self, user_text):
         """Определение намерения пользователя через ключевые слова"""
         user_text_lower = user_text.lower().strip()
@@ -279,7 +296,7 @@ class AIOrchestrater:
             logging.info(f"🎯 Определено намерение: {intent}")
 
             # 3. Маршрутизируем на нужный обработчик
-            if intent == 'vision':
+            if intent.startswith('vision'):
                 return self._handle_vision_request(user_text, audio_file is not None)
 
             elif intent.startswith('status'):

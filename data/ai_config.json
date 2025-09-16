@@ -11,6 +11,23 @@
     "whisper_model": "gpt-4o-transcribe",
     "tts_model": "gpt-4o-mini-tts",
     "voice": "cedar",
+    "vision": {
+        "vision_model": "gpt-4o-mini",
+        "max_tokens": 300,
+        "confidence_threshold": 0.5,
+        "description_templates": {
+            "use_fixed_templates": true,
+            "openai_fallback": true,
+            "template_confidence_min": 0.5
+        },
+        "strategy": {
+            "yolo_first": true,
+            "openai_fallback_when_no_detections": true,
+            "max_template_objects": 3,
+            "image_resize_max_width": 800,
+            "jpeg_quality": 80
+        }
+    },
     "audio": {
         "sample_rate": 48000,
         "channels": 1,
