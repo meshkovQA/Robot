@@ -68,7 +68,9 @@
             "tts_role": "good",
             "tts_format": "MP3",
             "tts_sample_rate": 48000,
-            "tts_speed": 1.0
+            "tts_speed": 1.0,
+            "tts_max_chars": 900,
+            "tts_strip_emojis": true
         }
     },
     "wake_kws": {
