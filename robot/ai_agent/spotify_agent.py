@@ -43,7 +43,7 @@ class SpotifyAgent:
         # Остальные настройки из JSON конфига (как у Yandex)
         self.scopes = spotify_config.get("scopes", [])
         self.redirect_uri = spotify_config.get(
-            'redirect_uri', 'http://127.0.0.1:8888/callback')
+            'redirect_uri', 'http://192.168.2.7:8888/callback')
         self.default_volume = spotify_config.get('default_volume', 50)
         self.search_limit = spotify_config.get('search_limit', 10)
         self.control_method = spotify_config.get(
