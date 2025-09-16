@@ -314,11 +314,19 @@ class SpotifyAgent:
     # Основные команды управления
 
     def play(self) -> str:
-        ok, err = self._api("PUT", "/me/player/play", json={})
-        if ok:
-            self.is_playing = True
-            return "Музыка включена"
-        return f"Не удалось включить музыку: {err}"
+        device = self._pick_device()
+        if not device:
+            return "Нет доступных устройств Spotify. Открой Spotify-клиент."
+
+        try:
+            self.transfer_playback(device["id"], play=True)
+            ok, err = self._api("PUT", "/me/player/play", json={})
+            if ok:
+                self.is_playing = True
+                return "Музыка включена"
+            return f"Не удалось включить музыку: {err}"
+        except Exception as e:
+            return f"Не удалось включить музыку: {e}"
 
     def pause(self) -> str:
         ok, err = self._api("PUT", "/me/player/pause")
