@@ -282,8 +282,8 @@ class AIOrchestrater:
             if intent == 'vision':
                 return self._handle_vision_request(user_text, audio_file is not None)
 
-            elif intent == 'status':
-                return self._handle_status_request(user_text, audio_file is not None)
+            elif intent.startswith('status'):
+                return self._handle_status_request(user_text, audio_file is not None, intent)
 
             else:  # intent == 'chat'
                 return self._handle_chat_request(user_text, audio_file is not None)
