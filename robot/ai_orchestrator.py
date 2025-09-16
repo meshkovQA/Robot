@@ -573,6 +573,8 @@ class AIOrchestrater:
                         logging.warning(f"Не удалось резюмировать wake: {e}")
                     self._is_tts_playing = False
 
+        return response
+
     def voice_chat(self, recording_duration=5):
         """Полный цикл голосового общения с физическими устройствами"""
         if not self.speech or not self.speech.audio_manager:
