@@ -35,7 +35,7 @@ class AIOrchestrater:
         self.wake_word_service = None
         self.openai_client = None
 
-        self.sensor_reporter = SensorStatusReporter(robot_controller)
+        self.sensor_reporter = SensorStatusReporter()
 
         self._initialize_agents()
 
@@ -326,17 +326,33 @@ class AIOrchestrater:
     def _handle_status_request(self, user_text, is_voice=False, status_type='status'):
         """Обработка запросов о состоянии робота через sensor_reporter"""
         try:
+
+            if not self.robot:
+                response_text = "Контроллер робота недоступен"
+                return self._create_response(
+                    user_text=user_text,
+                    ai_response=response_text,
+                    intent='status_error',
+                    is_voice=is_voice,
+                    extra_data={"error": "robot_unavailable"}
+                )
+
+            robot_status = self.robot.get_status()
+
             # Определяем тип статуса и генерируем соответствующий отчет
             if status_type == 'status_full':
-                response_text = self.sensor_reporter.get_full_status_text()
+                response_text = self.sensor_reporter.get_full_status_text(
+                    robot_status)
                 logging.info("📊 Сгенерирован полный статус датчиков")
 
             elif status_type == 'status_quick':
-                response_text = self.sensor_reporter.get_quick_status_text()
+                response_text = self.sensor_reporter.get_quick_status_text(
+                    robot_status)
                 logging.info("⚡ Сгенерирован быстрый статус")
 
             elif status_type == 'status_alerts':
-                response_text = self.sensor_reporter.get_alerts_text()
+                response_text = self.sensor_reporter.get_alerts_text(
+                    robot_status)
                 if not response_text.strip():
                     response_text = "Предупреждений нет, все системы работают нормально"
                 logging.info("🚨 Проверены предупреждения системы")
@@ -361,12 +377,13 @@ class AIOrchestrater:
                     sections = None
 
                 response_text = self.sensor_reporter.get_full_status_text(
-                    sections)
+                    robot_status, sections)
                 logging.info(f"🎯 Сгенерирован специфичный статус: {sections}")
 
             else:
                 # Fallback - быстрый статус
-                response_text = self.sensor_reporter.get_quick_status_text()
+                response_text = self.sensor_reporter.get_quick_status_text(
+                    robot_status)
                 logging.info("📋 Сгенерирован стандартный статус")
 
             # TTS инструкции из ai_config.json
@@ -516,20 +533,29 @@ class AIOrchestrater:
             if not self.speech or not self.speech.audio_manager:
                 return {"error": "Аудио система недоступна"}
 
+            if not self.robot:
+                return {"error": "Контроллер робота недоступен"}
+
+            robot_status = self.robot.get_status()
+
             # Генерируем текст статуса
             if status_type == 'quick':
-                status_text = self.sensor_reporter.get_quick_status_text()
+                status_text = self.sensor_reporter.get_quick_status_text(
+                    robot_status)
             elif status_type == 'full':
-                status_text = self.sensor_reporter.get_full_status_text()
+                status_text = self.sensor_reporter.get_full_status_text(
+                    robot_status)
             elif status_type == 'alerts':
-                status_text = self.sensor_reporter.get_alerts_text()
+                status_text = self.sensor_reporter.get_alerts_text(
+                    robot_status)
                 if not status_text.strip():
                     status_text = "Предупреждений нет"
             elif isinstance(status_type, list):
                 status_text = self.sensor_reporter.get_full_status_text(
-                    status_type)
+                    robot_status, status_type)
             else:
-                status_text = self.sensor_reporter.get_quick_status_text()
+                status_text = self.sensor_reporter.get_quick_status_text(
+                    robot_status)
 
             if not status_text.strip():
                 return {"error": "Нет данных для озвучивания"}

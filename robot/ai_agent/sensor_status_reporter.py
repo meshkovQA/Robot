@@ -2,10 +2,11 @@
 """
 Модуль для генерации текстовых отчетов о состоянии датчиков
 для голосового воспроизведения через TTS
+Работает с уже полученными данными из robot.get_status()
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from robot.config import SENSOR_ERR
 
@@ -13,27 +14,33 @@ logger = logging.getLogger(__name__)
 
 
 class SensorStatusReporter:
-    """Компонент для генерации текстовых отчетов о состоянии датчиков"""
+    """
+    Компонент для генерации текстовых отчетов о состоянии датчиков
+    Принимает готовые данные статуса, не делает дополнительных запросов
+    """
 
-    def __init__(self, robot_controller=None):
-        self.robot = robot_controller
+    def __init__(self):
+        """Инициализация без зависимостей - работает с переданными данными"""
+        pass
 
     def get_distance_sensors_text(self, status: dict) -> str:
         """Генерирует текстовое описание датчиков расстояния"""
         distance_sensors = status.get("distance_sensors", {})
 
+        if not distance_sensors:
+            return "Датчики расстояния недоступны"
+
         report_parts = []
+        sensor_names_ru = {
+            "left_front": "левый передний",
+            "right_front": "правый передний",
+            "front_center": "центральный передний",
+            "left_rear": "левый задний",
+            "rear_right": "правый задний"
+        }
 
         # Проверяем каждый датчик
         for sensor_name, distance in distance_sensors.items():
-            sensor_names_ru = {
-                "left_front": "левый передний",
-                "right_front": "правый передний",
-                "front_center": "центральный передний",
-                "left_rear": "левый задний",
-                "rear_right": "правый задний"
-            }
-
             sensor_name_ru = sensor_names_ru.get(sensor_name, sensor_name)
 
             if distance == SENSOR_ERR:
@@ -61,6 +68,7 @@ class SensorStatusReporter:
 
         report_parts = []
 
+        # Температура
         if temp is not None:
             if temp < 0:
                 report_parts.append(
@@ -72,6 +80,7 @@ class SensorStatusReporter:
         else:
             report_parts.append("датчик температуры не отвечает")
 
+        # Влажность
         if humidity is not None:
             if humidity > 80:
                 report_parts.append(
@@ -95,27 +104,28 @@ class SensorStatusReporter:
         direction = motion.get("direction", 0)
         current_speed = motion.get("current_speed", 0)
 
-        left_speed = encoders.get("left_wheel_speed", 0)
-        right_speed = encoders.get("right_wheel_speed", 0)
-
         if not is_moving:
             return "Робот неподвижен"
 
+        # Направление движения
         direction_names = {
             1: "вперед",
             2: "назад",
             3: "поворот влево",
             4: "поворот вправо"
         }
-
         direction_text = direction_names.get(
             direction, "неизвестное направление")
 
-        # Добавляем информацию о скорости колес если есть
+        # Данные энкодеров если есть
         speed_info = ""
-        if abs(left_speed) > 0.01 or abs(right_speed) > 0.01:
-            avg_speed = (abs(left_speed) + abs(right_speed)) / 2
-            speed_info = f", средняя скорость {avg_speed:.2f} метра в секунду"
+        if encoders:
+            left_speed = encoders.get("left_wheel_speed", 0)
+            right_speed = encoders.get("right_wheel_speed", 0)
+
+            if abs(left_speed) > 0.01 or abs(right_speed) > 0.01:
+                avg_speed = (abs(left_speed) + abs(right_speed)) / 2
+                speed_info = f", средняя скорость {avg_speed:.2f} метра в секунду"
 
         return f"Робот движется {direction_text} со скоростью {current_speed}{speed_info}"
 
@@ -125,8 +135,7 @@ class SensorStatusReporter:
         pan_angle = camera.get("pan_angle", 90)
         tilt_angle = camera.get("tilt_angle", 90)
 
-        # Определяем положение камеры
-        pan_position = ""
+        # Определяем положение по горизонтали
         if pan_angle < 80:
             pan_position = "повернута вправо"
         elif pan_angle > 100:
@@ -134,7 +143,7 @@ class SensorStatusReporter:
         else:
             pan_position = "смотрит прямо"
 
-        tilt_position = ""
+        # Определяем положение по вертикали
         if tilt_angle < 80:
             tilt_position = "наклонена вниз"
         elif tilt_angle > 100:
@@ -155,24 +164,24 @@ class SensorStatusReporter:
         if not current_angles or len(current_angles) != 5:
             return "Данные роборуки недоступны"
 
-        # Проверяем, находится ли рука в домашней позиции
-        home_angles = [90, 90, 90, 90, 90]  # примерная домашняя позиция
+        # Проверяем домашнюю позицию (примерные углы)
+        home_angles = [90, 90, 90, 90, 90]
         is_home = all(abs(current - home) < 10 for current,
                       home in zip(current_angles, home_angles))
 
         if is_home:
             return "Роборука в исходном положении"
-        else:
-            # Описываем положение захвата (последний сервопривод)
-            gripper_angle = current_angles[4]
-            if gripper_angle < 75:
-                gripper_status = "захват закрыт"
-            elif gripper_angle > 105:
-                gripper_status = "захват открыт"
-            else:
-                gripper_status = "захват в среднем положении"
 
-            return f"Роборука активна, {gripper_status}"
+        # Описываем состояние захвата (5-й сервопривод)
+        gripper_angle = current_angles[4]
+        if gripper_angle < 75:
+            gripper_status = "захват закрыт"
+        elif gripper_angle > 105:
+            gripper_status = "захват открыт"
+        else:
+            gripper_status = "захват в среднем положении"
+
+        return f"Роборука активна, {gripper_status}"
 
     def get_imu_text(self, status: dict) -> str:
         """Генерирует текстовое описание данных IMU"""
@@ -186,9 +195,8 @@ class SensorStatusReporter:
 
         roll = imu.get("roll", 0)
         pitch = imu.get("pitch", 0)
-        yaw = imu.get("yaw", 0)
 
-        # Проверяем наклон
+        # Проверяем наклоны
         orientation_parts = []
 
         if abs(roll) > 15:
@@ -203,26 +211,19 @@ class SensorStatusReporter:
 
         if not orientation_parts:
             return "Робот стоит ровно"
-        else:
-            return "Обнаружен " + ", ".join(orientation_parts)
 
-    def get_full_status_text(self, include_sections: Optional[list] = None) -> str:
+        return "Обнаружен " + ", ".join(orientation_parts)
+
+    def get_full_status_text(self, status: dict, include_sections: Optional[list] = None) -> str:
         """
         Генерирует полный текстовый отчет о состоянии всех датчиков
 
         Args:
-            include_sections: список разделов для включения 
-            ['distances', 'environment', 'motion', 'camera', 'arm', 'imu']
-            Если None - включает все доступные разделы
+            status: словарь с данными статуса робота
+            include_sections: список разделов ['distances', 'environment', 'motion', 'camera', 'arm', 'imu']
         """
-        if not self.robot:
-            return "Контроллер робота недоступен"
-
         try:
-            # Получаем актуальный статус робота
-            status = self.robot.get_status()
-
-            # Определяем какие разделы включить
+            # Все доступные разделы
             all_sections = ['distances', 'environment',
                             'motion', 'camera', 'arm', 'imu']
             sections = include_sections if include_sections is not None else all_sections
@@ -259,30 +260,24 @@ class SensorStatusReporter:
 
             # Объединяем все части отчета
             full_report = ". ".join(report_parts) + "."
-
             logger.info(
-                f"Сгенерирован текстовый отчет датчиков: {full_report[:100]}...")
+                f"Сгенерирован полный отчет датчиков ({len(report_parts)} разделов)")
             return full_report
 
         except Exception as e:
-            logger.error(f"Ошибка генерации текстового отчета: {e}")
-            return "Ошибка получения данных датчиков"
+            logger.error(f"Ошибка генерации полного отчета: {e}")
+            return "Ошибка обработки данных датчиков"
 
-    def get_quick_status_text(self) -> str:
+    def get_quick_status_text(self, status: dict) -> str:
         """Генерирует краткий статус для быстрого озвучивания"""
-        if not self.robot:
-            return "Контроллер робота недоступен"
-
         try:
-            status = self.robot.get_status()
-
-            # Краткая сводка по критическим параметрам
             parts = []
 
-            # Препятствия
+            # Критические препятствия
             obstacles = status.get("obstacles", {})
             close_obstacles = [name for name,
                                is_close in obstacles.items() if is_close]
+
             if close_obstacles:
                 obstacle_names = {
                     "left_front": "слева спереди",
@@ -295,7 +290,7 @@ class SensorStatusReporter:
                     obs, obs) for obs in close_obstacles]
                 parts.append(f"Препятствия {', '.join(obstacle_list)}")
 
-            # Движение
+            # Состояние движения
             motion = status.get("motion", {})
             if motion.get("is_moving", False):
                 direction_names = {1: "вперед",
@@ -306,12 +301,13 @@ class SensorStatusReporter:
             else:
                 parts.append("Стоит")
 
-            # Температура если критическая
+            # Критическая температура
             env = status.get("environment", {})
             temp = env.get("temperature")
             if temp is not None and (temp > 35 or temp < 5):
                 parts.append(f"Температура {temp:.0f} градусов")
 
+            # Если ничего особенного нет
             if not parts:
                 return "Все системы в норме"
 
@@ -321,16 +317,12 @@ class SensorStatusReporter:
             logger.error(f"Ошибка генерации краткого статуса: {e}")
             return "Ошибка получения статуса"
 
-    def get_alerts_text(self) -> str:
+    def get_alerts_text(self, status: dict) -> str:
         """Генерирует текст только для критических предупреждений"""
-        if not self.robot:
-            return "Контроллер робота недоступен"
-
         try:
-            status = self.robot.get_status()
             alerts = []
 
-            # Критические препятствия
+            # Критически близкие препятствия
             distance_sensors = status.get("distance_sensors", {})
             for sensor_name, distance in distance_sensors.items():
                 if distance != SENSOR_ERR and distance < 15:
@@ -357,7 +349,7 @@ class SensorStatusReporter:
                     alerts.append(
                         f"Отрицательная температура {temp:.0f} градусов")
 
-            # Ошибки датчиков
+            # Неисправные датчики
             if temp is None and env.get("humidity") is None:
                 alerts.append("Климатические датчики не отвечают")
 
@@ -373,6 +365,7 @@ class SensorStatusReporter:
                 if abs(roll) > 30 or abs(pitch) > 30:
                     alerts.append("Критический наклон робота")
 
+            # Возвращаем результат
             if not alerts:
                 return ""  # Нет предупреждений
 
@@ -380,4 +373,31 @@ class SensorStatusReporter:
 
         except Exception as e:
             logger.error(f"Ошибка генерации предупреждений: {e}")
-            return "Ошибка проверки системы на предупреждения"
+            return "Ошибка проверки предупреждений"
+
+    def get_section_text(self, status: dict, section: str) -> str:
+        """
+        Получить текст для конкретного раздела датчиков
+
+        Args:
+            status: данные статуса робота
+            section: название раздела ('distances', 'environment', etc.)
+        """
+        section_methods = {
+            'distances': self.get_distance_sensors_text,
+            'environment': self.get_environment_text,
+            'motion': self.get_motion_text,
+            'camera': self.get_camera_text,
+            'arm': self.get_arm_text,
+            'imu': self.get_imu_text,
+        }
+
+        method = section_methods.get(section)
+        if not method:
+            return f"Неизвестный раздел: {section}"
+
+        try:
+            return method(status)
+        except Exception as e:
+            logger.error(f"Ошибка получения текста для раздела {section}: {e}")
+            return f"Ошибка в разделе {section}"
