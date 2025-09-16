@@ -160,12 +160,24 @@ class VisionAnalyzer:
             return None
 
         try:
-            frame = self.camera.get_frame()
-            if frame is not None:
-                logging.debug("📷 Кадр получен с камеры")
-                return frame
+            # Получаем JPEG кадр из существующей системы камеры
+            jpeg_data = self.camera.get_frame_jpeg()
+            if jpeg_data is not None:
+                # Декодируем JPEG в numpy array
+                import cv2
+                import numpy as np
+
+                nparr = np.frombuffer(jpeg_data, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if frame is not None:
+                    logging.debug("📷 Кадр получен и декодирован с камеры")
+                    return frame
+                else:
+                    logging.error("❌ Не удалось декодировать JPEG кадр")
+                    return None
             else:
-                logging.error("❌ Не удалось получить кадр с камеры")
+                logging.error("❌ Не удалось получить JPEG кадр с камеры")
                 return None
         except Exception as e:
             logging.error(f"❌ Ошибка захвата кадра: {e}")
