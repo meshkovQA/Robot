@@ -113,7 +113,7 @@
         "confirm_window_ms": 700
     },
     "spotify": {
-        "redirect_uri": "http://192.168.2.7:8888/callback",
+        "redirect_uri": "http://127.0.0.1:8888/callback",
         "default_volume": 50,
         "search_limit": 10,
         "control_method": "auto",
