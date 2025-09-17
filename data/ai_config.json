@@ -138,6 +138,6 @@
         "max_search_results": 5,
         "auto_play_search": false,
         "timeout": 30,
-        "preferred_device": "This Computer"
+        "preferred_device": "Raspberry Speaker"
     }
 }
