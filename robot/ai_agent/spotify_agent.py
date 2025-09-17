@@ -11,6 +11,8 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlencode, urlparse, parse_qs
 
+from robot.config import PROJECT_ROOT
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ class SpotifyAgent:
         self.token_expires_at = 0
 
         # Файл для сохранения токенов
-        self.token_file = Path("data/spotify_tokens.json")
+        self.token_file = PROJECT_ROOT / "data" / "spotify_tokens.json"
 
         # API endpoints
         self.api_base = "https://api.spotify.com/v1"
@@ -207,14 +209,28 @@ class SpotifyAgent:
     def _api(self, method: str, path: str, **kwargs):
         if not self._ensure_user_token():
             return False, "User token invalid or missing. Run start_user_auth()."
+
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.access_token}"
         url = f"https://api.spotify.com/v1{path}"
         resp = requests.request(method.upper(), url,
                                 headers=headers, timeout=10, **kwargs)
+
         if 200 <= resp.status_code < 300:
-            return True, (resp.json() if resp.content else None)
-        return False, f"{resp.status_code}: {resp.text}"
+            if resp.content and len(resp.content) > 0:
+                try:
+                    return True, resp.json()
+                except Exception:
+                    # Успешно, но тело не JSON (например, 204 с мусором) — вернём None
+                    return True, None
+            return True, None
+
+        # Ошибка: попробуем вытащить JSON, иначе — сырой текст
+        try:
+            err_payload = resp.json()
+        except Exception:
+            err_payload = resp.text
+        return False, f"{resp.status_code}: {err_payload}"
 
     # ===== Управление устройствами и плеером через Web API =====
 
@@ -430,15 +446,6 @@ class SpotifyAgent:
                 "available_commands": list(self.voice_commands.keys())
             }
         }
-
-    def set_volume(self, percent: int) -> str:
-        """Установить абсолютную громкость (0-100)"""
-        percent = max(0, min(100, int(percent)))
-        ok, out = self._run_spotify_script("set_volume", str(percent))
-        if ok:
-            self.current_volume = percent
-            return f"Громкость установлена: {percent}%"
-        return f"Не удалось установить громкость: {out}"
 
     def duck(self, target_percent: int = 20) -> None:
         """Мягко приглушить музыку (без логов/ответов)"""
