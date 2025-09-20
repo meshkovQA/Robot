@@ -488,7 +488,13 @@ class AIOrchestrater:
         vol = self._extract_volume_percent(txt)
         if vol is not None:
             result_text = self.spotify.set_volume(vol)
-            return self._create_response(user_text, result_text, 'music', is_voice)
+            return self._create_response(
+                user_text,
+                result_text,
+                'music',
+                is_voice,
+                extra_data={"explicit_volume_set": vol}  # <-- флаг
+            )
 
         # Приоритет: запрос с названием трека
         for prefix in ['поставь ', 'включи трек ', 'включи песню ', 'воспроизведи ']:

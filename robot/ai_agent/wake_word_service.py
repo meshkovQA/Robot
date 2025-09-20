@@ -38,6 +38,8 @@ class WakeWordService:
         self._duck_volume = int(duck_cfg.get("volume_percent", 20))    # 0..100
         self._restore_mode = str(duck_cfg.get(
             "restore", "previous"))  # "previous" | "default"
+        # для хранения явно установленной громкости
+        self._explicit_volume_set: int | None = None
 
         vcfg = (self.config.get("vosk_kws") or {})
         model_dir = vcfg.get("model_dir") or Path(
@@ -226,6 +228,15 @@ class WakeWordService:
             result = self.ai_orchestrator.smart_process_request(
                 text=command_text)
 
+            # сохранить флаг «пользователь явно установил громкость»
+            try:
+                self._explicit_volume_set = (
+                    result.get("explicit_volume_set") if isinstance(
+                        result, dict) else None
+                )
+            except Exception:
+                self._explicit_volume_set = None
+
             if result.get("success"):
                 response_text = result.get("ai_response", "Команда выполнена")
                 logging.info("✅ AI intent=%s", result.get("intent", "unknown"))
@@ -297,30 +308,36 @@ class WakeWordService:
             logging.debug(f"Duck/pause skip: {e}")
 
     def _post_wake_audio_restore(self):
-        """После озвучки — вернуть громкость/музыку"""
+        """После озвучки — вернуть громкость/музыку (если надо)"""
         try:
             sp = getattr(self.ai_orchestrator, "spotify", None)
             if not sp:
                 return
+            if not self._duck_enabled:
+                return  # вообще ничего не делаем, если duck отключен
 
+            # 1) Если пользователь в ЭТОМ цикле явно выставил громкость — НИЧЕГО не откатываем
+            if self._explicit_volume_set is not None:
+                # обновим «преддуковое» значение, чтобы след. цикл считал именно его
+                self._spotify_prev_volume = int(self._explicit_volume_set)
+                self._explicit_volume_set = None
+                return  # оставляем как есть
+
+            # 2) Обычный случай: восстанавливаем то, что было до wake
             if self._duck_mode == "pause":
-                # реши сам: автоплей после команды или нет
-                # если нужно возобновлять только когда играло до wake:
                 if self._spotify_was_playing:
                     try:
                         sp.play()
                     except Exception:
                         pass
             else:
-                # вернуть громкость
-                target = None
+                # 'duck' — вернуть громкость
                 if self._restore_mode == "previous" and self._spotify_prev_volume is not None:
                     target = int(self._spotify_prev_volume)
                 else:
                     target = int(getattr(sp, "default_volume", 50))
                 try:
-                    if hasattr(sp, "set_volume"):
-                        sp.set_volume(target)
+                    sp.set_volume(target)
                 except Exception:
                     pass
 
