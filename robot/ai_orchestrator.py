@@ -847,14 +847,18 @@ class AIOrchestrater:
             # 4) вернуть громкость/музыку и возобновить wake
             try:
                 if self.spotify:
-                    # если была пауза — решай, возобновлять ли; при duck — вернём громкость
-                    self.spotify.unduck(
-                        previous_percent=self._pre_duck_volume or 50)
+                    # если внутри этого wake-цикла пользователь явно установил громкость — не откатываем!
+                    explicit = None
+                    if isinstance(result, dict):
+                        explicit = result.get("explicit_volume_set")
+                    if explicit is not None:
+                        # запомним новое «преддуковое» значение для будущих циклов, чтобы не путать состояние
+                        self._pre_duck_volume = explicit
+                        # ничего не делаем: оставляем установленную пользователем громкость
+                    else:
+                        # обычный случай — возвращаем прежнюю громкость
+                        self.spotify.unduck(
+                            previous_percent=self._pre_duck_volume or 50)
+
             except Exception as e:
                 logging.warning(f"Не удалось вернуть громкость Spotify: {e}")
-
-            try:
-                if self.wake_word_service:
-                    self.wake_word_service.resume_listening()
-            except Exception as e:
-                logging.warning(f"Не удалось резюмировать wake service: {e}")
