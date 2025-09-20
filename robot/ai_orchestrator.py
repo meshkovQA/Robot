@@ -1,4 +1,5 @@
 from curses import raw
+import re
 import json
 import logging
 from openai import OpenAI
@@ -203,7 +204,8 @@ class AIOrchestrater:
         music_keywords = [
             'включи музыку', 'выключи музыку', 'поставь на паузу', 'продолжи музыку',
             'следующая песня', 'предыдущая песня', 'что играет', 'громче', 'тише',
-            'поставь ', 'включи трек ', 'включи песню ', 'воспроизведи '
+            'поставь ', 'включи трек ', 'включи песню ', 'воспроизведи ',
+            'громкость', 'звук'
         ]
 
         # Проверяем на намерение 'vision'
@@ -463,12 +465,32 @@ class AIOrchestrater:
                 extra_data={"error": str(e)}
             )
 
+    def _extract_volume_percent(text: str):
+        """
+        Возвращает число 0..100, если нашли шаблон громкости, иначе None.
+        Поддерживает: "громкость 60", "сделай громкость 60%", "звук на 35", "на 75 процентов".
+        """
+        # Прямо после слова "громк..." или "звук"
+        m = re.search(r'(?:громк\w*|звук)\s*(?:на\s*)?(\d{1,3})\s*%?', text)
+        if not m:
+            # Вариант "сделай ... на 60%" без явного "громк"/"звук" рядом
+            m = re.search(r'на\s*(\d{1,3})\s*(?:%|процент\w*)', text)
+        if m:
+            val = int(m.group(1))
+            return max(0, min(100, val))
+        return None
+
     def _handle_music_request(self, user_text, is_voice=False):
         if not self.spotify:
             response_text = "Музыкальный агент недоступен"
             return self._create_response(user_text, response_text, 'music_error', is_voice)
 
         txt = user_text.lower().strip()
+
+        vol = self._extract_volume_percent(txt)
+        if vol is not None:
+            result_text = self.spotify.set_volume(vol)
+            return self._create_response(user_text, result_text, 'music', is_voice)
 
         # Приоритет: запрос с названием трека
         for prefix in ['поставь ', 'включи трек ', 'включи песню ', 'воспроизведи ']:

@@ -162,7 +162,7 @@ class WakeWordService:
                          self.activation_timeout)
             audio_file = self.audio_manager.record_until_silence(
                 max_duration=self.activation_timeout,
-                silence_timeout=1.8,
+                silence_timeout=1.0,
                 pre_roll_files=None,
             )
 
@@ -173,8 +173,19 @@ class WakeWordService:
                 logging.info("🤫 Команда не услышана")
                 return
 
-            logging.info("🗣️ STT для файла: %s", audio_file)
-            text = self.speech_handler.transcribe_audio(audio_file)
+                # 🆕 ОБРЕЗАЕМ ТИШИНУ В КОНЦЕ ПЕРЕД STT!
+            logging.info("✂️ Обрезаю тишину в конце аудиофайла...")
+            trimmed_file = self.audio_manager.trim_silence_end(
+                audio_file,
+                threshold=200,  # тот же порог что и для детекции тишины
+                min_speech_end_ms=150  # оставляем 150мс после последней речи
+            )
+
+            # Используем обрезанный файл для STT
+            stt_file = trimmed_file if trimmed_file else audio_file
+
+            logging.info("🗣️ STT для файла: %s", stt_file)
+            text = self.speech_handler.transcribe_audio(stt_file)
             Path(audio_file).unlink(missing_ok=True)
 
             if not text:

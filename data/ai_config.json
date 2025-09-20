@@ -99,7 +99,7 @@
         "threshold": 0.87,
         "margin_alpha": 1.2,
         "min_hits": 2,
-        "window_sec": 1.6,
+        "window_sec": 1.0,
         "samples_dir": "data/wake_samples",
         "negatives_dir": "data/wake_negatives"
     },

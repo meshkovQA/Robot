@@ -349,3 +349,79 @@ class AudioManager:
         except Exception as e:
             logging.error(f"❌ Ошибка объединения аудио файлов: {e}")
             return False
+
+    def trim_silence_end(self, audio_file: str, threshold: float = 200, min_speech_end_ms: int = 200) -> str | None:
+        """
+        Обрезает тишину в конце аудиофайла, оставляя только речь + небольшой хвостик
+
+        Args:
+            audio_file: путь к исходному WAV файлу
+            threshold: порог тишины (как в is_audio_silent)
+            min_speech_end_ms: минимальные мс речи в конце перед обрезкой
+
+        Returns:
+            путь к новому обрезанному файлу или None при ошибке
+        """
+        try:
+            import wave
+            import numpy as np
+
+            # Читаем исходный файл
+            with wave.open(audio_file, 'rb') as wf:
+                frames = wf.readframes(wf.getnframes())
+                params = wf.getparams()
+
+            if len(frames) == 0:
+                return None
+
+            # Конвертируем в numpy array
+            audio_data = np.frombuffer(frames, dtype=np.int16)
+            sample_rate = params.framerate
+
+            # Размер окна для анализа (50ms)
+            window_ms = 50
+            window_samples = int(sample_rate * window_ms / 1000.0)
+
+            # Найдем последний момент, когда была речь
+            last_speech_pos = 0
+
+            # Идем с конца файла назад окнами по 50ms
+            for i in range(len(audio_data) - window_samples, 0, -window_samples):
+                window = audio_data[i:i + window_samples]
+                avg_amplitude = float(np.abs(window).mean())
+
+                if avg_amplitude > threshold:
+                    # Нашли речь - запоминаем позицию + добавляем минимальный хвостик
+                    min_samples = int(sample_rate * min_speech_end_ms / 1000.0)
+                    last_speech_pos = min(
+                        i + window_samples + min_samples, len(audio_data))
+                    break
+
+            # Если не нашли речь, оставляем исходный файл
+            if last_speech_pos == 0:
+                logging.debug(
+                    f"🔇 Не найдена речь в {audio_file}, оставляем как есть")
+                return audio_file
+
+            # Обрезаем аудио до последней речи + хвостик
+            trimmed_audio = audio_data[:last_speech_pos]
+
+            # Создаем новый файл
+            trimmed_file = audio_file.replace('.wav', '_trimmed.wav')
+
+            with wave.open(trimmed_file, 'wb') as wf_out:
+                wf_out.setparams(params)
+                wf_out.writeframes(trimmed_audio.tobytes())
+
+            original_duration = len(audio_data) / sample_rate
+            trimmed_duration = len(trimmed_audio) / sample_rate
+            removed_seconds = original_duration - trimmed_duration
+
+            logging.info(
+                f"✂️ Обрезана тишина: {removed_seconds:.1f}s (было {original_duration:.1f}s → стало {trimmed_duration:.1f}s)")
+
+            return trimmed_file
+
+        except Exception as e:
+            logging.error(f"❌ Ошибка обрезки тишины: {e}")
+            return audio_file  # возвращаем исходный файл при ошибке

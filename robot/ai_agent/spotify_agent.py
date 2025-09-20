@@ -2,6 +2,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import time
+import re
 import json
 import requests
 import subprocess
@@ -415,15 +416,22 @@ class SpotifyAgent:
             return []
 
     def process_voice_command(self, text: str) -> str:
-        """Обработка голосовой команды"""
         text_lower = text.lower().strip()
         logger.info(f"🎵 Обработка команды: '{text}'")
 
-        # Проверяем точные совпадения
+        # 0) Числовая громкость: "громкость 60", "звук 80", "на 35%", "сделай громкость на 25"
+        m = re.search(
+            r'(?:громк\w*|звук)\s*(?:на\s*)?(\d{1,3})\s*%?', text_lower)
+        if not m:
+            m = re.search(r'на\s*(\d{1,3})\s*(?:%|процент\w*)', text_lower)
+        if m:
+            val = max(0, min(100, int(m.group(1))))
+            return self.set_volume(val)
+
+        # 1) Точные совпадения из словаря
         for command, handler in self.voice_commands.items():
             if command in text_lower:
                 if command == "поставь" and len(text_lower) > len(command):
-                    # Извлекаем поисковый запрос
                     query = text_lower.replace("поставь", "").strip()
                     return handler(query)
                 else:
