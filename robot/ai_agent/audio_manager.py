@@ -36,6 +36,36 @@ class AudioManager:
         self._sil_interval = float(sil.get('check_interval_s', 1))
         self._sil_threshold = float(sil.get('silence_threshold', 200))
 
+        rec = (self.config.get('record') or {}) if isinstance(self.config.get(
+            'record'), dict) else (self.config.get('audio', {}).get('record') or {})
+
+        trim = (self.config.get('trim') or {}) if isinstance(self.config.get(
+            'trim'), dict) else (self.config.get('audio', {}).get('trim') or {})
+
+        self._rec_cfg = {
+            "chunk_ms": int(rec.get("chunk_ms", 20)),
+            "max_duration": float(rec.get("max_duration", 10)),
+            "silence_timeout": float(rec.get("silence_timeout", 0.45)),
+            "pre_roll_sec": float(rec.get("pre_roll_sec", 0.35)),
+            "tail_ms": int(rec.get("tail_ms", 300)),
+            "end_peak_thr": float(rec.get("end_peak_thr", 1200.0)),
+            "max_initial_silence": float(rec.get("max_initial_silence", 3.0)),
+            "dynamic_end_avg": {
+                "enabled": bool(((rec.get("dynamic_end_avg") or {}).get("enabled", True))),
+                "base_silence_threshold": float(((rec.get("dynamic_end_avg") or {}).get("base_silence_threshold", self._sil_threshold))),
+                "noise_std_mult": float(((rec.get("dynamic_end_avg") or {}).get("noise_std_mult", 1.5))),
+            }
+        }
+
+        self._trim_cfg = {
+            "enabled": bool(trim.get("enabled", True)),
+            "window_ms": int(trim.get("window_ms", 20)),
+            "head_ms": int(trim.get("head_ms", 400)),
+            "min_speech_end_ms": int(trim.get("min_speech_end_ms", 150)),
+            "base_threshold": float(trim.get("base_threshold", 200.0)),
+            "noise_std_mult": float(trim.get("noise_std_mult", 1.5)),
+        }
+
         logging.info(f"AudioManager. Микрофон index: {self.microphone_index}")
         logging.info(f"AudioManager. Динамик  index: {self.speaker_index}")
 
@@ -188,38 +218,37 @@ class AudioManager:
 
     def record_until_silence(
         self,
-        max_duration=10,
-        silence_timeout=1.5,
-        pre_roll_files: list[str] | None = None,
-        chunk_ms: int = 100,
-        pre_roll_sec: float = 0.3
+        max_duration=None,
+        pre_roll_files: list[str] | None = None
     ):
-        """
-        Потоковая запись до тишины (после wake).
-        - Запускает arecord БЕЗ -d, читает stdout маленькими блоками.
-        - Стартуем запись, когда обнаружена речь (avg>_min_avg и peak>_min_peak).
-        - Останавливаем, когда подряд набралось silence_timeout секунд тишины.
-        - Добавляем небольшой preroll (последние pre_roll_sec перед началом речи).
-        """
         import subprocess
         import wave
         from collections import deque
+        import numpy as np
+
+        # значения из JSON
+        cfg = self._rec_cfg
+        chunk_ms = int(cfg["chunk_ms"])
+        silence_timeout = float(cfg["silence_timeout"])
+        pre_roll_sec = float(cfg["pre_roll_sec"])
+        tail_ms = int(cfg["tail_ms"])
+        end_peak_thr = float(cfg["end_peak_thr"])
+        max_initial_sil = float(cfg["max_initial_silence"])
+        dyn = cfg["dynamic_end_avg"]
+        base_sil_thr = float(dyn["base_silence_threshold"])
+        noise_k = float(dyn["noise_std_mult"])
+        use_dyn = bool(dyn["enabled"])
+
+        if max_duration is None:
+            max_duration = float(cfg["max_duration"])
 
         output_file = f"data/temp_recording_{int(time.time())}.wav"
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
-        # Порог «тишины» и гейты берем из конфигурации (как и раньше)
-        silence_threshold = float(self._sil_threshold)
+        # базовые пороги старта речи из wake-секциии
         min_avg = float(self._min_avg)
         min_peak = float(self._min_peak)
 
-        # Подготовка WAV-выхода
-        wf_out = wave.open(output_file, 'wb')
-        wf_out.setnchannels(int(self.channels))
-        wf_out.setsampwidth(2)  # S16_LE
-        wf_out.setframerate(int(self.sample_rate))
-
-        # Настройка arecord на RAW поток
         cmd = [
             'arecord',
             '-D', f'plughw:{self.microphone_index},0',
@@ -229,12 +258,17 @@ class AudioManager:
             '-t', 'raw'
         ]
         logging.info("🎤 Потоковая запись до тишины: %s", " ".join(cmd))
+        logging.info(
+            "🎛️ record: chunk=%dms, pre_roll=%.2fs, tail=%dms, stop_silence=%.2fs, "
+            "end_peak_thr=%.0f, base_sil_thr=%.1f, dyn_k=%.2f, max_init_sil=%.1fs",
+            chunk_ms, pre_roll_sec, tail_ms, silence_timeout,
+            end_peak_thr, base_sil_thr, noise_k, max_initial_sil
+        )
 
         proc = None
         started_speaking = False
         silence_run = 0.0
         total_time = 0.0
-        max_initial_silence = 3.0  # не ждём бесконечно
         initial_sil = 0.0
 
         bytes_per_sample = 2
@@ -242,8 +276,12 @@ class AudioManager:
                           ) * bytes_per_sample * int(self.channels)
         chunk_sec = chunk_ms / 1000.0
 
-        # Кольцевой буфер для preroll (держим N последних блоков до старта речи)
         preroll_chunks = deque(maxlen=max(1, int(pre_roll_sec / chunk_sec)))
+        tail_chunks = deque(maxlen=max(1, int(tail_ms / chunk_ms)))
+        body = bytearray()
+
+        noise_levels = []                # средние до старта речи
+        end_avg_thr = base_sil_thr       # инициализация
 
         try:
             proc = subprocess.Popen(
@@ -255,82 +293,97 @@ class AudioManager:
             while total_time < max_duration:
                 data = stdout.read(frame_bytes)
                 if not data:
-                    # подстрахуемся небольшим сном и продолжим
-                    time.sleep(0.005)
+                    time.sleep(0.003)
                     continue
 
-                # Оценка амплитуд на лету
                 audio_i16 = np.frombuffer(data, dtype=np.int16)
                 if audio_i16.size == 0:
                     total_time += chunk_sec
                     continue
+
                 avg = float(np.abs(audio_i16).mean())
                 peak = float(np.abs(audio_i16).max())
 
                 if not started_speaking:
-                    # накапливаем preroll
+                    # копим фон и преролл
+                    noise_levels.append(avg)
                     preroll_chunks.append(data)
 
+                    # обновляем динамический порог конца речи после накопления фона
+                    if use_dyn and len(noise_levels) >= max(3, int(pre_roll_sec / chunk_sec)):
+                        nm = float(np.mean(noise_levels))
+                        ns = float(np.std(noise_levels)) if len(
+                            noise_levels) > 1 else 0.0
+                        end_avg_thr = max(base_sil_thr, nm + noise_k * ns)
+
+                    # старт речи по гейтам
                     if avg > min_avg and peak > min_peak:
-                        # старт речи — пишем preroll (если был)
-                        if preroll_chunks:
-                            for ch in preroll_chunks:
-                                wf_out.writeframesraw(ch)
-                        wf_out.writeframesraw(data)
+                        for ch in preroll_chunks:
+                            body.extend(ch)
+                        body.extend(data)
                         started_speaking = True
                         silence_run = 0.0
+                        tail_chunks.clear()
                     else:
-                        # ещё тишина до начала речи
+                        # защиты от вечного ожидания речи
                         initial_sil += chunk_sec
-                        if initial_sil >= max_initial_silence:
+                        if initial_sil >= max_initial_sil:
                             logging.info(
-                                "🤫 Слишком долго нет речи — выхожу без записи")
+                                "🤫 Не дождались речи (%.1fs тишины) — выходим без записи", initial_sil)
                             break
                 else:
-                    # уже пишем: обновляем счетчик тишины и пишем кадр
-                    wf_out.writeframesraw(data)
-                    if avg < silence_threshold:
+                    # уже пишем
+                    body.extend(data)
+                    tail_chunks.append(data)
+
+                    # критерий остановки: низкий avg И низкий peak достаточное время
+                    if (avg < end_avg_thr) and (peak < end_peak_thr):
                         silence_run += chunk_sec
                         if silence_run >= silence_timeout:
-                            logging.info(
-                                "✅ Остановка: тишина %.1fs", silence_run)
+                            logging.info("✅ Остановка: тишина %.2fs (thr_avg=%.1f, thr_peak=%.0f)",
+                                         silence_run, end_avg_thr, end_peak_thr)
                             break
                     else:
                         silence_run = 0.0
+                        tail_chunks.clear()
 
                 total_time += chunk_sec
 
-            wf_out.close()
-
-            # Если речь так и не началась — удалим пустой файл
+            # если речи не было — ничего не сохраняем
             if not started_speaking:
                 try:
-                    Path(output_file).unlink(missing_ok=True)
+                    if proc and proc.poll() is None:
+                        proc.terminate()
                 except Exception:
                     pass
                 return None
+
+            # удаляем хвост (накопленная тишина)
+            for _ in range(len(tail_chunks)):
+                last = tail_chunks.pop()
+                body = body[:len(body)-len(last)]
+
+            with wave.open(output_file, 'wb') as wf_out:
+                wf_out.setnchannels(int(self.channels))
+                wf_out.setsampwidth(2)
+                wf_out.setframerate(int(self.sample_rate))
+                wf_out.writeframes(body)
 
             return output_file
 
         except Exception as e:
             logging.error("❌ Ошибка потоковой записи: %s", e)
             try:
-                wf_out.close()
-            except Exception:
-                pass
-            try:
                 Path(output_file).unlink(missing_ok=True)
             except Exception:
                 pass
             return None
-
         finally:
-            # Аккуратно завершим arecord
             try:
                 if proc and proc.poll() is None:
                     proc.terminate()
                     try:
-                        proc.wait(timeout=0.3)
+                        proc.wait(timeout=0.2)
                     except Exception:
                         proc.kill()
             except Exception:
@@ -350,23 +403,21 @@ class AudioManager:
             logging.error(f"❌ Ошибка объединения аудио файлов: {e}")
             return False
 
-    def trim_silence_end(self, audio_file: str, threshold: float = 200, min_speech_end_ms: int = 200) -> str | None:
-        """
-        Обрезает тишину в конце аудиофайла, оставляя только речь + небольшой хвостик
-
-        Args:
-            audio_file: путь к исходному WAV файлу
-            threshold: порог тишины (как в is_audio_silent)
-            min_speech_end_ms: минимальные мс речи в конце перед обрезкой
-
-        Returns:
-            путь к новому обрезанному файлу или None при ошибке
-        """
+    def trim_silence_end(self, audio_file: str, threshold: float = 200, min_speech_end_ms: int = 150) -> str | None:
         try:
             import wave
             import numpy as np
 
-            # Читаем исходный файл
+            cfg = self._trim_cfg
+            if not cfg["enabled"]:
+                return audio_file
+
+            window_ms = int(cfg["window_ms"])
+            head_ms = int(cfg["head_ms"])
+            base_threshold = float(cfg["base_threshold"])
+            noise_std_mult = float(cfg["noise_std_mult"])
+            min_speech_end_ms = int(cfg["min_speech_end_ms"])
+
             with wave.open(audio_file, 'rb') as wf:
                 frames = wf.readframes(wf.getnframes())
                 params = wf.getparams()
@@ -374,54 +425,40 @@ class AudioManager:
             if len(frames) == 0:
                 return None
 
-            # Конвертируем в numpy array
-            audio_data = np.frombuffer(frames, dtype=np.int16)
-            sample_rate = params.framerate
+            audio = np.frombuffer(frames, dtype=np.int16)
+            sr = params.framerate
 
-            # Размер окна для анализа (50ms)
-            window_ms = 50
-            window_samples = int(sample_rate * window_ms / 1000.0)
+            # фон по head_ms из JSON
+            head_samples = max(1, int(sr * head_ms / 1000.0))
+            head = np.abs(audio[:head_samples]).astype(np.float32)
+            base = float(head.mean()) if head.size else 0.0
+            std = float(head.std()) if head.size > 1 else 0.0
+            dyn_thr = max(base_threshold, base + noise_std_mult * std)
 
-            # Найдем последний момент, когда была речь
-            last_speech_pos = 0
+            # окно из JSON
+            win = max(1, int(sr * window_ms / 1000.0))
+            last_pos = len(audio)
 
-            # Идем с конца файла назад окнами по 50ms
-            for i in range(len(audio_data) - window_samples, 0, -window_samples):
-                window = audio_data[i:i + window_samples]
-                avg_amplitude = float(np.abs(window).mean())
-
-                if avg_amplitude > threshold:
-                    # Нашли речь - запоминаем позицию + добавляем минимальный хвостик
-                    min_samples = int(sample_rate * min_speech_end_ms / 1000.0)
-                    last_speech_pos = min(
-                        i + window_samples + min_samples, len(audio_data))
+            for i in range(len(audio) - win, 0, -win):
+                w = np.abs(audio[i:i+win]).astype(np.float32)
+                if w.mean() > dyn_thr:
+                    tail = int(sr * min_speech_end_ms / 1000.0)
+                    last_pos = min(i + win + tail, len(audio))
                     break
 
-            # Если не нашли речь, оставляем исходный файл
-            if last_speech_pos == 0:
-                logging.debug(
-                    f"🔇 Не найдена речь в {audio_file}, оставляем как есть")
+            if last_pos == len(audio):
                 return audio_file
 
-            # Обрезаем аудио до последней речи + хвостик
-            trimmed_audio = audio_data[:last_speech_pos]
-
-            # Создаем новый файл
+            trimmed = audio[:last_pos]
             trimmed_file = audio_file.replace('.wav', '_trimmed.wav')
-
             with wave.open(trimmed_file, 'wb') as wf_out:
                 wf_out.setparams(params)
-                wf_out.writeframes(trimmed_audio.tobytes())
+                wf_out.writeframes(trimmed.tobytes())
 
-            original_duration = len(audio_data) / sample_rate
-            trimmed_duration = len(trimmed_audio) / sample_rate
-            removed_seconds = original_duration - trimmed_duration
-
-            logging.info(
-                f"✂️ Обрезана тишина: {removed_seconds:.1f}s (было {original_duration:.1f}s → стало {trimmed_duration:.1f}s)")
-
+            logging.info("✂️ Динамическая обрезка: было %.2fs → стало %.2fs",
+                         len(audio)/sr, len(trimmed)/sr)
             return trimmed_file
 
         except Exception as e:
             logging.error(f"❌ Ошибка обрезки тишины: {e}")
-            return audio_file  # возвращаем исходный файл при ошибке
+            return audio_file

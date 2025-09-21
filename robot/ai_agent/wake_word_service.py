@@ -163,9 +163,7 @@ class WakeWordService:
             logging.info("🎤 Запись команды до тишины (max=%ss)",
                          self.activation_timeout)
             audio_file = self.audio_manager.record_until_silence(
-                max_duration=self.activation_timeout,
-                silence_timeout=1.0,
-                pre_roll_files=None,
+                max_duration=self.activation_timeout
             )
 
             if robot and hasattr(robot, "set_rgb_preset"):
