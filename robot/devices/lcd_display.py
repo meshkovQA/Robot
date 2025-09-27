@@ -8,6 +8,9 @@ import logging
 import smbus2
 from typing import Dict, Any, Optional
 
+import subprocess
+import socket
+
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +284,10 @@ class RobotLCDDisplay:
         self._last_status = {}
         self._greet_pending = True  # одноразовое приветствие
 
+        # Добавляем счетчик для переключения информации на второй строке
+        self._cycle_counter = 0
+        self._display_mode = 0  # 0: temp/humidity, 1: IP address, 2: CPU temp
+
     def start(self):
         """Запуск фонового отображения (ленивая инициализация дисплея внутри потока)."""
         if self._running:
@@ -311,6 +318,47 @@ class RobotLCDDisplay:
     def update_status(self, status: Dict[str, Any]):
         """Обновление статуса робота для отображения"""
         self._last_status = status
+
+    def _get_ip_address(self) -> str:
+        """Получение IP адреса устройства"""
+        try:
+            # Попробуем получить IP через socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return f"IP:{ip}"
+        except Exception:
+            try:
+                # Альтернативный способ через hostname
+                hostname = socket.gethostname()
+                ip = socket.gethostbyname(hostname)
+                return f"IP:{ip}"
+            except Exception:
+                return "IP:No Network"
+
+    def _get_cpu_temperature(self) -> str:
+        """Получение температуры процессора Raspberry Pi"""
+        try:
+            # Для Raspberry Pi
+            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                temp_raw = int(f.read().strip())
+                cpu_temp = temp_raw / 1000.0
+                return f"CPU:{cpu_temp:.1f}C"
+        except Exception:
+            try:
+                # Альтернативный способ через vcgencmd
+                result = subprocess.run(['vcgencmd', 'measure_temp'],
+                                        capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    temp_str = result.stdout.strip()
+                    # Ожидается формат: temp=45.1'C
+                    if 'temp=' in temp_str:
+                        temp_value = temp_str.split('=')[1].replace("'C", "")
+                        return f"CPU:{temp_value}"
+                return "CPU:ERR"
+            except Exception:
+                return "CPU:N/A"
 
     def _get_direction_text(self, direction: int, is_moving: bool) -> str:
         """Преобразование кода направления в текст"""
@@ -346,14 +394,36 @@ class RobotLCDDisplay:
         hum_str = f"{humidity:.0f}%" if humidity is not None else "ERR"
         return f"T:{temp_str} H:{hum_str}"
 
+    def _format_second_line(self, temperature: Optional[float], humidity: Optional[float]) -> str:
+        """Форматирование второй строки с переключением информации"""
+        if self._display_mode == 0:
+            # Температура и влажность
+            temp_str = f"{temperature:.1f}C" if temperature is not None else "ERR"
+            hum_str = f"{humidity:.0f}%" if humidity is not None else "ERR"
+            return f"T:{temp_str} H:{hum_str}"
+        elif self._display_mode == 1:
+            # IP адрес
+            return self._get_ip_address()
+        else:  # self._display_mode == 2
+            # Температура процессора
+            return self._get_cpu_temperature()
+
+    def _update_display_mode(self):
+        """Обновление режима отображения каждые 2 цикла (~3 секунды)"""
+        self._cycle_counter += 1
+        if self._cycle_counter >= 2:  # Переключаем каждые 2 цикла
+            self._cycle_counter = 0
+            # 0, 1, 2, 0, 1, 2...
+            self._display_mode = (self._display_mode + 1) % 3
+            if self.debug:
+                mode_names = ["temp/humidity", "IP address", "CPU temperature"]
+                logger.debug(
+                    f"LCD display mode switched to: {mode_names[self._display_mode]}")
+
     def _display_loop(self):
         """
-        Фоновый цикл:
-        - лениво открывает I²C-шину (bus_num из конфигурации);
-        - инициализирует LCD;
-        - выводит приветствие и далее текущий статус.
+        Фоновый цикл с переключением информации на второй строке
         """
-
         while self._running:
             try:
                 # ленивое открытие I²C и создание LCD
@@ -385,7 +455,6 @@ class RobotLCDDisplay:
                             logger.warning("LCD не активен после init")
                     except Exception as e:
                         logger.error(f"LCD init error: {e!r}")
-                        # подождём и попробуем снова
                         time.sleep(self.update_interval)
                         continue
 
@@ -405,9 +474,10 @@ class RobotLCDDisplay:
                     time.sleep(self.update_interval)
                     continue
 
-                # 🔧 ИСПРАВЛЕНИЕ: Правильное извлечение данных
+                # Обновляем режим отображения
+                self._update_display_mode()
 
-                # Отладка: выведите структуру данных
+                # Извлечение данных статуса
                 if self.debug:
                     logger.debug(f"LCD Status keys: {list(status.keys())}")
 
@@ -417,29 +487,28 @@ class RobotLCDDisplay:
                 direction = motion.get("direction", 0)
                 obstacles = status.get("obstacles", {})
 
-                # ✅ ПРАВИЛЬНО: извлекаем из секции environment
+                # Данные окружающей среды
                 environment = status.get("environment", {})
                 temperature = environment.get("temperature")
                 humidity = environment.get("humidity")
 
-                # Отладка значений температуры и влажности
                 if self.debug:
                     logger.debug(f"LCD environment: {environment}")
                     logger.debug(
                         f"LCD temp: {temperature}, humidity: {humidity}")
 
-                # первая строка: препятствие приоритетнее
+                # Первая строка: препятствие приоритетнее
                 if any(obstacles.values()):
                     line1 = self._get_obstacle_text(obstacles)
                 else:
                     line1 = self._get_direction_text(direction, is_moving)
 
-                # вторая строка: T/H
-                line2 = self._format_sensor_line(temperature, humidity)
+                # Вторая строка: переключается между режимами
+                line2 = self._format_second_line(temperature, humidity)
 
                 if self.debug:
                     logger.debug(
-                        f"_display_loop: show L1='{line1}' | L2='{line2}'")
+                        f"_display_loop: show L1='{line1}' | L2='{line2}' (mode: {self._display_mode})")
 
                 self.lcd.display_two_lines(line1, line2)
 

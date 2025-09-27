@@ -4,16 +4,16 @@
 
 // ---------------- Пины моторов (DRV8871) ----------------
 // Левый драйвер
-#define LEFT_MOTOR_IN1 7        // НЕ PWM
-#define LEFT_MOTOR_IN2 6        // PWM (Timer0)
+#define LEFT_MOTOR_IN1 6   // PWM
+#define LEFT_MOTOR_IN2 7   // НЕ PWM
 
 // Правый драйвер
-#define RIGHT_MOTOR_IN1 4       // НЕ PWM
-#define RIGHT_MOTOR_IN2 5       // PWM (Timer0)
+#define RIGHT_MOTOR_IN1 5  // PWM
+#define RIGHT_MOTOR_IN2 4  // НЕ PWM
 
 // Если вдруг «вперёд» у колеса обратный — инвертируй тут:
-bool LEFT_DIR_INVERT  = true;
-bool RIGHT_DIR_INVERT = true;
+bool LEFT_DIR_INVERT  = false;
+bool RIGHT_DIR_INVERT = false;
 
 // ---------------- Сервомоторы камеры --------------------
 #define CAMERA_PAN_PIN 12
@@ -64,8 +64,8 @@ volatile int currentSpeed = 0;       // -255..255
 volatile int currentDirection = 0;   // 0..4
 
 // «мертвая зона»
-const int MIN_MOTOR_SPEED = 50;
-const int DEAD_ZONE_COMPENSATION = 30;
+const int MIN_MOTOR_SPEED = 175;
+const int DEAD_ZONE_COMPENSATION = 0;
 int correctMotorSpeed(int sp) {
   if (sp == 0) return 0;
   int s = abs(sp);
@@ -94,30 +94,33 @@ void setLeftRaw(int sp){ // -255..255
   sp = constrain(sp, -255, 255);
   if (LEFT_DIR_INVERT) sp = -sp;
 
-  if (sp > 0) {
+  if (sp > 0) {                      // Вперёд: IN2=LOW, PWM на IN1
+    digitalWrite(LEFT_MOTOR_IN2, LOW);
+    analogWrite(LEFT_MOTOR_IN1, sp);
+  } else if (sp < 0) {               // Назад: IN2=HIGH, PWM(255 - s) на IN1
+    int s = -sp;
+    digitalWrite(LEFT_MOTOR_IN2, HIGH);
+    analogWrite(LEFT_MOTOR_IN1, 255 - s);
+  } else {                           // Стоп: свободный ход (coast)
     digitalWrite(LEFT_MOTOR_IN1, LOW);
-    analogWrite(LEFT_MOTOR_IN2, sp);
-  } else if (sp < 0) {
-    digitalWrite(LEFT_MOTOR_IN1, HIGH);
-    analogWrite(LEFT_MOTOR_IN2, 255 - min(255, -sp));
-  } else {
-    analogWrite(LEFT_MOTOR_IN2, 0);
-    digitalWrite(LEFT_MOTOR_IN1, LOW);
+    digitalWrite(LEFT_MOTOR_IN2, LOW);
   }
 }
+
 void setRightRaw(int sp){ // -255..255
   sp = constrain(sp, -255, 255);
   if (RIGHT_DIR_INVERT) sp = -sp;
 
-  if (sp > 0) {
+  if (sp > 0) {                      // Вперёд: IN2=LOW, PWM на IN1
+    digitalWrite(RIGHT_MOTOR_IN2, LOW);
+    analogWrite(RIGHT_MOTOR_IN1, sp);
+  } else if (sp < 0) {               // Назад: IN2=HIGH, PWM(255 - s) на IN1
+    int s = -sp;
+    digitalWrite(RIGHT_MOTOR_IN2, HIGH);
+    analogWrite(RIGHT_MOTOR_IN1, 255 - s);
+  } else {                           // Стоп: свободный ход (coast)
     digitalWrite(RIGHT_MOTOR_IN1, LOW);
-    analogWrite(RIGHT_MOTOR_IN2, sp);
-  } else if (sp < 0) {
-    digitalWrite(RIGHT_MOTOR_IN1, HIGH);
-    analogWrite(RIGHT_MOTOR_IN2, 255 - min(255, -sp));
-  } else {
-    analogWrite(RIGHT_MOTOR_IN2, 0);
-    digitalWrite(RIGHT_MOTOR_IN1, LOW);
+    digitalWrite(RIGHT_MOTOR_IN2, LOW);
   }
 }
 void stopAllMotors(){
@@ -262,8 +265,8 @@ void executeCommand() {
       
     case 3: // Поворот влево (танк)
       {
-        int turnSpeed = (rawSpeed == 0) ? 150 : rawSpeed;
-        int correctedSpeed = correctMotorSpeed(turnSpeed);
+        const int TURN_MAX = 150;
+        int correctedSpeed = correctMotorSpeed(TURN_MAX);
         setLeftRaw(-correctedSpeed); 
         setRightRaw(correctedSpeed); 
         break;
@@ -271,8 +274,8 @@ void executeCommand() {
       
     case 4: // Поворот вправо (танк)
       {
-        int turnSpeed = (rawSpeed == 0) ? 150 : rawSpeed;
-        int correctedSpeed = correctMotorSpeed(turnSpeed);
+        const int TURN_MAX = 150;
+        int correctedSpeed = correctMotorSpeed(TURN_MAX);
         setLeftRaw(correctedSpeed); 
         setRightRaw(-correctedSpeed); 
         break;
